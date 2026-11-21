@@ -26,6 +26,9 @@ module Samagotchi
   #     sha256: sha256:0a1b...
   #     required: true       # optional: a guardrail; when it fails to load
   #                          #   chi denies every tool call (docs/hooks.md)
+  #     parts:               # optional — more .rb files of the plugin, each
+  #       client.rb: sha256:…   #   evaluated in this order before file:, into
+  #                          #   the same namespace (#plugin_files)
   #   requires_chi: ">= 0.1.28"   # optional — a Gem::Requirement for chi's VERSION
   #   requires_chi_next: true     # optional, shipped bundles — ignored here:
   #                          #   `rake release:bump` raises requires_chi to
@@ -92,6 +95,8 @@ module Samagotchi
 
     # A plugin file is a plain .rb name in the bundle's top directory.
     PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
+    # The most plugin parts (plugin: parts:) a manifest may list.
+    MAX_PLUGIN_PARTS = 16
     # A script is a plain file name in the bundle's scripts/.
     SCRIPT_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/
     # A need is a plain executable name: no path, no spaces.
@@ -127,6 +132,7 @@ module Samagotchi
       "settings" => "0.143.0",
       "block_renderers" => "0.151.0",
       "plugin.required" => "0.157.0"
+      # Unreleased: "plugin.parts".
     }.freeze
 
     # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
@@ -239,6 +245,32 @@ module Samagotchi
       sha.delete_prefix("sha256:")
     end
 
+    # @return [String, nil] a plugin part's sha256 hex, "sha256:" stripped,
+    #   nil when the manifest gives none (or names no such part)
+    def checksum_for_part(name)
+      sha = plugin_parts[name.to_s].to_s
+      sha.empty? ? nil : sha.delete_prefix("sha256:")
+    end
+
+    # The plugin's parts (plugin: parts:), name => "sha256:<hex>" ("" when
+    # not given), in the manifest's order; {} without any.
+    def plugin_parts = @plugin&.dig(:parts) || {}
+
+    # The one wording of a part the manifest lists that the bundle's dir
+    # lacks (the install refuses it, chi bundle test/try raise it; callers
+    # add their context).
+    def self.missing_part(part) = "the manifest names plugin part #{part}, which the bundle doesn't have"
+
+    # Every file of the plugin with its sha, in load order: the parts as
+    # listed, then the plugin file; [] without a plugin. The one list the
+    # loader, the installer and chi bundle check walk.
+    # @return [Array(Array(String, String))]
+    def plugin_files
+      return [] unless @plugin
+
+      plugin_parts.to_a + [[@plugin[:file], @plugin[:sha256].to_s]]
+    end
+
     # Why chi +version+ can't load this bundle's plugin, or nil when it can
     # (or the bundle names no requirement).
     def self.requires_chi_failure(requirement, version)
@@ -273,6 +305,7 @@ module Samagotchi
       found["context_providers"] = SINCE["context_providers"] unless @context_providers.empty?
       found["block_renderers"] = SINCE["block_renderers"] unless @block_renderers.empty?
       found["plugin.required"] = SINCE["plugin.required"] if @plugin&.dig(:required) && SINCE.key?("plugin.required")
+      found["plugin.parts"] = SINCE["plugin.parts"] if @plugin&.dig(:parts) && SINCE.key?("plugin.parts")
       found["session_settings"] = SINCE["session_settings"] unless @session_settings.empty?
       found["settings"] = SINCE["settings"] unless @settings.nil?
       found["files.description"] = SINCE["files.description"] if raw["files"].is_a?(Hash) && raw["files"].values.any?(Hash)
@@ -302,6 +335,8 @@ module Samagotchi
         sha = plugin[:sha256].to_s
         manifest["plugin"] = { "file" => plugin[:file].to_s, "sha256" => sha.start_with?("sha256:") ? sha : "sha256:#{sha}" }
         manifest["plugin"]["required"] = true if plugin[:required]
+        parts = plugin[:parts] || {}
+        manifest["plugin"]["parts"] = parts.to_h { |part, part_sha| [part.to_s, prefixed_sha(part_sha)] } unless parts.empty?
       end
       manifest["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
       needs = parse_needs(needs)
@@ -383,6 +418,13 @@ module Samagotchi
         acc << { command: command, why: optional_text(need["why"]), hint: optional_text(need["hint"]) }
       end
     end
+
+    # +sha+ with the "sha256:" prefix (as the plugin's is written).
+    def self.prefixed_sha(sha)
+      sha = sha.to_s
+      sha.start_with?("sha256:") ? sha : "sha256:#{sha}"
+    end
+    private_class_method :prefixed_sha
 
     def self.optional_text(value)
       text = value.to_s.strip
@@ -492,8 +534,9 @@ module Samagotchi
       end
     end
 
-    # plugin: {file:, sha256:, required:} → {file:, sha256:} (sha "" when
-    # not given) with required: true when it says so, or nil; a file that
+    # plugin: {file:, sha256:, required:, parts:} → {file:, sha256:} (sha ""
+    # when not given) with required: true when it says so and parts: {name
+    # => sha} (#parse_plugin_parts) when it lists any, or nil; a file that
     # isn't a plain .rb name, or a required: that isn't true or false, is a
     # validation error.
     def parse_plugin(raw)
@@ -510,7 +553,61 @@ module Samagotchi
       required = raw.key?("required") ? raw["required"] : raw[:required]
       raise ValidationError, "plugin required: must be true or false, not #{required.inspect}" unless [nil, true, false].include?(required)
 
-      required ? { file: file, sha256: sha, required: true } : { file: file, sha256: sha }
+      parsed = required ? { file: file, sha256: sha, required: true } : { file: file, sha256: sha }
+      parts = parse_plugin_parts(raw.key?("parts") ? raw["parts"] : raw[:parts], file)
+      parts.empty? ? parsed : parsed.merge(parts: parts)
+    end
+
+    # plugin: parts: {name => sha256} → the same, in the order listed (never
+    # sorted: it is the load order), each sha "sha256:" prefixed ("" kept);
+    # {} when absent. A name that isn't a plain .rb file name in the top
+    # directory, the plugin file's own name, a name the plugin file or an
+    # earlier part has in another case (one file on a case-insensitive disk:
+    # Plugin.rb beside plugin.rb), a name listed twice (#duplicate_part) or
+    # more than MAX_PLUGIN_PARTS entries is a ValidationError naming it.
+    def parse_plugin_parts(raw, plugin_file)
+      return {} if raw.nil?
+      raise ValidationError, "plugin parts: must be a mapping of file names to sha256" unless raw.is_a?(Hash)
+      if raw.size > MAX_PLUGIN_PARTS
+        raise ValidationError, "plugin parts: lists #{raw.size} files, at most #{MAX_PLUGIN_PARTS}"
+      end
+
+      twice = duplicate_part
+      raise ValidationError, "plugin parts: #{twice} is listed twice" if twice
+
+      raw.each_with_object({}) do |(name, sha), parts|
+        name = name.to_s.strip
+        unless name.match?(PLUGIN_FILE)
+          raise ValidationError, "plugin parts: #{name.inspect} isn't a .rb file name in the bundle's top directory"
+        end
+        raise ValidationError, "plugin parts: #{name} is the plugin file itself" if name == plugin_file
+
+        twin = [plugin_file, *parts.keys].find { |other| other.casecmp?(name) }
+        raise ValidationError, "plugin parts: #{name} and #{twin} differ only in case (one file on a case-insensitive disk)" if twin
+
+        sha = sha.to_s.strip
+        parts[name] = sha.empty? || sha.start_with?("sha256:") ? sha : "sha256:#{sha}"
+      end
+    end
+
+    # The first part name manifest.yml's plugin: parts: mapping lists twice,
+    # or nil. YAML.load keeps the last of two equal keys silently, so this
+    # reads the file's node tree (only for a manifest that has parts).
+    def duplicate_part
+      return nil unless @path && File.file?(@path)
+
+      parts = yaml_value(yaml_value(Psych.parse_file(@path)&.root, "plugin"), "parts")
+      return nil unless parts.is_a?(Psych::Nodes::Mapping)
+
+      keys = parts.children.each_slice(2).map { |key, _| key.respond_to?(:value) ? key.value.to_s.strip : nil }.compact
+      keys.find { |key| keys.count(key) > 1 }
+    end
+
+    # A YAML mapping node's value node under the scalar +key+, or nil.
+    def yaml_value(node, key)
+      return nil unless node.is_a?(Psych::Nodes::Mapping)
+
+      node.children.each_slice(2).find { |k, _| k.is_a?(Psych::Nodes::Scalar) && k.value == key }&.last
     end
 
     # scripts: {file => sha256} → the same, "sha256:" prefixed; {} when absent.

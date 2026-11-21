@@ -21,6 +21,10 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors: `ctx.http.stream(method, url, …) { |res| … }`, a streamed answer: the status and headers
   first, then the body as it arrives (`res.each_event` reads Server-Sent Events, `res.each_chunk` the raw pieces).
   Leaving the block closes the connection. The test kit's `bundle.http.stub` takes `events:` and `chunks:`.
+- For bundle authors: a plugin can be split into several files, listed under `plugin: parts:` in manifest.yml
+  (each with its sha256; `chi bundle check --fix` fills them). chi checks and loads them in order before the plugin
+  file, into the same namespace; `chi bundle status`, `diff`, `build` and `check` know them. See
+  [plugins.md](docs/plugins.md#a-plugin-in-several-files).
 - For bundle authors: `ctx.cancel_controller`, the Stop `ctx.cancelled?` reads on this thread (an init task's own, else
   the running turn's), to hand to `ctx.http`'s `cancel:` or a thread of your own.
 - chi web takes a message and answers it in one call (`POST /api/sessions/ID/ask`), for a thin client such as an

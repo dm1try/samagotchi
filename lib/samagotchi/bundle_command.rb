@@ -112,7 +112,8 @@ module Samagotchi
     # What `chi bundle status NAME` says after a plugin's state
     # (MemoryBundle::Status.plugin_status) that keeps it from loading.
     PLUGIN_NOTES = { "modified" => " (edited after install: not loaded; reinstall the bundle)",
-                     "unrecorded" => " (no sha256 recorded: not loaded; reinstall the bundle)" }.freeze
+                     "unrecorded" => " (no sha256 recorded: not loaded; reinstall the bundle)",
+                     "parts missing" => " (its manifest names plugin parts the install has none of: not loaded; reinstall the bundle)" }.freeze
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -348,7 +349,9 @@ module Samagotchi
 
       # Installed with --force past its requires_chi: the Engine won't load it.
       failure = Samagotchi::BundleManifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION)
-      @stdout.puts "Plugin: #{manifest.plugin[:file]} (#{failure ? "won't load on this chi: #{failure}" : "loads at the next chi start"})"
+      parts = manifest.plugin_parts.size
+      @stdout.puts "Plugin: #{manifest.plugin[:file]}#{" + #{parts} part#{"s" unless parts == 1}" if parts.positive?} " \
+                   "(#{failure ? "won't load on this chi: #{failure}" : "loads at the next chi start"})"
     end
 
     # @return [Integer] 0
@@ -382,7 +385,7 @@ module Samagotchi
     def restart_hint(before, manifest = nil, installer = nil)
       return if before.nil? || before.error?
 
-      plugin_files = [before.plugin&.file, manifest&.plugin&.dig(:file)].compact.uniq
+      plugin_files = ([before.plugin&.file, *before.plugin&.parts&.keys] + (manifest&.plugin_files || []).map(&:first)).compact.uniq
       changed = if installer
                   plugin_files.any? { |file| CHANGED_WORDS.include?(installer.results[file]&.word) }
                 else
@@ -590,6 +593,9 @@ module Samagotchi
         if (plugin = st.plugin)
           note = PLUGIN_NOTES.fetch(plugin[:state], "")
           @stdout.puts "  Plugin: #{plugin[:file]} [#{plugin[:state]}]#{note}"
+          plugin[:parts].reject { |part| part[:state] == "ok" }.each do |part|
+            @stdout.puts "    part #{part[:file]} [#{part[:state]}]#{PLUGIN_NOTES.fetch(part[:state], "")}"
+          end
           @stdout.puts "    requires_chi: #{plugin[:requires_chi]}" if plugin[:requires_chi]
           @stdout.puts "    not loaded: #{plugin[:requires_failure]}" if plugin[:requires_failure]
         end
@@ -607,7 +613,7 @@ module Samagotchi
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
           mods = st.files.values.count { |v| v[:behind] || v[:missing] || v[:unreadable] }
           plugin = st.plugin
-          mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
+          mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure] || plugin[:parts].any? { |part| part[:state] != "ok" })
           # A rule that is missing or edited doesn't load; a script runs edited.
           mods += st.rules.values.count { |state| state != "ok" } + st.scripts.values.count("missing")
           mods += 1 if st.scope_error
@@ -672,13 +678,14 @@ module Samagotchi
         @stderr.puts "Bundle '#{bname}': #{e.message}"; return 1
       end
       plugin_path = prov.plugin_path(record)
-      plugin_file = plugin_path && File.basename(plugin_path)
+      # The plugin's files, its parts first (the load order).
+      plugin_files = plugin_path ? [*record.plugin.parts.keys, File.basename(plugin_path)] : []
       if file_arg
         # A memory first, then the plugin (an older chi's hook is no file of the bundle's)
         if record.owns?(file_arg)
           diff_memory(prov, target_dir, file_arg)
-        elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
-          diff_plugin(prov, record, plugin_path)
+        elsif (plugin_file = plugin_files.find { |file| [file, "plugin/#{file}"].include?(file_arg) })
+          diff_plugin(prov, record, plugin_file)
         elsif (asset = asset_states(prov, record).find { |a| a.label == file_arg })
           diff_asset(asset)
         else
@@ -691,8 +698,8 @@ module Samagotchi
           diff_memory(prov, target_dir, key)
           @stdout.puts ""
         end
-        if plugin_file
-          diff_plugin(prov, record, plugin_path)
+        plugin_files.each do |file|
+          diff_plugin(prov, record, file)
           @stdout.puts ""
         end
         asset_states(prov, record).select(&:edited?).each do |a|
@@ -747,11 +754,11 @@ module Samagotchi
       end
     end
 
-    def diff_plugin(prov, record, plugin_path)
-      file = File.basename(plugin_path)
-      print_base_and_current("plugin/#{file}", prov.plugin_base_path(file), plugin_path)
+    # One file of the plugin (+file+: the plugin file or a part, by name).
+    def diff_plugin(prov, record, file)
+      print_base_and_current("plugin/#{file}", prov.plugin_base_path(file), File.join(prov.plugin_dir, file))
       requires_chi = record.manifest.requires_chi
-      @stdout.puts "--- metadata: sha256=#{record.plugin.sha256}#{" requires_chi=#{requires_chi}" if requires_chi}"
+      @stdout.puts "--- metadata: sha256=#{record.plugin_shas[file]}#{" requires_chi=#{requires_chi}" if requires_chi}"
     end
 
     def print_base_and_current(heading, base, current)

@@ -51,6 +51,35 @@ module Samagotchi
         file ? File.join(plugin_dir, file) : nil
       end
 
+      # The plugin's parts as installed (plugin/<part>), in load order; []
+      # without a plugin or parts.
+      # @param bundle [Record, nil] its record (read when not given)
+      def plugin_part_paths(bundle = record)
+        (bundle&.plugin&.parts || {}).keys.map { |part| File.join(plugin_dir, part) }
+      end
+
+      # Why chi won't load this installed bundle's plugin, nil when every file
+      # of it is as installed: the plugin file's #file_refusal, then each
+      # part's in load order, the first one found. A record without parts
+      # whose kept manifest names some (an older chi installed the plugin file
+      # alone: it doesn't read parts:) is refused as :parts_missing, read from
+      # the record's Manifest (no kept manifest, or one that doesn't read: no
+      # refusal of this kind). The loader, `chi bundle status` and the session
+      # settings all ask this.
+      # @param bundle [Record] its record, with a plugin
+      # @return [Refusal, nil]
+      def plugin_refusal(bundle)
+        plugin = bundle.plugin
+        refusal = file_refusal(:plugin, plugin&.file, plugin&.sha256)
+        return refusal if refusal || plugin.nil?
+
+        plugin.parts.each do |part, sha|
+          refusal = file_refusal(:plugin, part, sha)
+          return refusal if refusal
+        end
+        parts_missing(bundle)
+      end
+
       # Why chi won't load or run this installed file, nil when it is as
       # installed: the one "is this file as installed" check of what chi loads
       # (the plugin), runs (a provider's scripts), serves (a renderer's
@@ -79,6 +108,14 @@ module Samagotchi
         Refusal.new(kind: :file_changed, actual: actual, expected: expected,
                     text: "#{what} differs from the installed one (reinstall the bundle)")
       end
+
+      # #plugin_refusal's :parts_missing: the kept manifest names parts the record has none of.
+      def parts_missing(bundle)
+        return nil unless bundle.plugin.parts.empty? && bundle.manifest.plugin_parts.any?
+
+        Refusal.new(kind: :parts_missing, text: "bundle #{@name}'s plugin parts aren't installed (reinstall the bundle)")
+      end
+      private :parts_missing
 
       # The installed bundle's record, nil when it isn't installed.
       # @return [Record, nil]

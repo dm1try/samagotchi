@@ -178,9 +178,10 @@ module Samagotchi
       # @api private (Bundle.load)
       def load!
         if (plugin = @manifest.plugin)
+          parts = part_paths
           @namespace = Plugin::Loader.fresh_namespace(@name)
           @api = Plugin::Loader.register_file(@name, File.join(@dir, plugin[:file]), @registries, settings: @settings,
-                                                                                                  namespace: @namespace,
+                                                                                                  namespace: @namespace, parts: parts,
                                                                                                   api_class: RecordingApi) do |built|
             @plugin = built
           end
@@ -190,6 +191,18 @@ module Samagotchi
         shutdown
         raise
       end
+
+      # The manifest's plugin parts in the source, in load order.
+      # @raise [ArgumentError] one the manifest names that isn't there
+      def part_paths
+        @manifest.plugin_parts.keys.map do |part|
+          path = File.join(@dir, part)
+          raise ArgumentError, "#{@name}: #{BundleManifest.missing_part(part)}" unless File.file?(path)
+
+          path
+        end
+      end
+      private :part_paths
 
       # ── Firing ──────────────────────────────────────────────────────────
 

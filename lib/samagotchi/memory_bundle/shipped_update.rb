@@ -308,7 +308,7 @@ module Samagotchi
         provenance = Provenance.new(name: name)
         rules = Dir.glob(File.join(source_dir, "guardrails", "*.yml")).sort
                    .reject { |file| AssetInstaller.linked?(file, source_dir) }
-        plugin = manifest.plugin ? { manifest.plugin[:file] => File.join(source_dir, manifest.plugin[:file]) } : {}
+        plugin = manifest.plugin_files.to_h { |file, _| [file, File.join(source_dir, file)] }
         scripts = manifest.scripts.keys.to_h { |file| [file, File.join(source_dir, "scripts", file)] }
         assets = AssetState.in(provenance.guardrails_dir, kind_of_file: :rule, recorded: bundle.guardrails,
                                                           incoming: rules.to_h { |file| [File.basename(file), file] }) +
@@ -318,13 +318,17 @@ module Samagotchi
           assets.select(&:edited?).map(&:label)
       end
 
-      # Installed rules and the plugin whose sha differs from the recorded
-      # one (they didn't load), as guardrails/F, plugin/F.
+      # Installed rules and the plugin's files (its parts first, in the load
+      # order, then the file) whose sha differs from the recorded one (they
+      # didn't load), as guardrails/F, plugin/F.
       def edited_executables(name, bundle)
         provenance = Provenance.new(name: name)
         edited = []
         bundle.guardrails.each do |file, sha|
           edited << "guardrails/#{file}" if edited?(File.join(provenance.guardrails_dir, file), sha)
+        end
+        bundle.plugin&.parts&.each do |part, sha|
+          edited << "plugin/#{part}" if edited?(File.join(provenance.plugin_dir, part), sha)
         end
         plugin = provenance.plugin_path(bundle)
         edited << "plugin/#{File.basename(plugin)}" if plugin && edited?(plugin, bundle.plugin.sha256)

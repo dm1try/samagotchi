@@ -632,9 +632,9 @@ end
 
 # The bundle's #inspect: the Server struct and the Plugin hold env values and
 # command args that a failing spec would otherwise dump. This block loads the
-# shipped class the way mcp_client_spec does, so it tests the real file.
+# shipped class the way mcp_client_spec does, so it tests the real files.
 RSpec.describe "The mcp bundle's inspect" do
-  let(:mod) { m = Module.new; m.module_eval(File.read(File.join(MCP_SHIPPED, "plugin.rb")), "plugin.rb", 1); m }
+  let(:mod) { McpPluginFiles.load_module }
   let(:server_class) { mod::Plugin::Server }
   let(:plugin_class) { mod::Plugin }
 

@@ -169,6 +169,9 @@ module Samagotchi
       # @param plugin_file [String, nil] the installed plugin file; its name
       #   and sha256 are recorded (the Engine checks it at load) with a base
       #   snapshot
+      # @param plugin_parts [Hash{String => String}] its parts' name =>
+      #   installed file, in load order (never sorted: it is the load order),
+      #   recorded under the plugin as "parts" with a base snapshot each
       # @param plugin_required [Boolean] the manifest's plugin: required: true
       #   (a guardrail plugin), recorded with it as "required": true, so the
       #   Engine knows it whatever becomes of the kept manifest.yml
@@ -200,7 +203,7 @@ module Samagotchi
       # The record has no hooks ("hooks" => {}: class-file hooks are retired)
       # and an older record's hook bases go.
       def write(files:, scope:, version:, source_path:, trust_level: nil, source_commit: nil,
-                guardrails_files: {}, plugin_file: nil, plugin_required: false, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
+                guardrails_files: {}, plugin_file: nil, plugin_parts: {}, plugin_required: false, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
                 scripts_files: {}, context_providers: [], block_renderers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false, manifest_from: nil)
         record_extra = format_record(read)&.extra || {}
@@ -274,6 +277,7 @@ module Samagotchi
           manifest_data["plugin"]["required"] = true if plugin_required
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
+          write_plugin_parts(manifest_data["plugin"], plugin_parts, dev)
         end
         manifest_data.merge!(mirror_fields(trust_level: trust_level, requires_chi: requires_chi, needs: needs,
                                            context_providers: context_providers, block_renderers: block_renderers,
@@ -293,6 +297,18 @@ module Samagotchi
         marked.each_key { |key| save_incoming(key, incoming_dir) }
         prune_incoming(marked.keys)
       end
+
+      # #write's plugin parts: "parts" under +entry+ (the record's plugin),
+      # in the order given, and a base snapshot of each.
+      def write_plugin_parts(entry, parts, dev)
+        return if parts.empty?
+
+        entry["parts"] = parts.to_h do |part, path|
+          File.binwrite(plugin_base_path(part), File.binread(path.to_s))
+          [part.to_s, dev ? InstalledBundles::Sha::DEV : InstalledBundles::FileDigest.sha256(path.to_s)]
+        end
+      end
+      private :write_plugin_parts
 
       # After a conflict was settled: each file's base becomes the incoming
       # file and its conflict mark goes. The rest of the manifest (its
@@ -645,6 +661,7 @@ module Samagotchi
         if bundle.plugin
           file = manifest.plugin && manifest.plugin[:file].to_s
           shas[file && File.basename(file) == bundle.plugin.file ? file : bundle.plugin.file] = bundle.plugin.sha256
+          bundle.plugin.parts.each { |part, sha| shas[part] = sha }
         end
         bundle.scripts.each { |file, sha| shas["scripts/#{file}"] = sha }
         bundle.guardrails.each { |file, sha| shas["guardrails/#{file}"] = sha }

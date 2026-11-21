@@ -87,7 +87,7 @@ module Samagotchi
 
         file = bundle.plugin.file
         { file: file, sha256: copy(provenance.plugin_path(bundle), File.join(dir, file), bundle.plugin.sha256),
-          required: bundle.manifest.plugin_required }
+          required: bundle.manifest.plugin_required, parts: copies(bundle.plugin.parts, provenance.plugin_dir, dir) }
       end
       private_class_method :plugin
 

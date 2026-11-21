@@ -151,7 +151,7 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   so run it (and `test`) on code you'd install. The codes, in order: `manifest` (a parse error, verbatim; the run
   stops), `hooks-retired` (error: a manifest `hooks:` entry, or `hooks/*.rb` files: class-file hooks are retired,
   hook events from `plugin.rb` with `chi.on`; the run stops), `missing-file`, `unlisted` (warn: a file an install leaves out, by `MemoryFiles`' rules, so a README
-  isn't one), `sha` (a stale or placeholder sha, or a plugin / script entry with no sha line; `--fix`
+  isn't one; with a plugin, a top-level `.rb` its `parts:` don't list), `sha` (a stale or placeholder sha, or a plugin, part or script entry with no sha line; `--fix`
   rewrites the first two and prints `fixed sha FILE → sha256:…`), `unknown-key` (warn: a manifest key this chi's
   parser never reads, so it ignores it, one row per key at its line; the install keeps the manifest, so a newer
   chi reads the key from it with no reinstall, and `chi update`'s re-check names it too), `requires-chi` (this chi doesn't satisfy it:

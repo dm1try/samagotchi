@@ -165,6 +165,24 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
     end
   end
 
+  it "installs a plugin's parts beside its file, and refuses a stale part sha before the sandbox" do
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "plugin-parts")
+      FileUtils.cp_r(File.expand_path("fixtures/plugin_parts_bundle", __dir__), source)
+      with_env("XDG_CONFIG_HOME" => File.join(dir, "user-config")) do
+        sandbox = described_class.new(source)
+        sandbox.install
+        plugin_dir = File.join(sandbox.config_home, "samagotchi", "memories", ".bundles", "plugin-parts", "plugin")
+        expect(Dir.children(plugin_dir).sort).to eq(%w[helpers.rb plugin.rb shout.rb])
+      ensure
+        sandbox&.cleanup
+      end
+      File.write(File.join(source, "shout.rb"), "# edited\n")
+      expect { described_class.new(source) }
+        .to raise_error(described_class::Error, "chi bundle try: stale or placeholder sha256 in manifest.yml; run chi bundle check --fix")
+    end
+  end
+
   it "fails the install with RemovedApi's one line, not a backtrace, for a config naming a removed api" do
     Dir.mktmpdir do |dir|
       source = bundle_at(File.join(dir, "source"))

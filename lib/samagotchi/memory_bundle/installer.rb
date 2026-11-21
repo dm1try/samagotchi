@@ -684,6 +684,7 @@ module Samagotchi
           source_commit: @source_commit,
           guardrails_files: installed.guardrail_files,
           plugin_file: installed.plugin_file,
+          plugin_parts: installed.plugin_parts,
           plugin_required: @manifest.plugin&.dig(:required) == true,
           requires_chi: @manifest.requires_chi,
           needs: @manifest.needs,

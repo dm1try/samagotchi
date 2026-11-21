@@ -115,21 +115,30 @@ module Samagotchi
       end
 
       # A plugin's state word in `chi bundle status`, by its file refusal's kind.
-      PLUGIN_STATES = { nil => "ok", file_unrecorded: "unrecorded", file_missing: "missing", file_changed: "modified" }.freeze
+      PLUGIN_STATES = { nil => "ok", file_unrecorded: "unrecorded", file_missing: "missing", file_changed: "modified",
+                        parts_missing: "parts missing" }.freeze
 
-      # The installed plugin: {file:, path:, state:, requires_chi:,
+      # The installed plugin: {file:, path:, state:, parts:, requires_chi:,
       # requires_failure:}; state is "ok", "unrecorded" (no sha256 recorded
-      # for it), "missing" or "modified" (its sha256 differs from the
-      # installed one), from the verdict (Dir#file_refusal(:plugin),
-      # InstalledBundles::Standing): any but "ok" won't load. nil without one.
+      # for it), "missing", "modified" (its sha256 differs from the
+      # installed one) or "parts missing" (the kept manifest names parts the
+      # record hasn't), from the verdict (Dir#plugin_refusal,
+      # InstalledBundles::Standing): any but "ok" won't load, and neither does
+      # a plugin with a part that isn't "ok". The entry's state is the plugin
+      # file's; each part's is its own (parts: [{file:, state:}], in load
+      # order). nil without one.
       def self.plugin_status(provenance, bundle)
         path = provenance.plugin_path(bundle)
         return nil unless path
 
+        parts = bundle.plugin.parts.map do |part, sha|
+          { file: part, state: PLUGIN_STATES.fetch(provenance.file_refusal(:plugin, part, sha)&.kind) }
+        end
         refusal = provenance.file_refusal(:plugin, bundle.plugin.file, bundle.plugin.sha256)
+        refusal ||= provenance.plugin_refusal(bundle) if parts.all? { |part| part[:state] == "ok" }
         state = PLUGIN_STATES.fetch(refusal&.kind)
         standing = InstalledBundles::Standing.of(provenance.name, bundle)
-        { file: File.basename(path), path: path, state: state, requires_chi: bundle.manifest.requires_chi,
+        { file: File.basename(path), path: path, state: state, parts: parts, requires_chi: bundle.manifest.requires_chi,
           requires_failure: standing.too_new? ? standing.refusal.text : nil }
       end
 

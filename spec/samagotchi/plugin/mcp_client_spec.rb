@@ -5,11 +5,7 @@ require_relative "../../support/mcp_bundle"
 
 # The mcp bundle's JSON-RPC client, against spec/fixtures/mcp/fake_server.rb.
 RSpec.describe "The mcp bundle's client" do
-  let(:client_class) do
-    mod = Module.new
-    mod.module_eval(File.read(File.join(MCP_SHIPPED, "plugin.rb")), "plugin.rb", 1)
-    mod::Plugin::Client
-  end
+  let(:client_class) { McpPluginFiles.load_module::Plugin::Client }
   let(:logged) { Queue.new }
   let(:exits) { Queue.new }
   let(:env) { {} }
@@ -145,8 +141,8 @@ RSpec.describe "The mcp bundle's client" do
   it "stops a server that ignores stdin EOF and TERM when chi is killed without closing it" do
     lib = File.expand_path("../../../lib", __dir__)
     holder = <<~RUBY
-      mod = Module.new
-      mod.module_eval(File.read(#{File.join(MCP_SHIPPED, "plugin.rb").dump}), "plugin.rb", 1)
+      require #{File.expand_path("../../support/mcp_plugin_files", __dir__).dump}
+      mod = McpPluginFiles.load_module
       client = mod::Plugin::Client.new([#{RbConfig.ruby.dump}, "--disable-gems", "-e", "trap('TERM') {}; $stdin.read; sleep 10"])
       puts client.pid
       $stdout.flush

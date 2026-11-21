@@ -199,6 +199,7 @@ module Samagotchi
         case key
         when "files.description" then "a files: entry given as a mapping"
         when "session_settings.types", "settings.types" then "#{key.split(".").first}: as a mapping of keys to types"
+        when "plugin.parts" then "plugin: parts:"
         else "#{key}:"
         end
       end
@@ -207,7 +208,7 @@ module Samagotchi
 
       # @return [Boolean] whether a listed file is missing
       def check_files(manifest)
-        listed = manifest.files.keys + Array(manifest.plugin && manifest.plugin[:file]) +
+        listed = manifest.files.keys + manifest.plugin_files.map(&:first) +
                  manifest.scripts.keys.map { |s| File.join("scripts", s) }
         missing = listed.reject { |rel| File.file?(path(rel)) }
         missing.each do |rel|
@@ -225,8 +226,14 @@ module Samagotchi
           memories.include?(name) || MemoryBundle::MemoryFiles.repo_meta?(name)
         end
         loose.each { |name| unlisted(name, "files:") }
-        plugin = manifest.plugin && manifest.plugin[:file]
-        unlisted("plugin.rb", "plugin:") if File.file?(path("plugin.rb")) && plugin != "plugin.rb"
+        if manifest.plugin
+          plugin_files = manifest.plugin_files.map(&:first)
+          Dir.glob(path("*.rb")).map { |f| File.basename(f) }.sort.each do |name|
+            unlisted(name, "plugin: parts:") unless plugin_files.include?(name)
+          end
+        elsif File.file?(path("plugin.rb"))
+          unlisted("plugin.rb", "plugin:")
+        end
         Dir.glob(path("scripts/*")).sort.each do |file|
           unlisted("scripts/#{File.basename(file)}", "scripts:") unless manifest.scripts.key?(File.basename(file))
         end
@@ -278,20 +285,24 @@ module Samagotchi
         check_floor(manifest, line) if manifest.plugin && manifest.requires_chi && !@too_new && !@installed
       end
 
-      # The plugin calls an API newer than the oldest chi requires_chi admits.
+      # The plugin calls an API newer than the oldest chi requires_chi admits:
+      # the newest call across all of the plugin's files.
       def check_floor(manifest, line)
         floor = lower_bound(manifest.requires_chi)
-        return unless floor && File.file?(path(manifest.plugin[:file]))
+        return unless floor
 
-        source = File.read(path(manifest.plugin[:file]))
-        calls = source.scan(API_CALL).flat_map { |call| [call, call.split(".").first(2).join(".")] }
-        calls = (calls + ApiCalls.new(source).keywords).uniq.select { |call| Plugin::Api::SINCE.key?(call) }
-        call = calls.max_by { |c| Gem::Version.new(Plugin::Api::SINCE[c]) } or return
+        found = plugin_sources(manifest).flat_map do |file, source|
+          calls = source.scan(API_CALL).flat_map { |call| [call, call.split(".").first(2).join(".")] }
+          (calls + ApiCalls.new(source).keywords).uniq.select { |call| Plugin::Api::SINCE.key?(call) }.map { |call| [file, call] }
+        end
+        return if found.empty?
+
+        file, call = found.max_by { |_, c| Gem::Version.new(Plugin::Api::SINCE[c]) }
         version = Plugin::Api::SINCE[call]
         return unless Gem::Version.new(version) > floor
 
         add(:warn, :"requires-chi-floor", "manifest.yml",
-            "requires_chi #{manifest.requires_chi.inspect} admits chi #{floor}, but #{manifest.plugin[:file]} uses " \
+            "requires_chi #{manifest.requires_chi.inspect} admits chi #{floor}, but #{file} uses " \
             "#{call}, which needs chi #{version}", line: line,
                                                                                       fix: "requires_chi: \">= #{version}\"")
       end
@@ -445,12 +456,17 @@ module Samagotchi
       # A warning, as a name past the boundary is: the plugin may be written
       # for a newer chi, and a call on a path that never runs breaks nothing.
       def check_api(manifest)
-        file = manifest.plugin && manifest.plugin[:file]
-        return unless file && File.file?(path(file))
-
-        ApiCalls.new(File.read(path(file))).findings.each do |finding|
-          add(:warn, :api, file, finding.message, line: finding.line, fix: finding.fix)
+        plugin_sources(manifest).each do |file, source|
+          ApiCalls.new(source).findings.each do |finding|
+            add(:warn, :api, file, finding.message, line: finding.line, fix: finding.fix)
+          end
         end
+      end
+
+      # [[file, text]] for each of the plugin's files on disk, parts first
+      # (BundleManifest#plugin_files' order); [] without a plugin.
+      def plugin_sources(manifest)
+        manifest.plugin_files.filter_map { |file, _| [file, File.read(path(file))] if File.file?(path(file)) }
       end
 
       # A chi.on(..., on_error: :fail_closed) guard denies the call it raises
@@ -459,11 +475,12 @@ module Samagotchi
       FAIL_CLOSED = /on_error:\s*(?::fail_closed\b|["']fail_closed["'])/
 
       def check_fail_closed(manifest)
-        file = manifest.plugin && manifest.plugin[:file]
-        return if !file || manifest.plugin[:required] || !File.file?(path(file))
+        return if manifest.plugin.nil? || manifest.plugin[:required]
 
-        source = File.read(path(file))
-        return unless (index = source =~ FAIL_CLOSED)
+        file, source = plugin_sources(manifest).find { |_, text| text.match?(FAIL_CLOSED) }
+        return unless source
+
+        index = source =~ FAIL_CLOSED
 
         add(:warn, :"fail-closed", file, "a fail-closed chi.on hook, but the manifest's plugin: has no required: true: " \
                                          "if the plugin fails to load, tool calls still run",

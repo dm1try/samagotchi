@@ -31,6 +31,7 @@ module Samagotchi
       #   files:            a.md: sha256:<hex>             (dir/a.md)
       #                     a.md:\n    sha256: sha256:<hex> (dir/a.md, with description:)
       #   plugin:           file: p.rb\n  sha256: sha256:<hex> (dir/p.rb)
+      #                     parts:\n    c.rb: sha256:<hex> (dir/c.rb, a plugin part)
       #   scripts:          s.rb: sha256:<hex>             (dir/scripts/s.rb)
       # Returns [text, [[relative file, old sha, new sha], ...]] for the lines
       # that changed. +text+ defaults to dir/manifest.yml. A named file that's
@@ -86,10 +87,10 @@ module Samagotchi
       # take a placeholder (`chi bundle check`) parse this text.
       def parseable(text) = text.gsub(/^(\s*(?:["']?[^"':\s][^"':]*["']?: )?)sha256:(?=[ \t]*(?:#[^\r\n]*)?\r?$)/, "\\1sha256:0")
 
-      # The code files the manifest names (plugin, scripts), as paths
-      # relative to the bundle dir.
+      # The code files the manifest names (plugin, its parts, scripts), as
+      # paths relative to the bundle dir.
       def coded(parsed, plugin_file)
-        (plugin_file.is_a?(String) ? [plugin_file] : []) +
+        (plugin_file.is_a?(String) ? [plugin_file] : []) + keys(parsed["plugin"].is_a?(Hash) ? parsed["plugin"]["parts"] : nil) +
           keys(parsed["scripts"]).map { |s| File.join("scripts", s) }
       end
       private_class_method :coded
@@ -114,7 +115,8 @@ module Samagotchi
           m = line.match(/\A(    sha256: )sha256:\h*#{TAIL}/) and return sub && [sub.delete("\"'"), m[1]]
           m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*#{TAIL}/) and [m[2], m[1]]
         when "plugin"
-          m = line.match(/\A(  sha256: )sha256:\h*#{TAIL}/) and plugin_file and [plugin_file, m[1]]
+          m = line.match(/\A(  sha256: )sha256:\h*#{TAIL}/) and plugin_file and return [plugin_file, m[1]]
+          m = line.match(/\A(    ["']?([^"':]+)["']?: )sha256:\h*#{TAIL}/) and sub == "parts" and [m[2], m[1]]
         when "scripts"
           m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*#{TAIL}/) and [File.join("scripts", m[2]), m[1]]
         end

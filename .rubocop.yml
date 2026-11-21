@@ -463,9 +463,6 @@ Samagotchi/FileSize:
   Caps:
     lib/samagotchi/bridge.rb: 1871
     lib/samagotchi/bundle_command.rb: 1189
-    # Raised for the HTTP transport (HttpClient), with the user's OK: the
-    # plugin stays one file for the MCP native epic (2026-11-21).
-    lib/samagotchi/bundles/mcp/plugin.rb: 1507
     lib/samagotchi/config.rb: 1496
     lib/samagotchi/engine.rb: 1355
     lib/samagotchi/guardrails/pair_command.rb: 1452

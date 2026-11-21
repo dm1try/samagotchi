@@ -11,9 +11,7 @@ require_relative "../../support/fake_provider_server"
 RSpec.describe "The mcp bundle's HTTP client" do
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
-  let(:plugin_module) do
-    Module.new.tap { |mod| mod.module_eval(File.read(File.join(MCP_SHIPPED, "plugin.rb")), "plugin.rb", 1) }
-  end
+  let(:plugin_module) { McpPluginFiles.load_module }
   let(:client_class) { plugin_module::Plugin::HttpClient }
   let(:errors) { plugin_module::Plugin::Client }
   let(:server) { FakeProviderServer.start }
