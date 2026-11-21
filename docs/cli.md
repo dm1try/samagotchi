@@ -808,9 +808,9 @@ web's delete sheet shows (`back`: the previous link an undo brings back;
 `goes`: the links and stopped delegates; `stopped first`: its worker or running
 turn, the background tasks, another session's with its id in front; `stays`:
 the running delegates, and the tasks chi can't verify), each only when it
-applies, and which of `--force` / `--stop-tasks` the real delete needs. With
-`--chain` it prints the chain's choice. A plan that would be refused prints
-`would be refused: <why>` instead and exits 1; otherwise it exits 0:
+applies, and which of `--force` / `--stop-tasks` the real delete needs. With `--chain` it prints the chain's choice. `--force` and `--stop-tasks` are ignored in the print-only plan; it reports
+which real-delete flags would be needed instead. An unknown id or an id that cannot be resolved exits 1 as a would-be
+refusal too. A plan that would be refused prints `would be refused: <why>` instead and exits 1; otherwise it exits 0:
 
 ```text
 $ chi sessions delete --dry-run ab12cd34

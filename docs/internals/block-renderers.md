@@ -117,7 +117,7 @@ computes one, and the turn counter: `Engine#turn_messages` counts each turn).
 **The write: on the worker's loop, between turns, never from the request's thread.** A running turn holds its own copy
 of the conversation and writes it back at its end. `Worker::BlockFixesPart#apply_block_fixes` runs in each pass that
 runs the queued commands, after them and before the notes and the next prompt (the idle pass and each input file's
-step); the result's thread wakes the loop (`Engine#block_fix_ready=`, `Waker#wake`). Under the event lock, three
+step); the result's thread wakes the loop (`Engine#block_fix_ready=`, `Waker#wake`). Under the event lock, four
 outcomes:
 
 - **No turn started since the ask, and the answer is still the newest** (`AnswerTail.find`; notes, a `!cmd` line and
