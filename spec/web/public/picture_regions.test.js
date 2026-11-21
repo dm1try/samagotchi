@@ -2,7 +2,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { html } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
-import { CARD_ROOM, createRegionLayer, regionName, regionTitle } from "../../../lib/samagotchi/web/public/picture_regions.js";
+import { CARD_ROOM, COARSE_CARD_ROOM, createRegionLayer, regionName, regionTitle } from "../../../lib/samagotchi/web/public/picture_regions.js";
 
 const SIZE = { width: 1000, height: 500 };
 const BR = { kind: "node", id: "BR", label: "Bridge", box: [0.4, 0.4, 0.1, 0.1] };
@@ -67,6 +67,17 @@ test("no regions: nothing drawn, no room, every hook inert", () => {
 
 test("with regions the card's room is kept", () => {
   assert.equal(setup().layer.room(), CARD_ROOM);
+});
+
+test("a coarse pointer's room, its media query made once, read on each paint", () => {
+  const asked = [];
+  const mql = { matches: true };
+  const win = { matchMedia: (q) => { asked.push(q); return mql; } };
+  const { layer } = setup(PICTURE, { win });
+  for (let i = 0; i < 5; i++) assert.equal(layer.room(), COARSE_CARD_ROOM);
+  mql.matches = false;
+  assert.equal(layer.room(), CARD_ROOM);
+  assert.deepEqual(asked, ["(pointer:coarse)"]);
 });
 
 test("a tap selects what is under it and shows the card; a tap on empty space clears", () => {
