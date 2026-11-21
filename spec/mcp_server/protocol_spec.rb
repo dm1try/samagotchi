@@ -64,13 +64,16 @@ RSpec.describe Samagotchi::McpServer::Protocol do
 
   describe "the legacy era" do
     it "answers initialize with the client's version when it knows it, else 2025-11-25" do
-      %w[2025-06-18 2025-03-26 2025-11-25].each do |version|
+      %w[2025-06-18 2025-11-25].each do |version|
         result = body(protocol.handle(legacy("initialize", { "protocolVersion" => version })))["result"]
         expect(result).to eq("protocolVersion" => version, "capabilities" => { "tools" => {} },
                              "serverInfo" => { "name" => "chi", "version" => "9.9.9" }, "instructions" => "be brief")
       end
-      expect(body(protocol.handle(legacy("initialize", { "protocolVersion" => "2024-01-01" })))["result"]["protocolVersion"])
-        .to eq("2025-11-25")
+      # 2025-03-26 allows batches, which aren't answered: not offered.
+      %w[2024-01-01 2025-03-26].each do |version|
+        expect(body(protocol.handle(legacy("initialize", { "protocolVersion" => version })))["result"]["protocolVersion"])
+          .to eq("2025-11-25")
+      end
     end
 
     it "answers ping, tools/list without the modern stamps, and tools/call" do

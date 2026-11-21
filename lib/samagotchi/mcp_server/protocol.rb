@@ -13,8 +13,10 @@ module Samagotchi
     # each request's _meta).
     MODERN_VERSION = "2026-07-28"
     # The legacy revisions an `initialize` may name; the first is the
-    # answer to any other.
-    LEGACY_VERSIONS = %w[2025-11-25 2025-06-18 2025-03-26].freeze
+    # answer to any other. Not 2025-03-26: it allows JSON-RPC batches,
+    # which chi doesn't answer (one -32600), and no host sends it (spike
+    # Q2: Codex initializes with 2025-06-18; Claude Code is modern).
+    LEGACY_VERSIONS = %w[2025-11-25 2025-06-18].freeze
     # Where a modern request names its revision (params._meta).
     VERSION_META = "io.modelcontextprotocol/protocolVersion"
     SERVER_INFO_META = "io.modelcontextprotocol/serverInfo"
