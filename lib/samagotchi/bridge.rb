@@ -15,6 +15,7 @@ require_relative "delivery"
 require_relative "session_inbox"
 require_relative "turn_anchors"
 
+require_relative "bridge/block_fix_route"
 require_relative "bridge/bounded_queue"
 require_relative "bridge/card_store"
 require_relative "bridge/event_id"
@@ -65,6 +66,8 @@ module Samagotchi
   # * Optional at runtime: this module is never loaded unless explicitly
   #   engaged as a transport.
   class Bridge
+    include BlockFixRoute
+
     ENGINE_CALLS = {
       active_cancel_controller: "turn-state monitor",
       annotate_question: "question-desk control",
@@ -76,6 +79,7 @@ module Samagotchi
       cut_for_steer: "steer-cut coordination",
       drop_enqueued_id: "turn-state monitor",
       enqueued_id?: "turn-state monitor",
+      fix_block: "block-fix mutex; replace-only session messages",
       event_count: "observer-registry monitor",
       forget_enqueued_id: "turn-state monitor",
       generation_snapshot: "generation-phase snapshot",
@@ -286,6 +290,7 @@ module Samagotchi
       @port = @server.local_address.ip_port
       @capture_handle = @engine.subscribe(observer: capture_observer)
       @accumulator_handle = @engine.subscribe(observer: @accumulator)
+      @drawings_handle = @engine.subscribe(observer: @drawings)
       # A plugin's ctx.messages mid-turn holds the turn so far (plan O1).
       @engine.running_turn_messages = -> { @accumulator.current_messages }
       @cards_handle = @engine.subscribe(observer: @cards)
@@ -342,6 +347,7 @@ module Samagotchi
       wake_acceptor
       @capture_handle&.unsubscribe
       @accumulator_handle&.unsubscribe
+      @drawings_handle&.unsubscribe
       @engine.running_turn_messages = nil
       @cards_handle&.unsubscribe
       @pending_card_handle&.unsubscribe
@@ -813,7 +819,7 @@ module Samagotchi
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
                 Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE,
-                WorkingSet::ITEM_FEATURE].freeze
+                WorkingSet::ITEM_FEATURE, BlockFix::FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -839,7 +845,8 @@ module Samagotchi
       %w[GET stats] => :handle_stats,
       %w[GET snapshot] => :handle_snapshot,
       %w[GET tail] => :handle_tail,
-      %w[GET working_set/item] => :handle_working_set_item
+      %w[GET working_set/item] => :handle_working_set_item,
+      %w[POST blocks/fix] => :handle_block_fix
     }.freeze
     ROUTE_PATH = %r{\A/session/([^/]+)/(.+)\z}u
     # The handlers that take the request's query string as a third
@@ -1853,6 +1860,8 @@ module Samagotchi
       403 => "Forbidden",
       404 => "Not Found",
       409 => "Conflict",
+      413 => "Content Too Large",
+      429 => "Too Many Requests",
       500 => "Internal Server Error",
       501 => "Not Implemented"
     }.freeze

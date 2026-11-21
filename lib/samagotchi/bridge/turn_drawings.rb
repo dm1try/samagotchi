@@ -104,6 +104,25 @@ module Samagotchi
         Log.warn(:bridge, "turn_drawing_failed", error: "#{e.class}: #{e.message}")
       end
 
+      # An observer of the Engine's events: a block fix that patched an
+      # answer's text (:block_fix, landed "answer") changes the digest its
+      # turn's line ends on, so that line is written again with the new end
+      # digest, only when it ended on the answer as it was (+was_digest+).
+      # A fix in the display only keeps the digest. Never raises.
+      def call(event)
+        return unless @path && event[:type] == :block_fix && event[:landed] == "answer"
+
+        id = event[:turn_id].to_s
+        line = [@last].compact.find { |l| l.turn_id == id } || self.class.read(File.dirname(@path)).reverse_each.find { |l| l.turn_id == id }
+        return unless line && line.to_digest == event[:was_digest]
+
+        restamped = line.with(to_digest: event[:digest], from_digest: line.from == line.to - 1 ? event[:digest] : line.from_digest)
+        write(restamped)
+        @last = restamped
+      rescue StandardError => e
+        Log.warn(:bridge, "turn_drawing_restamp_failed", error: "#{e.class}: #{e.message}")
+      end
+
       def line_for(turn, end_event)
         from = end_event[:kept_from]
         to = end_event[:kept_to]
