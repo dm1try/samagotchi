@@ -20,7 +20,7 @@ function fakeTimers() {
   };
 }
 
-function setup(html, { answers = [], features = ["block_fix"], reads = [], bridgeUp = true } = {}) {
+function setup(html, { answers = [], features = ["block_fix"], reads = [], bridgeUp = true, post = null } = {}) {
   const root = document.createElement("div");
   root.id = "history";
   root.innerHTML = html;
@@ -34,7 +34,7 @@ function setup(html, { answers = [], features = ["block_fix"], reads = [], bridg
     sessionId: () => session,
     features: () => features,
     bridgeUp: () => bridgeUp,
-    post: async (id, body) => { posts.push({ id, ...body }); return answers.shift() || { status: 202, body: { state: "running" } }; },
+    post: async (id, body) => { posts.push({ id, ...body }); return post ? post() : answers.shift() || { status: 202, body: { state: "running" } }; },
     getSession: async (id, opts) => { reads.push({ id, ...opts }); return reads.answer || { messages: [] }; },
     composerText: () => "draft",
     fillComposer: (text) => filled.push(text),
@@ -194,6 +194,29 @@ test("an answer is read again at most once per block: a copy still failing after
   await settle();
   assert.equal(again.length, 1, "the event's redraw counts too");
   assert.equal(s.root.querySelector("pre").nextElementSibling.dataset.fix, "nohelp");
+});
+
+test("the worker's word arriving before the POST's 202 (a quick side answer) still settles the line, and no give-up follows", async () => {
+  for (const state of ["failed", "fixed"]) {
+    const reads = [];
+    reads.answer = { messages: [{ role: "assistant", content: "src t1", html: pre("graph LR", "mermaid", " data-block-fixed") }] };
+    let reply;
+    const held = new Promise((resolve) => { reply = resolve; });
+    const { root, fix, timers, posts } = setup(bubble("t1", pre("a")), { reads, post: () => held });
+    const el = root.querySelector("pre");
+    fail(el);
+    await settle();
+    assert.equal(posts.length, 1);
+    fix.onEvent({ turn_id: "t1", state });
+    await settle();
+    await settle();
+    reply({ status: 202, body: { state: "running" } });
+    await settle();
+    if (state === "failed") assert.equal(el.nextElementSibling.dataset.fix, "nohelp", state);
+    else assert.ok(root.querySelector("pre[data-block-fixed]"), "the fixed answer was drawn");
+    assert.equal(timers.live.size, 0, `no give-up after the word came (${state})`);
+    document.body.innerHTML = "";
+  }
 });
 
 test("a fixed event for an answer the read doesn't hold (a reminder turn's, read as the newest) leaves it for the next full read", async () => {
