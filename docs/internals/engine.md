@@ -331,8 +331,12 @@ only input (`entries`, `reachable_names`, `left_out_names`, `removed_names`, `st
 One object (`turn_state.rb`), guarded by a `Monitor`, that the turn thread writes (`begin_turn`, `release_turn`)
 and other threads read: the idle scheduler, the Bridge's request threads, plugin threads, the UIs. It holds
 running, `context` (nil between turns), `last_context`, `controller`, the turn's thread and `ended`, the sink,
-steers and carried steers, and the activity clock. The Bridge holds it (`Engine#turn_state`, handed on by the
-Worker) and calls its readers, `cancel!` and the enqueued-id ledger; only the turn thread calls the writers (`begin!`, `replace_context`, `ended!`, `finish!`).
+steers and carried steers, and the activity clock. The hosts hold it (`Engine#turn_state`): the Worker reads it once
+after it built the Engine and hands it to the Bridge and its own collaborators (`WorkerInbound`, `WorkerIdleExit`,
+`ContinueOffer`), and the Engine hands it to its idle jobs (`IdleReminders`, `IdleRecap`). They call its readers,
+`cancel!`, `record_activity` and the enqueued-id ledger; only the turn thread calls the writers (`begin!`,
+`replace_context`, `ended!`, `finish!`). spec/bridge/turn_state_calls_spec.rb lists, per host file, the TurnState
+methods it may call.
 
 - `begin!(context:, controller:, sink:, input_waiting:)`: all of it in one step, carried steers become steers. The
   context is built whole before (mode and git included), **so no reader sees a running turn with the last turn's
