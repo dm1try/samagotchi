@@ -25,8 +25,10 @@ module Samagotchi
         chi web serves the same at POST /api/mcp. See docs/mcp-server.md.
     TEXT
 
-    # One load of SessionManager (autoloaded) before the first call's
-    # thread: two threads must not trigger it at once.
+    # One load of what the tools' calls autoload (SessionManager, and what
+    # a probe of their paths loaded on a first call: SessionContinue,
+    # SessionInbox's delivery; about 6 ms) before the first call's thread:
+    # two threads must not trigger them at once.
     LOAD_LOCK = Mutex.new
 
     # @param access [SessionAccess::Local, SessionAccess::Remote, nil]
@@ -75,8 +77,16 @@ module Samagotchi
         require_relative "session_access/local"
         SessionAccess::Local.new(state_dir: @state_dir)
       end
-      LOAD_LOCK.synchronize { Samagotchi.const_get(:SessionManager) } unless access.remote?
+      load_for_calls unless access.remote?
       McpServer::Tools.new(access)
+    end
+
+    def load_for_calls
+      LOAD_LOCK.synchronize do
+        Samagotchi.const_get(:SessionManager)
+        Samagotchi.const_get(:SessionContinue)
+        SessionInbox.const_get(:Dispatch)
+      end
     end
 
     # The tools, built on the first tools/list or tools/call, so answering

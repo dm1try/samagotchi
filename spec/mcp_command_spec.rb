@@ -68,6 +68,22 @@ RSpec.describe Samagotchi::McpCommand do
     expect(status).to be_success, error
   end
 
+  it "loads what the tools' calls autoload before the first call's thread starts" do
+    script = <<~RUBY
+      require "stringio"
+      require "samagotchi/mcp_command"
+      input = StringIO.new(#{request(1, "tools/call", { name: "chi_wait", arguments: { token: "x" } }).dump} + "\n")
+      Samagotchi::McpCommand.new(["serve"], stdin: input, stdout: StringIO.new, stderr: StringIO.new,
+                                            state_dir: #{tmpdir.dump}).run
+      %w[session_manager session_continue session_inbox_delivery].each do |name|
+        abort "\#{name} not loaded" unless $LOADED_FEATURES.grep(%r{/samagotchi/\#{name}\\.rb\\z}).any?
+      end
+    RUBY
+    _out, error, status = Open3.capture3(isolated_chi_env(tmpdir), RbConfig.ruby, "-I", File.expand_path("../lib", __dir__),
+                                         "-e", script)
+    expect(status).to be_success, error
+  end
+
   it "keeps bin/chi's stdout to JSON lines (diagnostics on stderr)" do
     lines = [request(1, "server/discover", { _meta: { "io.modelcontextprotocol/protocolVersion" => "2026-07-28" } }),
              request(2, "tools/call", { name: "chi_sessions", arguments: {},
