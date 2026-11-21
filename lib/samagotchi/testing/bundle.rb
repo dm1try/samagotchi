@@ -427,8 +427,12 @@ module Samagotchi
       end
       private :newest_sign_in
 
-      # Stop the plugin's services; leave the sandbox it entered.
+      # Stop the plugin's services and its waiting sign-ins; leave the
+      # sandbox it entered.
       def shutdown
+        # As a worker leaving does: a waiting sign-in ends :stopped (its
+        # waiting thread goes on).
+        sign_ins.each(&:stop)
         @registries&.services&.stop_all
         return unless @own_sandbox
 

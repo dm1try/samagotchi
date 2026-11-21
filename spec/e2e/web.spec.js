@@ -385,6 +385,28 @@ async function showIdleCard(page) {
   await expect(page.locator("#history > .plugin-card", { hasText: STAMP_CARD })).toHaveCount(1);
 }
 
+// A card whose action opens an address (ctx.sign_in's, from the sign-in-echo
+// fixture bundle): a link to a new tab, never a command button, with the
+// host it leads to named under it; the card asks nothing.
+test("a sign-in card's button is a link to its address in a new tab", async ({ page, script }) => {
+  // A turn first: the page learns the bundle's commands from its worker.
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  await page.locator("#prompt").fill("/echo-login");
+  await page.locator("#actionBtn").click();
+  const card = page.locator("#history > .plugin-card", { hasText: "Sign in to Echo" });
+  await expect(card).toHaveCount(1);
+  const link = card.locator("a.card-link");
+  await expect(link).toHaveText("Open sign-in page");
+  await expect(link).toHaveAttribute("href", /^http:\/\/127\.0\.0\.1:9100\/authorize\?redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A\d+%2Fcallback&state=[0-9a-f]{32}$/);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(card.locator(".card-opens")).toHaveText("opens 127.0.0.1:9100");
+  await expect(card.locator(".card-action")).toHaveCount(0);
+  await expect(card.locator(".card-body")).toContainText("/callback <address>");
+});
+
 test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
