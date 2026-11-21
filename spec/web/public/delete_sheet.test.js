@@ -249,6 +249,13 @@ test("the toast counts only the delegates still running: a stopped one under a r
                    { text: "Deleted the chain: 3 sessions · 5c1b22e0 keeps running.", back: R1 });
 });
 
+test("a chain delete that kept a link part-way says why in a toast that stays until closed", () => {
+  const partWay = { deleted: ["l2", "l3"], left: ["l1"], refusal: "a terminal chi has l1 open" };
+  assert.deepEqual(deleteToast("chain", partWay, newest(), B),
+                   { text: "Deleted the chain: 2 sessions. 1 link kept: a terminal chi has l1 open", back: null, sticky: true });
+  assert.equal(deleteToast("chain", { deleted: ["l1", "l2", "l3"], left: [] }, newest(), B).sticky, undefined);
+});
+
 test("isChained is kept for an older cached page: it still says which sessions are in a chain", () => {
   assert.equal(isChained({ id: B, continues: A }, []), true);
   assert.equal(isChained({ id: A }, [{ id: B, continues: A }]), true);

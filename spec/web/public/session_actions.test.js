@@ -173,6 +173,22 @@ test("confirmDelete: the sheet closed while its tap runs: a refusal that comes a
   assert.deepEqual(h.world.sessions, [{ id: "s1aaaaaaaa" }]);
 });
 
+test("confirmDelete: a chain delete that kept a link part-way is a sticky toast", async () => {
+  const sheet = fakeSheet();
+  const chained = { chained: true, session_id: "s2bbbbbbbb", position: 2, size: 2, cut_off: false,
+                    link: { digest: "dl", previous_id: "s1aaaaaaaa", delegates: { delete: [], leave: [] } },
+                    chain: { digest: "dc", links: 2, delegates: { delete: [], leave: [] } } };
+  const h = harness({ list: [{ id: "s1aaaaaaaa", archived: true }, { id: "s2bbbbbbbb", continues: "s1aaaaaaaa" }], deleteSheet: sheet,
+                      doc: fakeDoc(), api: { deletePlan: async () => chained,
+                                             deleteChain: async () => ({ deleted: ["s2bbbbbbbb"], left: ["s1aaaaaaaa"], refusal: "a terminal chi has it open" }) } });
+  h.actions.confirmDelete("s2bbbbbbbb");
+  await tick();
+  sheet.hosts[0].flow.act("chain");
+  await tick();
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.options?.sticky]),
+                   [["Deleted the chain: 1 session. 1 link kept: a terminal chi has it open", true]]);
+});
+
 test("deleteIn: the More panel's Delete always takes the panel as its host, for any session", async () => {
   const h = harness({ api: { deletePlan: async () => plan() } });
   const host = fakeSheet().host(null, "s1aaaaaaaa");
