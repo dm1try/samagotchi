@@ -15,7 +15,11 @@ module Samagotchi
     module SignInPart
       # Start a flow for +bundle+: a loopback listener, the address +build+
       # makes for its redirect_uri, the card with its button. Returns at
-      # once; the bundle waits on Plugin::SignIn#wait.
+      # once; the bundle waits on Plugin::SignIn#wait. Once #shutdown has
+      # begun it starts nothing: an already-stopped flow, no card, no port
+      # (a command or a thread of the plugin's may still call it then). The
+      # flow is listed before its card shows, so a shutdown in between
+      # stops it and its card says cancelled.
       # @param build [#call] (redirect_uri) → the address to send the user to
       # @return [Plugin::SignIn]
       # @raise [ArgumentError] a bad option, a taken port, an address the
@@ -23,19 +27,27 @@ module Samagotchi
       def start_sign_in(bundle:, title:, button:, timeout:, build:, port: nil, path: Plugin::SignIn::DEFAULT_PATH,
                         listener_options: {})
         Plugin::SignIn.check_options!(timeout: timeout, path: path)
+        return Plugin::SignIn.stopped(bundle: bundle, title: title) if sign_ins_closed?
+
         listener = Plugin::SignIn::Listener.new(port: port, path: path, **listener_options)
         flow = Plugin::SignIn.new(bundle: bundle, title: title, button: button, timeout: timeout, listener: listener,
                                   on_settle: ->(settled, outcome) { sign_in_settled(settled, outcome) })
         begin
           address = build.call(flow.redirect_uri).to_s.strip
-          card_id = sign_in_card(bundle, title: title, body: Plugin::SignIn::PASTE_LINE,
-                                         actions: [{ label: button, url: address }])
+          card = { title: title, body: Plugin::SignIn::PASTE_LINE, actions: [{ label: button, url: address }] }
+          # The card's checks (the address), before anything is listed.
+          card_id = Plugin::Card.build(source: bundle, level: :info, id: nil, **card)[:id]
+          flow.started(address, card_id)
         rescue StandardError
           listener.close
           raise
         end
-        flow.started(address, card_id)
-        @lifecycle_mutex.synchronize { (@sign_in_flows ||= []) << flow }
+        unless list_sign_in(flow)
+          listener.close
+          return Plugin::SignIn.stopped(bundle: bundle, title: title)
+        end
+
+        show_sign_in_card(flow, card)
         Log.info(:plugins, "sign_in_started", bundle: bundle, card: card_id, port: listener.port, to: address_shown(address))
         flow.listen
         flow
@@ -60,6 +72,28 @@ module Samagotchi
       end
 
       private
+
+      def sign_ins_closed? = @lifecycle_mutex.synchronize { @shut_down }
+
+      # @return [Boolean] false once #shutdown has begun (nothing listed)
+      def list_sign_in(flow)
+        @lifecycle_mutex.synchronize do
+          next false if @shut_down
+
+          (@sign_in_flows ||= []) << flow
+          true
+        end
+      end
+
+      # Its card, unless a shutdown stopped it already; one that stopped it
+      # while the card showed gets its ended card again, after this one.
+      def show_sign_in_card(flow, card)
+        return unless flow.waiting?
+
+        sign_in_card(flow.bundle, id: flow.card_id, **card)
+        ended = Plugin::SignIn.ended_card(flow, flow.outcome) unless flow.waiting?
+        sign_in_card(flow.bundle, **ended) if ended
+      end
 
       # Read off the lock: a flow past its deadline ends in #waiting?, and
       # its #sign_in_settled takes the lock.

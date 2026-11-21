@@ -270,6 +270,33 @@ RSpec.describe Samagotchi::Plugin::SignIn do
       expect(refused?(port)).to be(true)
     end
 
+    it "starts nothing after the shutdown began: a stopped flow, no card, no port" do
+      engine.shutdown(join_timeout: 0)
+      flow = start
+      expect([flow.outcome, flow.card_id, flow.redirect_uri]).to eq([:stopped, nil, nil])
+      expect(cards).to eq([])
+      expect(engine.sign_in_waiting?).to be(false)
+    end
+
+    it "lists the flow before its card shows, and a shutdown while the address is built shows no card" do
+      listed = []
+      allow(engine).to receive(:show_card).and_wrap_original do |original, **card|
+        listed << engine.sign_in_waiting?
+        original.call(**card)
+      end
+      start
+      expect(listed).to eq([true])
+      ports = []
+      flow = ctx.sign_in(title: "Late") do |redirect_uri|
+        ports << URI(redirect_uri).port
+        engine.shutdown(join_timeout: 0)
+        "https://provider.example/authorize?state=S9"
+      end
+      expect(flow.outcome).to eq(:stopped)
+      expect(cards.map { |c| c[:title] }).not_to include("Late")
+      expect(refused?(ports.first)).to be(true)
+    end
+
     it "opens nothing and shows nothing for a one-shot run, nor in a stream hook's handler" do
       allow(ctx).to receive(:frontend).and_return(:one_shot)
       flow = start

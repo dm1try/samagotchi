@@ -1359,7 +1359,8 @@ whole), and the line "If the browser ends on a page that doesn't load, copy that
 - A flow never outlives its worker: an exit, a restart or a crash's shutdown stops it, its card replaced first, so a
   card a later worker loads never offers a dead sign-in. An idle exit waits for a waiting flow. A flow is tied to no
   turn: the session's Stop doesn't end it (`flow.cancel` does).
-- No one to ask: a one-shot run (`ctx.frontend == :one_shot`) and a `:generation_progress` handler get a flow that is
+- No one to ask: a one-shot run (`ctx.frontend == :one_shot`), a `:generation_progress` handler, and any call once
+  the worker has begun to leave (a command still running at an exit, a thread of yours) get a flow that is
   `:stopped` already (`wait` → nil), with no card and no port.
 - The pasted address holds a one-time code: chi shows the line as `/callback …` in every event, UI and log. Best
   effort is enough there: the code is single-use and, with PKCE, useless without the verifier that never leaves the
