@@ -3,6 +3,7 @@
 # The mcp bundle's second plugin part (manifest.yml plugin: parts:, loaded
 # after client.rb, whose Client::Error and Client::Unavailable its error
 # classes subclass, and before plugin.rb): the HTTP JSON-RPC client.
+require "digest"
 require "json"
 require "uri"
 require "samagotchi/cancellation_controller"
@@ -42,6 +43,9 @@ class Plugin
     # sending, an unset variable).
     class Refused < Client::Unavailable
       attr_reader :status
+      # 16 hex of the SHA-256 of the token a 401 refused (nil: none sent),
+      # never the token: whether the kept one is newer (Plugin#newer_sign_in?).
+      attr_accessor :sent_digest
 
       def initialize(message = nil, status: nil)
         @status = status
@@ -237,6 +241,7 @@ class Plugin
       end
     rescue Refused => e
       sent = headers&.fetch("Authorization", nil)&.delete_prefix("Bearer ")
+      e.sent_digest ||= Digest::SHA256.hexdigest(sent)[0, 16] if sent
       raise unless e.status == 401 && sent && !renewed
 
       asked = monotonic

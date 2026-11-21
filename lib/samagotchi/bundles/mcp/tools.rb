@@ -216,7 +216,9 @@ class Plugin
     when :running then "#{server.url ? "connected" : "running"} (#{server.client.label}), #{tools}, #{tokens_text(server)}"
     when :starting then "starting"
     when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
-    when :needs_sign_in then "needs sign-in (/mcp login #{server.name})"
+    when :needs_sign_in
+      elsewhere = server.token.respond_to?(:kept) && (server.token.kept rescue nil) # degrade-ok: the store's error is the call's
+      elsewhere ? "signed in from another session: connects on its next call" : "needs sign-in (/mcp login #{server.name})"
     else "stopped: #{server.error}"
     end
   rescue Samagotchi::Plugin::Service::Stopped

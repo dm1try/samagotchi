@@ -103,6 +103,74 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
     expect(provider.grants).to eq(["authorization_code"])
   end
 
+  describe "another session's sign-in" do
+    def plugin_of(on) = on.instance_variable_get(:@services).to_a.first.instance_variable_get(:@start).binding.receiver
+
+    def call_on(on, text)
+      turn = Samagotchi::TurnContext.none(surface: Samagotchi::Tools::ToolSurface.for(on.instance_variable_get(:@tools)))
+      on.instance_variable_get(:@tools)["call_tool"].handler.call(
+        { name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => text } } },
+        Samagotchi::KernelLoop::ToolContext.new(on.instance_variable_get(:@kernel), turn)
+      )
+    end
+
+    # A second session's worker over the same state (its secrets, its tools cache).
+    def other
+      @other ||= Samagotchi::Engine.new(client: client).tap do |built|
+        built.start_init_tasks!
+        built.instance_variable_get(:@plugin_tasks).tasks.each { |task| join!(task.thread, "init", timeout: 10) if task.thread }
+        built.apply_staged_tools!
+      end
+    end
+
+    after { @other&.shutdown }
+
+    it "is found by a session that met the 401 first, with no tools cached: its next call connects, no second flow" do
+      engine
+      expect(call_on(other, "b")).to eq("Error: fake needs sign-in: the user runs /mcp login fake")
+      signed_in!
+
+      expect(call_on(other, "b")).to eq("echo: b")
+      expect(cards.count { |c| c[:title] == "Sign in to fake" }).to eq(1)
+      expect(provider.grants).to eq(["authorization_code"])
+    end
+
+    it "is found by a session with cached tools, which /mcp says, and /mcp login there opens no flow" do
+      engine
+      signed_in!
+      command("/mcp logout fake")
+      other # its first call: needs sign-in, from the cache
+      expect(call_on(other, "b")).to eq("Error: fake needs sign-in: the user runs /mcp login fake")
+      command("/mcp login fake")
+      wait_for("a second sign-in card") { cards.count { |c| c[:title] == "Sign in to fake" } == 2 }
+      browse(card("Sign in to fake")[:actions].first[:url])
+      wait_for("signed in again") { cards.count { |c| c[:title] == "Signed in to fake" } == 2 }
+
+      expect(command("/mcp", on: other)).to be_nil
+      expect(cards.last[:body]).to start_with("**fake**: signed in from another session: connects on its next call")
+      expect(command("/mcp login fake", on: other)).to eq("fake is signed in already (from another session): connected.")
+      expect(call_on(other, "b")).to eq("echo: b")
+    end
+
+    it "doesn't flip back to needs sign-in on a 401 for a token older than the kept one (a login meanwhile)" do
+      engine
+      signed_in!
+      plugin = plugin_of(engine)
+      server = plugin.instance_variable_get(:@servers).first
+      late = plugin_module_refused(plugin, "an-older-token")
+
+      expect(plugin.send(:signed_out, server, plugin.instance_variable_get(:@ctx), late)).to be_nil
+      expect(server.state).to eq(:running)
+      expect(mcp("echo", { "text" => "still" })).to eq("echo: still")
+    end
+
+    def plugin_module_refused(plugin, token)
+      plugin.class::HttpClient::Refused.new("refused the token (401)", status: 401).tap do |error|
+        error.sent_digest = Digest::SHA256.hexdigest(token)[0, 16]
+      end
+    end
+  end
+
   describe "renewing" do
     def secret_file = File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "secrets",
                                 "oauth-#{Digest::SHA256.hexdigest(remote.url)[0, 16]}")

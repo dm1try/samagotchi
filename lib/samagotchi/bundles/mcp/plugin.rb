@@ -266,6 +266,8 @@ class Plugin
     return "this chi can't sign in (it has no ctx.sign_in)" unless ctx.respond_to?(:sign_in) && ctx.respond_to?(:secrets)
 
     server = @servers.find { |s| s.name == name }
+    return "#{name} is signed in already (from another session): connected." if signed_in_elsewhere?(server, ctx)
+
     started = @sign_in_lock.synchronize do
       next false if @sign_ins[name]&.alive? || @sign_in_cancel.cancelled?
 
@@ -297,29 +299,14 @@ class Plugin
   # met during a call, a sign-out), then the flow's card says so.
   def signed_in(server, card_id, ctx)
     server.token.forget
-    # Its "needs sign-in" card loses its button; a later refusal shows it again.
-    if @sign_in_lock.synchronize { server.card_shown.tap { server.card_shown = false } }
-      ctx.card(id: "mcp-sign-in-#{server.name}", title: "#{server.name} needs sign-in", body: "Signed in since.", between_turns: true)
-    end
     begin
-      @restart.synchronize do
-        if server.service.state == :running
-          old = server.client
-          spawn(server, ctx, cancelled: @sign_in_cancel)
-          old.close unless old.equal?(server.client)
-        else
-          server.service.value
-        end
-      end
-      server.state = :running
-      server.error = nil
-      publish
+      reconnect(server, ctx)
       count = offered(server).size
       ctx.card(id: card_id, title: "Signed in to #{server.name}", body: "#{count} tool#{"s" unless count == 1}, ready to use.",
                between_turns: true)
     rescue StandardError => e
       if needs_sign_in?(server, e)
-        signed_out(server, ctx)
+        signed_out(server, ctx, e)
         return
       end
 
@@ -327,6 +314,58 @@ class Plugin
       ctx.card(id: card_id, title: "Signed in, but #{server.name} didn't connect", body: e.message, level: :warn,
                between_turns: true)
     end
+  end
+
+  # Connect a server that has a sign-in now (spawn when its service
+  # already runs, else its first start), then it runs; its "needs sign-in"
+  # card loses its button (a later refusal shows it again).
+  def reconnect(server, ctx)
+    @restart.synchronize do
+      if server.service.state == :running
+        old = server.client
+        spawn(server, ctx, cancelled: @sign_in_cancel)
+        old.close unless old.equal?(server.client)
+      else
+        server.service.value
+      end
+      @sign_in_lock.synchronize do
+        server.state = :running
+        server.error = nil
+      end
+    end
+    publish
+    return unless @sign_in_lock.synchronize { server.card_shown.tap { server.card_shown = false } }
+
+    ctx.card(id: "mcp-sign-in-#{server.name}", title: "#{server.name} needs sign-in", body: "Signed in since.", between_turns: true)
+  end
+
+  # A server that needs sign-in, signed in to meanwhile from another
+  # session (the kept token, read again): connected now. False when there
+  # is no kept token, or it doesn't connect.
+  def signed_in_elsewhere?(server, ctx)
+    return false unless server.state == :needs_sign_in && server.token.respond_to?(:kept)
+
+    server.token.forget
+    return false unless server.token.kept
+
+    reconnect(server, ctx)
+    ctx.log.info("mcp_signed_in_elsewhere", server: server.name)
+    true
+  rescue StandardError => e
+    ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, signed_in_elsewhere: true)
+    false
+  end
+
+  # Whether the kept sign-in is newer than the token +error+ refused (or,
+  # none sent, whether there is one now): another session or a login
+  # signed in after the request went out.
+  def newer_sign_in?(server, error)
+    kept = server.token.respond_to?(:kept) && server.token.kept
+    return false unless kept
+
+    error.sent_digest.nil? || Digest::SHA256.hexdigest(kept["access_token"])[0, 16] != error.sent_digest
+  rescue StandardError
+    false
   end
 
   # /mcp logout NAME: the kept token goes (the provider's revocation asked,
@@ -354,7 +393,14 @@ class Plugin
 
   # The server needs sign-in: its state (said once), its card, and the
   # line its call answers.
-  def signed_out(server, ctx)
+  # Nil when +error+ (the 401) was for an older token than the kept one: the
+  # state stays, the next request sends the new token.
+  def signed_out(server, ctx, error = nil)
+    if error && newer_sign_in?(server, error)
+      server.token.forget
+      return nil
+    end
+
     first = @sign_in_lock.synchronize { server.state == :needs_sign_in ? false : (server.state = :needs_sign_in) }
     if first
       server.error = nil
@@ -664,7 +710,8 @@ class Plugin
     "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
     if needs_sign_in?(server, e)
-      signed_out(server, ctx)
+      return "#{server.name} was signed in to meanwhile: its next call connects" unless signed_out(server, ctx, e)
+
       return "#{server.name} needs sign-in (/mcp login #{server.name})"
     end
     if cached && server.url
@@ -710,7 +757,7 @@ class Plugin
   rescue HttpClient::Refused => e
     raise unless needs_sign_in?(server, e)
 
-    signed_out(server, ctx) if server.state == :cached
+    signed_out(server, ctx, e) if server.state == :cached
     nil
   end
 
@@ -782,6 +829,8 @@ class Plugin
   # Wait for a first-run server's start (its init task's); a failure is
   # its init card's.
   def wait_started(server)
+    return signed_in_elsewhere?(server, @ctx) if server&.state == :needs_sign_in
+
     server&.service&.value
   rescue StandardError
     nil
@@ -803,7 +852,7 @@ class Plugin
   # JSON-RPC error answer the tool's inputSchema too (ToolIndex.schema_note).
   def call(server, tool, args, ctx)
     return "Error: MCP server #{server.name} #{server.failed_word}: #{server.error}" if server.state == :failed
-    return signed_out(server, ctx) if server.state == :needs_sign_in
+    return signed_out(server, ctx) if server.state == :needs_sign_in && !signed_in_elsewhere?(server, ctx)
 
     client = case server.state
              when :cached then lazy_start(server, ctx)
@@ -823,7 +872,12 @@ class Plugin
   rescue Client::Dead => e
     "Error: MCP server #{server.name} is #{server.url ? "not reachable" : "not running"} (#{e.message})"
   rescue HttpClient::Refused => e
-    needs_sign_in?(server, e) ? signed_out(server, ctx) : "Error: #{e.message}"
+    return "Error: #{e.message}" unless needs_sign_in?(server, e)
+
+    # A sign-in that came while it was on the wire: the call again, once.
+    line = signed_out(server, ctx, e)
+    retry if line.nil? && (resent = !resent)
+    line || "Error: MCP server #{server.name} refused the call (401)"
   rescue Client::Timeout, Client::Cancelled, Client::Unavailable, Samagotchi::Plugin::Service::Stopped => e
     "Error: #{e.message}"
   rescue Client::Error => e
@@ -848,7 +902,9 @@ class Plugin
     "Error: #{e.message}"
   rescue StandardError => e
     raise unless server.state == :cached
-    return signed_out(server, ctx) if needs_sign_in?(server, e)
+    if needs_sign_in?(server, e)
+      return signed_out(server, ctx, e) || "Error: MCP server #{server.name} was signed in to meanwhile: call it again"
+    end
     return not_connected(server, e, ctx) if server.url
 
     server.state = :failed
