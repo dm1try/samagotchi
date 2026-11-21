@@ -228,6 +228,23 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
       expect(fix_events.last[:was_digest]).to eq(fix_events.first[:digest])
     end
 
+    it "keeps only the newest 64 moved answer digests" do
+      oldest_digest = nil
+      65.times do |index|
+        turn_id = "t#{index}"
+        session.messages = [{ role: "user", content: "draw #{index}", turn_id: turn_id },
+                            { role: "model", content: "Here #{index}:\n\n```mermaid\n#{bad}```\n\nDone." }]
+        fix(turn_id: turn_id)
+        settle
+        expect(engine.apply_block_fixes).to eq(1)
+        oldest_digest ||= engine.instance_variable_get(:@block_fix_moved).keys.first
+      end
+
+      moved = engine.instance_variable_get(:@block_fix_moved)
+      expect(moved.size).to eq(Samagotchi::Engine::BlockFixPart::MOVED_DIGEST_LIMIT)
+      expect(moved).not_to have_key(oldest_digest)
+    end
+
     it "still patches the text when only a note came after the answer" do
       fix
       settle
