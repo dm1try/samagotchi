@@ -477,6 +477,24 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(requests_to("#{issuer}/token")).to be_empty
     end
 
+    it "sends a configured client's secret on a renew only for a sign-in made as that client at that provider" do
+      oauth = bundle.namespace::Plugin::OAuth
+      ctx = bundle.plugin.instance_variable_get(:@ctx)
+      renew = lambda do |kept_client, kept_issuer|
+        bundle.set(secrets: { secrets_name => JSON.generate(access_token: "ACCESS-TOKEN-1", refresh_token: "REFRESH-TOKEN-1",
+                                                            resource: url, token_endpoint: "#{issuer}/token",
+                                                            client_id: kept_client, issuer: kept_issuer) })
+        token = oauth::Token.new(secrets: ctx.secrets, resource: url, http: ctx.http,
+                                 client: { id: "MY-CLIENT", issuer: issuer }, client_secret: -> { "CLIENT-SECRET-1" })
+        token.refresh_token!("ACCESS-TOKEN-1")
+        form(requests_to("#{issuer}/token").last)
+      end
+
+      expect(renew.call("CLIENT-1", issuer)).not_to have_key("client_secret") # chi's own registration there
+      expect(renew.call("MY-CLIENT", "https://other-auth.example.com")).not_to have_key("client_secret")
+      expect(renew.call("MY-CLIENT", issuer)).to include("client_id" => "MY-CLIENT", "client_secret" => "CLIENT-SECRET-1")
+    end
+
     it "is used by a later session at once" do
       bundle.set(secrets: { secrets_name => JSON.generate(access_token: "ACCESS-TOKEN-1", resource: url) })
 

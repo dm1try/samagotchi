@@ -468,9 +468,11 @@ class Plugin
   def token_of(server, ctx)
     return token_lookup(server) unless server.signs_in && ctx.respond_to?(:secrets)
 
-    variable = server.oauth.is_a?(Hash) ? server.oauth["client_secret_env"] : nil
+    oauth = server.oauth.is_a?(Hash) ? server.oauth : {}
+    variable = oauth["client_secret_env"]
+    client = oauth["client_id"] ? { id: oauth["client_id"], issuer: oauth["issuer"] } : nil
     OAuth::Token.new(secrets: ctx.secrets, resource: URI.parse(server.url).query ? nil : OAuth.canonical(server.url),
-                     http: ctx.http, client_secret: -> { variable && env_value(server, variable) },
+                     http: ctx.http, client: client, client_secret: -> { variable && env_value(server, variable) },
                      log: ->(event, **fields) { ctx.log.info("mcp_#{event}", server: server.name, **fields) })
   end
 

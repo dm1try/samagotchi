@@ -610,12 +610,16 @@ class Plugin
       # @param resource [String, nil] the server's canonical url (nil: one
       #   that can't sign in, a url with a query: never a token)
       # @param http [#stream, nil] ctx.http, for renewing (nil: never renews)
+      # @param client [Hash, nil] the configured client ({id:, issuer:}):
+      #   its secret goes only with a kept sign-in made as that client at that
+      #   provider, never to another one's token endpoint
       # @param client_secret [#call] → the configured client's secret, nil
       # @param log [#call] (event, fields)
       # @param clock [#call] → now, epoch seconds
-      def initialize(secrets:, resource:, http: nil, client_secret: -> {}, log: ->(*) {}, clock: -> { Time.now.to_i })
+      def initialize(secrets:, resource:, http: nil, client: nil, client_secret: -> {}, log: ->(*) {}, clock: -> { Time.now.to_i })
         @secrets = secrets
         @resource = resource
+        @client = client
         @name = resource && OAuth.token_name(resource)
         @http = http
         @client_secret = client_secret
@@ -763,7 +767,7 @@ class Plugin
       # The grant, on a controller of its own cancelled after RENEW_SECONDS.
       def grant(stored)
         form = { grant_type: "refresh_token", refresh_token: stored["refresh_token"], client_id: stored["client_id"],
-                 resource: @resource, client_secret: stored["client_secret"] || @client_secret.call }.compact
+                 resource: @resource, client_secret: stored["client_secret"] || configured_secret(stored) }.compact
         cancel = Samagotchi::CancellationController.new
         timer = Thread.new do
           sleep(RENEW_SECONDS)
@@ -775,6 +779,14 @@ class Plugin
                   "the token endpoint", timeout: RENEW_SECONDS)
       ensure
         timer&.kill&.join
+      end
+
+      # The configured client's secret, for a sign-in made as that client
+      # (its id and provider both): nil for any other.
+      def configured_secret(stored)
+        return nil unless @client && stored["client_id"] == @client[:id] && stored["issuer"] == @client[:issuer]
+
+        @client_secret.call
       end
 
       def settle(outcome)
