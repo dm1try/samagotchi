@@ -2391,6 +2391,20 @@ RSpec.describe Samagotchi::Bridge do
         expect(JSON.generate(seen)).not_to include("ONE-TIME-CODE")
       end
 
+      it "never takes a /callback line as a message: with images, or from a sender that may not send commands" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+        allow(@bridge).to receive(:enqueue_post_turn).and_raise("must not be queued")
+        line = "/callback http://127.0.0.1:5000/callback?code=ONE-TIME-CODE&state=s"
+
+        allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([{ "id" => "a" * 32 }])
+        status, body = post_turn(JSON.generate(session_id: @session.id, prompt: line, client_id: "web:1", images: [{ "id" => "a" * 32 }]))
+        expect([status, body["error"]]).to eq([400, "private_command"])
+        allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([])
+        status, body = post_turn(JSON.generate(session_id: @session.id, prompt: line, client_id: "delegate:abcd1234"))
+        expect([status, body["error"]]).to eq([400, "private_command"])
+        expect(JSON.generate(body)).not_to include("ONE-TIME-CODE")
+      end
+
       it "refuses what isn't a session command, bad JSON and other sessions" do
         start_bridge(on_command: ->(_) { raise "must not be called" })
 

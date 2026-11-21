@@ -1360,6 +1360,7 @@ module Samagotchi
           return [{}, 403, { error: CommandIntake::REFUSED_ERROR, detail: CommandIntake::REFUSED }]
         end
       end
+      return CommandIntake::PRIVATE_REFUSED if command_registry.private_args?(prompt.to_s) # never a message
 
       enqueued_id = fetched(parsed, "enqueued_id")
       enqueued_id = SessionInbox.new_enqueued_id unless SessionInbox.valid_enqueued_id?(enqueued_id)

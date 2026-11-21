@@ -131,7 +131,10 @@ module Samagotchi
 
         # @param choice [Symbol, nil] :cut or :queue when typed with that word
         def send_prompt(text, delivery: nil, choice: nil)
-          persist_recent_history(text)
+          # A /cut or /queue of a command that hides its arguments (/callback's
+          # one-time code): the worker runs it as that command, and the
+          # history keeps none of it.
+          persist_recent_history(text) unless command_registry.private_args?(text)
           images = attach_images(text)
           return own_prompt_failed if images.nil?
 

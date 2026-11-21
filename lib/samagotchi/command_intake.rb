@@ -40,6 +40,13 @@ module Samagotchi
     # command, with chi send's trust.
     ALLOWED_IDS = [ClientId::CLI_ANSWER].freeze
 
+    # The Bridge's answer to a /turn line whose command hides its arguments
+    # (/callback's one-time code) that can't run as a command (with images,
+    # from a sender above): refused, never a message for the model.
+    PRIVATE_REFUSED = [{ "Allow" => "POST" }, 400,
+                       { error: "private_command",
+                         detail: "/callback runs only as a command: send it alone, without images" }].freeze
+
     module_function
 
     # Whether a message from +client_id+ may run as a session command: the

@@ -1377,6 +1377,11 @@ whole), and the line "If the browser ends on a page that doesn't load, copy that
 - The pasted address holds a one-time code: chi shows the line as `/callback …` in every event, UI and log. Best
   effort is enough there: the code is single-use and, with PKCE, useless without the verifier that never leaves the
   worker. chi logs the address's host and path only (an authorize address can carry a login hint).
+  A `/callback` line is always the command, never a message: one with more lines is refused (one line only), and
+  one that can't run as a command (with images, from a delegate, a schedule or a plugin) is refused, not sent to the
+  model. A trailing `#fragment` is dropped. The shared prompt history (history.json) keeps no `/callback` line, a
+  `/cut` or `/queue` one in the terminal neither; a chi web older than 0.183.0 in front of this worker does record
+  one sent from its page.
 - A participant never sees the card (their view has no cards) and can't send `/callback`; a parent agent's
   `chi answer` can't either. Don't start a sign-in on a participant's turn (`ctx.turn_author`).
 - In the test kit `ctx.sign_in` opens no port: `bundle.sign_ins` lists the flows (`title`, `address` the block
