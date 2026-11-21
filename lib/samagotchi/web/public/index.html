@@ -807,9 +807,9 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 16px + var(-
 #lightbox .pv-close{position:absolute;top:calc(var(--safe-t) + 10px);right:calc(var(--safe-r) + 10px)}
 @media (display-mode:standalone) and (max-width:600px){#lightbox .pv-close{top:calc(var(--safe-t) + 22px)}}
 #lightbox .pv-bar{position:absolute;left:calc((100% + var(--safe-l) - var(--safe-r)) / 2);bottom:calc(var(--safe-b) + 14px);transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:3px;cursor:default}
-#lightbox .pv-close,#lightbox .pv-bar{z-index:1;border-radius:12px;background:color-mix(in srgb,var(--bg-panel) 88%,transparent);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
-@media (prefers-reduced-transparency:reduce){#lightbox .pv-close,#lightbox .pv-bar{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
-body.no-glass #lightbox :is(.pv-close,.pv-bar){background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
+#lightbox .pv-close,#lightbox .pv-bar,#lightbox .pv-sel{z-index:1;border-radius:12px;background:color-mix(in srgb,var(--bg-panel) 88%,transparent);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+@media (prefers-reduced-transparency:reduce){#lightbox .pv-close,#lightbox .pv-bar,#lightbox .pv-sel{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass #lightbox :is(.pv-close,.pv-bar,.pv-sel){background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
 #lightbox .pv-btn{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 8px;border-radius:9px;background:transparent;color:var(--text);font-size:13px}
 #lightbox .pv-fit{color:var(--text-2)}
 #lightbox .pv-btn svg{display:block}
@@ -817,6 +817,29 @@ body.no-glass #lightbox :is(.pv-close,.pv-bar){background:var(--bg-panel);-webki
 @media(hover:hover){#lightbox .pv-btn:hover{background:var(--bg-raised);filter:none}}
 #lightbox .pv-pct{min-width:52px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-2)}
 #lightbox .pv-sep{width:1px;height:18px;margin:0 3px;background:var(--border-strong)}
+/* A diagram's regions (picture_regions.js): marks over the picture by percent, the page's own line for an arrow (the hovered and the selected one only), buttons for the keyboard that take no pointer (the surface keeps its capture; a tap is the hit test), and the selected region's card above the bar, inside the safe areas. The card's room is kept in the fit (picture_regions.js CARD_ROOM). */
+#lightbox.over{cursor:pointer}
+#lightbox .pv-marks{position:absolute;inset:0;pointer-events:none}
+#lightbox .pv-mark{position:absolute;box-sizing:border-box;border-radius:9px}
+#lightbox .pv-mark.pv-group{border-radius:11px}
+#lightbox .pv-mark.pv-hover{outline:2px solid var(--accent);outline-offset:2px;opacity:.55}
+#lightbox .pv-mark.pv-on{outline:2.5px solid var(--accent);outline-offset:2px;background:var(--accent-ring)}
+#lightbox .pv-lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#lightbox .pv-lines polyline{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+#lightbox .pv-lines .pv-hover{opacity:.35}
+#lightbox .pv-lines .pv-on{opacity:.8}
+#lightbox .pv-node{position:absolute;box-sizing:border-box;margin:0;padding:0;border:0;border-radius:9px;background:none;color:inherit;min-width:0;filter:none;transition:none;pointer-events:none}
+#lightbox .pv-node:focus-visible{outline:2px dashed var(--accent);outline-offset:4px}
+#lightbox .pv-sel{position:absolute;left:calc((100% + var(--safe-l) - var(--safe-r)) / 2);bottom:calc(var(--safe-b) + 64px);transform:translateX(-50%);display:flex;flex-direction:column;gap:7px;padding:5px 5px 5px 12px;box-sizing:border-box;width:max-content;max-width:calc(100% - var(--safe-l) - var(--safe-r) - 20px);cursor:default}
+#lightbox .pv-sel[hidden]{display:none}
+#lightbox .pv-sel-top{display:flex;align-items:center;gap:8px;min-width:0}
+#lightbox .pv-sel-kind{flex:none;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3)}
+#lightbox .pv-sel-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;color:var(--text)}
+#lightbox .pv-sel-id{flex:none;padding:0 5px;border:1px solid var(--border-strong);border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-3)}
+#lightbox .pv-sel-x{flex:none;margin-left:auto}
+#lightbox .pv-sel-acts{display:flex;flex-wrap:wrap;gap:6px;padding:0 7px 4px 0}
+@media (pointer:coarse){#lightbox .pv-sel{bottom:calc(var(--safe-b) + 72px)}}
+#lightbox .pv-live{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* The model picker (the start page, and a fresh chain link: start_page.js syncModelPick): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
 /* The start page's row stays one row (Start never wraps): the model name gives way first, down to its min-width, then the override chips ellipsize (100000x their shrink weight: at 1000x their share of the shrink was still a fraction of a pixel, enough for an ellipsis). Scoped off the session composer and a fresh link's button. */

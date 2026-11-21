@@ -19,7 +19,7 @@ model. The TUI is untouched: it shows a fence as source.
    `renderer_changed`, each with its own reason. ETag + `no-cache`, as static files. A `block_renderers:` list that
    doesn't parse is logged once per bundle and problem (each list request and file fetch reads it); a bundle this chi is
    too old for (`requires_chi`) draws nothing, logged once per bundle and version (`block_renderers_too_new`).
-3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired in `app.js`; a participant's page
+3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired by `diagram_wiring.js wireDiagrams` from `app.js`; a participant's page
    gets the core drawers only, no bundle's renderers: `block_renderers`) finds and watches the blocks; `block_host.js` is its frame drawer (`createFrameDrawer`). The watcher asks an
    ordered list of drawers, core ones first (`inline_widgets.js` for `chi-ui`: [inline-widgets.md](inline-widgets.md)), then the frame drawer, which waits for `/api/block_renderers`;
    the first that `claims` the block's language draws it, and a language none claims is left alone. The contract
@@ -35,7 +35,14 @@ model. The TUI is untouched: it shows a fence as source.
 4. `block_frame.js` (`createBlockFrame`): one hidden frame per language, made on first need, one render at a time, 15 s per
    call, the renderer files' fetch included (browser `fetch` has no timeout; a fetch past it is a failed load). A timeout, a
    dead frame or a session switch drops it, and a drop rejects whatever is pending, the load too. Handshake `loaded` → `code {files}` → `ready | failed`,
-   then `render {id, source, theme}` → `done {id, svg} | error {id, message}`.
+   then `render {id, source, theme}` → `done {id, svg, regions?} | error {id, message, bundle?}`. The bootstrap's
+   `window.chi` is `{ defineRenderer, features: { regions: true } }`: a renderer returns the SVG, or `{ svg, regions }`
+   ([Regions](#regions)). An object without a string `svg` is the bundle's bug, `error {bundle: true}`: its
+   `FrameError` isn't `renderer`, so the block fails with its line and no fix is asked; a renderer that throws, or
+   returns no object at all (`undefined`, `null`, a number), is as before: a failed render that may be the model's
+   (a renderer can return nothing for a source it can't draw), so `renderer` and fixable. Kept so on purpose: the
+   bundle flag is for what only a bundle returns (an object), and a bundle's measuring stays inside its own `try`.
+   `createBlockFrame`'s `draw` resolves `{svg, regions}` (`render`, its SVG alone, stays); `block_host.js` uses `render` when a cached older `block_frame.js` has no `draw`.
 5. On success a `<figure class="block-drawn">` goes right before the `<pre>`, which stays in the DOM, `hidden`, so whatever
    reads text (copy, a claim's walk, fold thresholds) sees what it did. **The DOM is the state** (`block_source.js`): a Revise
    clone arrives with both. On failure the `<pre>` stays, marked `data-block-failed`, with one muted line: an attribute CSS
@@ -48,7 +55,9 @@ model. The TUI is untouched: it shows a fence as source.
    movable there; without `openPicture` (an older app.js) a click does nothing. The same is a `.block-zoom` button
    ("Open in the viewer": icon, `aria-label`) for the keyboard: before the toggle, shown on keyboard focus only, and
    taking no pointer while hidden; Esc in the viewer gives it the focus back.
-6. Cache: a `Map` on `lang + theme + source`, about 200 entries, holding the `data:` URL; a later `bubble.innerHTML` wipes the
+6. Cache: a `Map` on `lang + theme + source`, about 200 entries, holding the `data:` URL and, when the renderer reported
+   some, the cleaned regions (so a cache hit, a Revise clone and a theme's redraw carry their own; a click finds the
+   entry by the `<img>`'s `src`, `pictureOfFigure`, at most 200 compares: an evicted entry gives the picture alone); a later `bubble.innerHTML` wipes the
    figure and the observer redraws in the same pass. No `crypto.subtle`: it's undefined on a plain-http LAN address. A system
    theme change redraws through the figure (a hidden `<pre>` never intersects).
 7. The view: a viewer at the bottom stays there (`scroll.js keepFollowing`); a block drawn above a reader's view keeps
@@ -62,6 +71,51 @@ model. The TUI is untouched: it shows a fence as source.
    height of 0 (WebKit's 0 x 150 for a viewBox it can't hold), the block stays source with its line. `.block-img`'s CSS
    `max-height` says the same number, a backstop whatever the parsing gets wrong. The decode is bounded too
    (15 s, the mark on until it ends). A very wide picture stays at least 120 px tall and scrolls sideways instead of a sliver.
+
+## Regions
+
+A renderer may report where a diagram's parts are, so the picture viewer can make them tappable
+([web-frontend.md](web-frontend.md#picture-viewer)). What it returns beside its SVG, and what the page keeps:
+
+```js
+{ kind: "node" | "group" | "edge" | "note",
+  id: "BR",            // the source's own name, text; "" when none
+  label: "Bridge",     // what the picture shows, text; "" when none
+  box: [x, y, w, h],   // fractions of the picture, 0..1; required but for an edge (its label's box)
+  points: [[x, y], …], // edge only: 2..16 points along its line
+  from: "BR", to: "EN" // edge only, optional: its ends' ids
+}
+```
+
+**Regions are untrusted**: the bundle is trusted, its input is model-written, and a renderer bug must not reach the
+page or stall it. Two gates:
+
+1. **In the frame** (`BOOTSTRAP`): `regions` is sent only when it is an array of at most 600 (`MAX_REGIONS`); otherwise
+   the `done` carries none and nothing of it is cloned (a 2M-entry array took 0.4 s in Chromium and 1.4 s in WebKit to
+   post, on the page's thread). And what is posted is the frame's **bounded copy** of each entry: its known keys only,
+   strings cut to 200 characters (anything else `""`), a box only of 4, at most 16 points, numbers only (else `NaN`),
+   a non-object entry `null`; so nothing vast or uncloneable is ever cloned (600 regions with one-megabyte labels,
+   posted as they were, crashed a Chromium tab; copied, the render took 2.6 ms in Chromium and 1 ms in WebKit against
+   0.2 and 0 without regions). Regions that throw when read (a proxy) are dropped, and a post that throws anyway is
+   sent again without them.
+2. **In the page**, `block_regions.js cleanRegions` (pure), before the picture is cached: not an array, or over 600 →
+   none; a running budget of 128 KB over the *cleaned* fields (kept strings' lengths, 12 per number), past it → none
+   (`MAX_REGION_BYTES`); an entry that isn't a plain object or whose `kind` isn't one of the four → skipped; `box`
+   exactly 4 finite numbers, clamped to 0..1 and cut to the picture, no area → skipped (an edge loses its box);
+   `points` 2..16 pairs of finite numbers, clamped, else the edge is skipped; `id`, `label`, `from`, `to` strings only
+   (never `String()` of an object), controls and line separators a space, bidi, zero-width and lone surrogates gone,
+   whitespace runs one space, cut by code points to 80 (`label` 120); only own keys of known names are read, and the
+   result is new objects. A region left with no name is skipped (a node, note or group with neither `label` nor
+   `id`; an edge with no `label` and not both ends): the card and a button name a region by the diagram's own text
+   only, and the page never makes one up (a "node 3" means nothing in the source, nor to the model). Nothing stringifies the raw data (structured clone keeps cycles and BigInt). A list dropped
+   whole is said once per language (`console.warn`, its count, no model text). **Never cut**: past a cap the picture
+   shows with nothing tappable.
+
+**What the page does with a region's text: `textContent`, an `aria-label`, composer text. Never markup, a selector, a
+URL, a `data-*` value another module reads back, or a key into an object.** Numbers become percent offsets in
+`style` and the points of the page's own `<polyline>`, through lit bindings. Nothing reaches the server, a session
+file, the DOM of an answer or the model. Cost: 1–2 ms per render in the frame (measuring is the bundle's), one
+`cleanRegions` per render in the page, 1–4 KB a real diagram in the cache.
 
 ## A failed block is asked for again
 
@@ -189,6 +243,7 @@ is model-written**, so a renderer bug or an injected diagram must not reach a pa
 | Page header `frame-src 'none'` (`App::FRAME_HEADERS`; srcdoc frames still load and run under it) | self-navigation, meta refresh, anchor click, which leak past the frame's CSP in both browsers |
 | `delete window.RTCPeerConnection` + `webkitRTCPeerConnection` in the bootstrap, before any bundle code | the plain WebRTC call only |
 | Output only as `<img src="data:…">` | scripts and remote images inside the SVG don't run or load |
+| Regions capped in the frame, cleaned in the page (`block_regions.js`), used as text and numbers only | a renderer's regions as markup, a selector or a URL; a vast or uncloneable list stalling the page |
 
 **Hard rules.**
 
