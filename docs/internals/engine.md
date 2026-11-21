@@ -465,6 +465,17 @@ ask it (`Engine#cut_for_steer`, `#input_epoch`, `#generation_snapshot`), the str
 - `WaitingSteer`: a cut that came too early. It waits until the thinking passes the cut wait (rechecked on each
   thinking chunk), until a drain hands it to the model at a boundary, or until the turn ends.
 
+### A block fix: written between turns
+
+`Engine::BlockFixPart` (`engine/block_fix.rb`) is the one writer of the conversation outside a turn that a side
+thread feeds. `#fix_block` (the Bridge's route) resolves the answer once, takes its anchor (index, digest, the turn
+counter `#turn_messages` bumps for every turn) and asks on `SideJudgments#aside`; the result waits in
+`@block_fix_ready` and wakes the worker. `#apply_block_fixes` runs only on the worker's loop between turns
+(`Worker::BlockFixesPart`, after the queued commands and before the notes and the next prompt) and never while a turn
+runs: under the event lock it replaces the session's messages (`replace_session_messages`) with a copy of the answer
+whose text (no turn since, still the newest answer) or display (a turn since) holds the fix, or drops the fix when
+the anchor no longer matches. See [block-renderers.md](block-renderers.md#a-failed-block-is-asked-for-again).
+
 ## Events
 
 ### The turn's sink (`on_event`) and the observers

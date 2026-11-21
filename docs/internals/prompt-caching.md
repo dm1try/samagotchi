@@ -192,7 +192,15 @@ user message starts (`KernelLoop#warmup_prompt`) and sends it in a thread (`Clie
   server has since cleared skips its prompt cache and prefills everything (measured 0.5 s → 12 s). For the same
   reason `id_slot` is a reserved sampling key.
 - What breaks it (the warm-up simply misses): a system-prompt rebuild (`/thinking`, `/model`, a tool change),
-  the image cut moving a batch, `!rollback`.
+  the image cut moving a batch, `!rollback`, a block fix that patched the last answer.
+
+**A block fix patches the last answer before a turn sends it.** A block the page couldn't draw in the newest answer
+is asked for again on the side, and when it comes back before the next turn starts the answer's text holds the fix
+([block-renderers.md](block-renderers.md#a-failed-block-is-asked-for-again)): that is the one change to an earlier
+message a turn's request sees. The cached prefix ends before the answer on a remote prefix cache and on Anthropic's
+Messages API (nothing lost); on llama.cpp the slot re-evaluates from the patched block (a few hundred tokens), and a
+warm-up already sent loses its gain for that turn (measured 0.73 s against 0.11 s on a hybrid model). A fix that comes
+back after the next turn started lands in the answer's `display` only, never sent to a model.
 
 ## The image window
 
