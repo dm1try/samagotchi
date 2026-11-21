@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- In the web, a fenced block chi can't draw in the newest answer (a `chi-ui` picks or walk, a Mermaid diagram) is
+  asked for again once, on the side: no message is sent and no turn runs. The fixed block draws with "Drawn after a
+  fix" under it, and the saved answer holds it. A fix that didn't help, or an older answer's block, gets an "Ask in
+  chat" button that fills the composer. `web.block_fix: off` turns it off.
+
 ## [0.181.0] - 2026-11-21
 
 ### Added

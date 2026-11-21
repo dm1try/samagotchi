@@ -140,6 +140,15 @@ stamp's answer. `Web::MarkdownRenderer#render(block_fixes:)`, from `MessageDispl
 that is a fix `data-block-fixed` and one whose fix failed `data-block-fix-failed`; an unstamped answer's HTML is as
 before.
 
+**The page** (`block_fix.js`, `block_fix_note.js`; [web-frontend.md](web-frontend.md#a-failed-block-asked-for-again)):
+a block failed by the model's input (a refused `chi-ui` block, a renderer's own `error`: `FrameError.renderer`) is
+marked fixable; a failure that isn't the model's (the renderer didn't load, a hang, a timeout, over 64 KB, a picture
+too large) keeps today's line, with no button. In the newest answer the line reads "· asking for a fix…" with a
+pulsing dot; the fixed block draws as any block, with "Drawn after a fix" under it. A fix that didn't help says so
+with an **Ask in chat** button (it fills the composer with "The X block in your answer didn't draw: reason. Please
+send it again, corrected."; never sends), as does an older answer's failed block and an answer's third. A worker
+without the feature: "· restart this session to fix". The terminal and a participant's page show nothing new.
+
 **The turn's drawing.** A patched `content` changes the digest the turn's drawing line ends on (`TurnDrawings#holds?`),
 so the Bridge's `TurnDrawings` (an observer of `:block_fix` with `landed: "answer"`) writes that turn's line again with
 the new end digest, when the old one ended on the answer as it was (`was_digest`). A `display` patch keeps the digest.

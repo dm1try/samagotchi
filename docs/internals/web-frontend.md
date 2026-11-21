@@ -463,6 +463,28 @@ kept: every open starts fitted.
   (solid `--bg-panel` under `body.no-glass` and reduced transparency), by `--safe-*`, and the standalone phone
   app's ✕ is 12px lower, below iOS 26's band under the clock.
 
+## A failed block asked for again
+
+Two modules, owner page only ([block-renderers.md](block-renderers.md#a-failed-block-is-asked-for-again) has the
+mechanism): `block_fix.js` (`wireBlockFix`, one call in app.js: the owner's page, `viewer.can("block_renderers")`,
+with `<body data-block-fix="auto">`, else null; `createBlockFix`) and `block_fix_note.js` (the line's states, DOM
+only). A drawer that fails a block because of the model's input marks it (`block_watch.js failBlock(..., {fixable})`,
+`pre.dataset.blockFixable`, the reason kept in `pre.dataset.blockReason`, a bubbling `block-failed` event): a refused
+`chi-ui` block (`inline_widgets.js`) and a renderer's own `error` (`block_frame.js` `FrameError.renderer`). `block_fix.js`
+listens for that event and scans added nodes (a Revise clone arrives failed) in the turn roots, and decides from the DOM
+alone: the newest answer's first 2 such blocks are posted (`POST /api/sessions/:id/blocks/fix`, `postFix`); a block
+that is a fix (`data-block-fixed`) or whose fix failed (`data-block-fix-failed`), an older answer, a third block and a
+worker without the `block_fix` feature get their line instead. Nothing is kept across a re-render: a block failing
+again is posted again, and the worker answers it runs (or how it went). The stream's `block_fix` handler
+(`stream_handlers.js`, dep `blockFix`) hands the worker's word over: `fixed` re-reads that turn's answer (`getSession(id,
+{tail, turnId})`) and writes the bubble as `applyFinalAnswer` writes it, which can't find it by its old text; `failed`
+and `dropped` say a fix didn't help. No word within 60 s of a 202: the line gives up (today's words and Ask in chat);
+a session switch drops the timers. The line's words are `data-text` (CSS), Ask in chat a button whose label is CSS
+(`data-label`) with an `aria-label`, one delegated click listener per root; it fills the composer after the draft
+(`widget_picks.js withDraft`), never sends. "Drawn after a fix" (`.block-note.fixed`) follows a `data-block-fixed`
+block once its figure is placed. A reload's drawn turn takes the saved answer when `block_fixed` is on its item (what
+streamed is the block before the fix: `turn_block.js savedAnswer`).
+
 ## The stage's modules
 
 `stage_view.js` wires the stage: its `refresh`, the lifecycle (`turnStarted` … the hand-off) and the event API app.js
