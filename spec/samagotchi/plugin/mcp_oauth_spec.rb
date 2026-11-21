@@ -379,6 +379,78 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
     end
   end
 
+  describe "chi's client document (CIMD)" do
+    let(:document) { JSON.parse(File.read(File.expand_path("../../../pages/oauth/client.json", __dir__))) }
+
+    it "is in the repo at the address the plugin's constant names, a loopback redirect with any port, no localhost" do
+      expect(document["client_id"]).to eq(bundle.namespace::Plugin::CLIENT_METADATA_DOCUMENT)
+      expect(document["client_id"]).to start_with("https://").and(end_with("/oauth/client.json"))
+      expect(document).to include("client_name" => "chi", "redirect_uris" => ["http://127.0.0.1/callback"],
+                                  "grant_types" => %w[authorization_code refresh_token], "response_types" => ["code"],
+                                  "token_endpoint_auth_method" => "none")
+      expect(bundle.namespace::Plugin::CLIENT_METADATA_URL).to be_nil # set once Pages serves it
+    end
+
+    it "isn't used while no address is set: a provider that takes it gets a registration" do
+      provider[:client_id_metadata_document_supported] = true
+      bundle.run_inits
+      _, params = login
+
+      expect(params["client_id"]).to eq("CLIENT-1")
+    end
+
+    context "with bundles: mcp: client_metadata_url:" do
+      let(:document_url) { "https://chi.example.org/oauth/client.json" }
+      let(:settings) { { "servers" => { "linear" => config }, "startup_timeout" => 2, "client_metadata_url" => document_url } }
+
+      before { provider[:client_id_metadata_document_supported] = true }
+
+      it "signs in as the document's address at a provider that takes it, with no registration" do
+        bundle.run_inits
+        flow, params = login
+        finish(flow)
+
+        wait_for("the signed-in card") { card("Signed in to linear") }
+        expect(params["client_id"]).to eq(document_url)
+        expect(form(requests_to("#{issuer}/token").first)["client_id"]).to eq(document_url)
+        expect(requests_to("#{issuer}/register")).to be_empty
+      end
+
+      it "registers instead when the provider refuses it, and remembers that for the worker only" do
+        bundle.run_inits
+        first, = login
+        finish(first, "code" => "", "error" => "invalid_client")
+        again = wait_for("the registration's flow") { bundle.sign_ins[1] }
+        expect(query(again)["client_id"]).to eq("CLIENT-1")
+        bundle.fail_sign_in(:cancelled)
+        wait_for("the login's thread to end") { !bundle.plugin.instance_variable_get(:@sign_ins)["linear"].alive? }
+
+        _, params = login
+        expect(params["client_id"]).to eq("CLIENT-1")
+        expect(bundle.secrets.keys.grep(/cimd|refused/)).to eq([])
+      end
+
+      it "is used only where the provider says it takes one" do
+        provider.delete(:client_id_metadata_document_supported)
+        bundle.run_inits
+        _, params = login
+
+        expect(params["client_id"]).to eq("CLIENT-1")
+      end
+    end
+
+    context "with a client_metadata_url: that isn't an https address with a path" do
+      let(:settings) { { "servers" => { "linear" => config }, "client_metadata_url" => "http://chi.example.org" } }
+
+      it "refuses the login with one line" do
+        bundle.run_inits
+
+        expect(bundle.command("/mcp login linear"))
+          .to eq("bundles: mcp: client_metadata_url: must be an https address with a path (chi's client document)")
+      end
+    end
+  end
+
   describe "the kept token" do
     it "is sent only to the url it was kept for" do
       bundle.set(secrets: { secrets_name => JSON.generate(access_token: "ACCESS-TOKEN-1", resource: "https://other.example.com/mcp") })

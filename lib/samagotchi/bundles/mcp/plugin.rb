@@ -203,6 +203,14 @@ class Plugin
     end
   end
 
+  # chi's client metadata document (CIMD: its client_id at a provider that
+  # takes one), pages/oauth/client.json in chi's repository once GitHub
+  # Pages serves it there. Not the default yet: a provider fetches it during
+  # the sign-in, so an address that isn't live would fail in the browser.
+  # bundles: mcp: client_metadata_url: sets one (this one, or your own).
+  CLIENT_METADATA_DOCUMENT = "https://dm1try.github.io/samagotchi/oauth/client.json"
+  CLIENT_METADATA_URL = nil
+
   # /mcp's one line for a word it doesn't know.
   USAGE = "usage: /mcp (lists the servers), /mcp login NAME, /mcp logout NAME"
 
@@ -245,6 +253,9 @@ class Plugin
     refusal = sign_in_refusal(name)
     return refusal if refusal
     return "sign-in needs the web or a terminal: this run is one-shot" if ctx.frontend == :one_shot
+    if @settings.key?("client_metadata_url") && client_metadata_url.nil?
+      return "bundles: mcp: client_metadata_url: must be an https address with a path (chi's client document)"
+    end
     return "this chi can't sign in (it has no ctx.sign_in)" unless ctx.respond_to?(:sign_in) && ctx.respond_to?(:secrets)
 
     server = @servers.find { |s| s.name == name }
@@ -261,7 +272,7 @@ class Plugin
   # The login's thread: every error ends on a card, never raised into nothing.
   def sign_in(server, ctx)
     login = OAuth::Login.new(ctx: ctx, server: server, secret_lookup: ->(name) { env_value(server, name) },
-                             client_metadata_url: nil, cimd_refused: @cimd_refused, cancel: @sign_in_cancel,
+                             client_metadata_url: client_metadata_url, cimd_refused: @cimd_refused, cancel: @sign_in_cancel,
                              log: ->(event, **fields) { ctx.log.info("mcp_#{event}", **fields) })
     card_id = login.run
     signed_in(server, card_id, ctx) if card_id
@@ -379,6 +390,16 @@ class Plugin
       server = @servers.find { |s| s.name == name }
       offer_sign_in(server, ctx) if server&.state == :needs_sign_in
     end
+  end
+
+  # chi's client document's address (bundles: mcp: client_metadata_url:,
+  # else CLIENT_METADATA_URL): an https address with a path, else nil.
+  def client_metadata_url
+    value = @settings.fetch("client_metadata_url", CLIENT_METADATA_URL)
+    uri = URI.parse(value.to_s)
+    uri.is_a?(URI::HTTPS) && !uri.host.to_s.empty? && uri.path.to_s.length > 1 && uri.userinfo.nil? ? value.to_s : nil
+  rescue URI::Error
+    nil
   end
 
   # The service's stop: the waiting sign-ins end (core stops their flows
