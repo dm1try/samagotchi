@@ -72,8 +72,8 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
   it "needs sign-in on a first run's 401, signs in through the browser, and the tools work" do
     engine
     expect(load_events.select { |e| e[:type] == :card }.map { |c| c[:title] }).to eq(["fake needs sign-in"])
-    expect(mcp("echo", { "text" => "x" })).to eq("Error: fake needs sign-in: the user runs /mcp login fake")
-    expect(find("echo")).to include("fake (fake needs sign-in: the user runs /mcp login fake)")
+    expect(mcp("echo", { "text" => "x" })).to eq("Error: fake needs sign-in (the session's owner runs /mcp login fake)")
+    expect(find("echo")).to include("fake (fake needs sign-in (the session's owner runs /mcp login fake))")
 
     signed_in!
     expect(card("Signed in to fake")[:body]).to eq("2 tools, ready to use.")
@@ -127,7 +127,7 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
 
     it "is found by a session that met the 401 first, with no tools cached: its next call connects, no second flow" do
       engine
-      expect(call_on(other, "b")).to eq("Error: fake needs sign-in: the user runs /mcp login fake")
+      expect(call_on(other, "b")).to eq("Error: fake needs sign-in (the session's owner runs /mcp login fake)")
       signed_in!
 
       expect(call_on(other, "b")).to eq("echo: b")

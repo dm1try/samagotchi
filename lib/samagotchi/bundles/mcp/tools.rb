@@ -157,11 +157,12 @@ class Plugin
   end
 
   # What a group's note and a call that misses its tools say: a failed
-  # server's error, the sign-in line of one that needs it.
+  # server's error; for one that needs sign-in a line for any turn's author
+  # (a search reaches a participant's turn too, which can't run the command).
   def group_error(server, state)
     case state
     when :failed then server.error
-    when :needs_user then sign_in_line(server)
+    when :needs_user then "#{server.name} needs sign-in (the session's owner runs /mcp login #{server.name})"
     end
   end
 

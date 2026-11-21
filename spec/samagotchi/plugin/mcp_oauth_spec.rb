@@ -124,6 +124,21 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(bundle.cards.count { |c| c[:title] == "linear needs sign-in" }).to eq(1)
     end
 
+    it "tells a participant's turn who signs in, never the command; a search's note names the owner" do
+      bundle.set(turn_author: "p:p_0123abcd")
+      bundle.run_inits
+      plugin = bundle.plugin
+      server = plugin.instance_variable_get(:@servers).first
+      group = bundle.tool_index.sources.first.groups.first
+
+      expect(group.error).to eq("linear needs sign-in (the session's owner runs /mcp login linear)")
+      expect(plugin.send(:call, server, Struct.new(:name).new("search"), {}, plugin.instance_variable_get(:@ctx)))
+        .to eq("Error: linear needs sign-in: the session's owner signs in")
+      bundle.set(turn_author: nil)
+      expect(plugin.send(:call, server, Struct.new(:name).new("search"), {}, plugin.instance_variable_get(:@ctx)))
+        .to eq("Error: linear needs sign-in: the user runs /mcp login linear")
+    end
+
     it "shows no card on a one-shot" do
       bundle.set(frontend: :non_interactive)
       bundle.run_inits

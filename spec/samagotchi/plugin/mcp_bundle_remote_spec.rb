@@ -179,7 +179,7 @@ RSpec.describe "The mcp bundle with a remote server" do
     expect(load_events.select { |e| e[:type] == :card }.map { |c| [c[:title], c[:actions]] })
       .to eq([["fake needs sign-in", [{ label: "Sign in", command: "/mcp login fake" }]]])
     expect(mcp_card).to start_with("**fake**: needs sign-in (/mcp login fake)")
-    expect(mcp("echo", { "text" => "x" })).to eq("Error: fake needs sign-in: the user runs /mcp login fake")
+    expect(mcp("echo", { "text" => "x" })).to eq("Error: fake needs sign-in (the session's owner runs /mcp login fake)")
   end
 
   it "keeps a 401 with a static token a plain error: no sign-in offered" do
