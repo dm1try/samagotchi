@@ -222,6 +222,19 @@ test("the mark is on while the renderer runs and gone after", async () => {
   assert.equal(storage.keys.size, 0);
 });
 
+test("a frame with draw is drawn through draw; one with render alone (an older block_frame.js) through render", async () => {
+  const used = [];
+  const makeFrame = () => ({
+    ready: Promise.resolve(), dead: () => false, drop() {},
+    async draw(_s, _t, { onStart }) { onStart(); used.push("draw"); return { svg: SVG, regions: null }; },
+    async render() { used.push("render"); return SVG; },
+  });
+  const { root } = setup(answer(block()), { makeFrame });
+  await settle();
+  assert.ok(figureOf(root.querySelector("pre")));
+  assert.deepEqual(used, ["draw"]);
+});
+
 test("a timeout's mark stays, so the next load leaves the block; a dropped frame's doesn't", async () => {
   const timedOut = Object.assign(new Error("timed out"), { timedOut: true });
   const a = setup(answer(block()), { throwing: timedOut });

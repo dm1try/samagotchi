@@ -115,6 +115,15 @@ test("the handshake: loaded, then the code in order, then ready; then renders an
   frame.drop();
 });
 
+test("draw resolves the SVG with its regions (none yet); render is its SVG alone", async () => {
+  const { env, frame } = started();
+  env.say({ type: "loaded" });
+  await frame.ready;
+  assert.deepEqual(await frame.draw("A", {}), { svg: "<svg>A</svg>", regions: null });
+  assert.equal(await frame.render("B", {}), "<svg>B</svg>");
+  frame.drop();
+});
+
 test("renders run one at a time, in order", async () => {
   const { env, frame } = started();
   env.say({ type: "loaded" });
