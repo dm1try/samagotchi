@@ -96,10 +96,11 @@ class Plugin
   # server with no static token (bearer_token_env, an Authorization
   # header), whose 401 offers sign-in; +token+ the token its HttpClient
   # sends (OAuth::Token, else HttpClient::StaticToken); +card_shown+ its
-  # "needs sign-in" card was shown in this worker.
+  # "needs sign-in" card was shown in this worker; +refused+ the digest of
+  # the kept token it last needed sign-in with (not tried again).
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
                       :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, :url, :headers,
-                      :token_env, :oauth, :signs_in, :token, :card_shown, keyword_init: true) do
+                      :token_env, :oauth, :signs_in, :token, :card_shown, :refused, keyword_init: true) do
     # Its state and tools, never the env (values often a token), the
     # command's args (which may carry a token too), a URL's path or query
     # or a header's value: a failing spec or a debugger would print those.
@@ -346,14 +347,24 @@ class Plugin
     return false unless server.state == :needs_sign_in && server.token.respond_to?(:kept)
 
     server.token.forget
-    return false unless server.token.kept
+    kept = kept_digest(server)
+    return false if kept.nil? || kept == server.refused
 
     reconnect(server, ctx)
     ctx.log.info("mcp_signed_in_elsewhere", server: server.name)
     true
   rescue StandardError => e
+    server.refused = kept_digest(server) # what it holds after a renew, too: not tried again
     ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, signed_in_elsewhere: true)
     false
+  end
+
+  # 16 hex of the SHA-256 of the kept access token, nil without one.
+  def kept_digest(server)
+    kept = server.token.respond_to?(:kept) && server.token.kept
+    kept ? Digest::SHA256.hexdigest(kept["access_token"])[0, 16] : nil
+  rescue StandardError
+    nil
   end
 
   # Whether the kept sign-in is newer than the token +error+ refused (or,
@@ -403,6 +414,7 @@ class Plugin
 
     first = @sign_in_lock.synchronize { server.state == :needs_sign_in ? false : (server.state = :needs_sign_in) }
     if first
+      server.refused = kept_digest(server)
       server.error = nil
       publish
       ctx.log.info("mcp_needs_sign_in", server: server.name)

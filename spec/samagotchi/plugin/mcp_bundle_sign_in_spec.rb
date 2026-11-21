@@ -152,6 +152,19 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
       expect(call_on(other, "b")).to eq("echo: b")
     end
 
+    it "doesn't retry a kept token the server keeps refusing: calls answer at once, at most one renew" do
+      engine
+      signed_in!
+      remote.token = ->(_token) { false } # the provider still renews, the server takes nothing
+
+      4.times { expect(mcp("echo", { "text" => "x" })).to eq("Error: fake needs sign-in: the user runs /mcp login fake") }
+      expect(find("echo")).to include("fake/echo")
+      expect(provider.grants.count("refresh_token")).to be <= 1
+      calls = remote.requests.size
+      expect(mcp("echo", { "text" => "x" })).to start_with("Error: fake needs sign-in")
+      expect(remote.requests.size).to eq(calls)
+    end
+
     it "doesn't flip back to needs sign-in on a 401 for a token older than the kept one (a login meanwhile)" do
       engine
       signed_in!
