@@ -56,27 +56,29 @@ RSpec.describe Samagotchi::SessionChain::Delete do
   end
 
   describe "plan digests" do
+    let(:delegate_plan) { Samagotchi::SessionManager::DelegateRule::Plan }
+
     it "does not depend on the order of ids or per-link delegate plans" do
       first = described_class::LinkPlan.new(
         id: "link", previous: "previous", revive: %w[b a], moved: %w[d c],
-        delegates: described_class::Plan.new(delete: %w[f e], leave: %w[h g]), notes: 0
+        delegates: delegate_plan.new(delete: %w[f e], leave: %w[h g]), notes: 0
       )
       reordered = first.with(
         revive: %w[a b], moved: %w[c d],
-        delegates: described_class::Plan.new(delete: %w[e f], leave: %w[g h])
+        delegates: delegate_plan.new(delete: %w[e f], leave: %w[g h])
       )
       chain = described_class::ChainPlan.new(
         id: "link", links: %w[b a],
         delegates: {
-          "b" => described_class::Plan.new(delete: %w[d c], leave: %w[f e]),
-          "a" => described_class::Plan.new(delete: %w[j i], leave: %w[l k])
+          "b" => delegate_plan.new(delete: %w[d c], leave: %w[f e]),
+          "a" => delegate_plan.new(delete: %w[j i], leave: %w[l k])
         }, cut_off: false
       )
       reordered_chain = chain.with(
         links: %w[a b],
         delegates: {
-          "a" => described_class::Plan.new(delete: %w[i j], leave: %w[k l]),
-          "b" => described_class::Plan.new(delete: %w[c d], leave: %w[e f])
+          "a" => delegate_plan.new(delete: %w[i j], leave: %w[k l]),
+          "b" => delegate_plan.new(delete: %w[c d], leave: %w[e f])
         }
       )
 
@@ -339,22 +341,6 @@ RSpec.describe Samagotchi::SessionChain::Delete do
 
     expect(Samagotchi::SessionChain::Links.new(state_dir: tmpdir).chain(b.id)).to eq([a.id, b.id])
     expect(Samagotchi::Log).to have_received(:debug).with(:worker, "chain_fork", sid: a.id[0, 8], others: [other.id[0, 8]])
-  end
-
-  describe "DELEGATES" do
-    it "leaves a running delegate with its whole subtree, deletes the rest deepest first" do
-      link = make
-      running = make(parent: link)
-      own(running.id)
-      stopped_under_running = make(parent: running)
-      stopped = make(parent: link)
-      grandchild = make(parent: stopped)
-
-      plan = described_class::DELEGATES.plan(link.id, state_dir: tmpdir)
-
-      expect(plan.leave).to contain_exactly(running.id, stopped_under_running.id)
-      expect(plan.delete).to eq([grandchild.id, stopped.id])
-    end
   end
 
   describe ".chain" do
