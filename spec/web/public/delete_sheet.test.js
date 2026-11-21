@@ -361,6 +361,27 @@ for (const code of ["plan_changed", "tasks_running"]) {
   });
 }
 
+test("the flow: a sheet closed while its tap runs (×, ‹ More, Esc): a refusal or a changed plan goes to failed, drawn nowhere", async () => {
+  for (const refusal of [Object.assign(new Error("a terminal chi has it open"), { code: "tui_owned" }),
+                         Object.assign(new Error("the delete plan changed"), { code: "plan_changed" })]) {
+    const host = fakeHost();
+    host.live = () => host.closed === 0;
+    const failed = [];
+    let reject;
+    let plans = 0;
+    const flow = flowOf({ id: S, session: LIST[0], host, failed: (e) => failed.push(e.message),
+                          api: { deletePlan: async () => { plans += 1; return plain(); },
+                                 deleteSession: () => new Promise((_resolve, no) => { reject = no; }) } });
+    await tick();
+    flow.act("this");
+    host.close();
+    const drawn = host.shown.length;
+    reject(refusal);
+    await tick();
+    assert.deepEqual([failed, host.shown.length, plans], [[refusal.message], drawn, 1]);
+  }
+});
+
 test("the flow: a plan that can't be read is Can't delete in the sheet (no alert)", async () => {
   const host = fakeHost();
   const failed = [];

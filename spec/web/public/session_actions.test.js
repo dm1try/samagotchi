@@ -156,6 +156,23 @@ test("confirmDelete: a terminal's one-turn run is the plan's refusal in the shee
   assert.deepEqual(h.alerts, []);
 });
 
+test("confirmDelete: the sheet closed while its tap runs: a refusal that comes after is a sticky toast", async () => {
+  const sheet = fakeSheet();
+  let reject;
+  const h = harness({ deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => plan(), deleteSession: () => new Promise((_resolve, no) => { reject = no; }) } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  const host = sheet.hosts[0];
+  host.live = () => host.closed === 0;
+  host.flow.act("this");
+  host.close();
+  reject(failure(409, "tui_owned", "a terminal chi has it open"));
+  await tick();
+  assert.deepEqual(h.toasts.map((t) => [t.text, t.options.sticky]), [["Can't delete s1aaaaaa: a terminal chi has it open", true]]);
+  assert.deepEqual(h.world.sessions, [{ id: "s1aaaaaaaa" }]);
+});
+
 test("deleteIn: the More panel's Delete always takes the panel as its host, for any session", async () => {
   const h = harness({ api: { deletePlan: async () => plan() } });
   const host = fakeSheet().host(null, "s1aaaaaaaa");
