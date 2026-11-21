@@ -4,6 +4,7 @@ require "nokogiri"
 require "uri"
 require_relative "../block_renderers"
 require_relative "../inline_widgets"
+require_relative "../markdown_parser"
 
 module Samagotchi
   module Web
@@ -76,10 +77,7 @@ module Samagotchi
       def load_bundled_commonmarker!
         return @commonmarker_available unless @commonmarker_available.nil?
 
-        require "commonmarker"
-        @commonmarker_available = true
-      rescue LoadError
-        @commonmarker_available = false
+        @commonmarker_available = MarkdownParser.available?
       end
 
       def commonmarker_installed?
