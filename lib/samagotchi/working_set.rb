@@ -518,7 +518,8 @@ module Samagotchi
     end
 
     # LLMContextStale's failed rule (an "Error" after the "[name]" lead; a
-    # denied call's "Error:" too), or an interrupted run.
+    # denied call's "Error:" too), or an interrupted run. Public: an own
+    # change counts only a run that touched (OwnChanges).
     def failed?(text)
       ToolResponse.interrupted_text?(text) || text.sub(ToolResponse::LEAD, "").lstrip.start_with?("Error")
     end
@@ -638,7 +639,8 @@ module Samagotchi
     end
 
     # Whether the file at +path+ is not what +entry+ ({mtime_ns:, size:}) says
-    # it was, in mtime or size.
+    # it was, in mtime or size. Public: an own edit's "still current" is the
+    # same compare (OwnChanges#current?).
     def differs?(path, entry, stat)
       now = stat.call(path)
       mtime_ns = (now.mtime.to_i * 1_000_000_000) + now.mtime.nsec
@@ -667,8 +669,8 @@ module Samagotchi
 
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
-    private_class_method :all_touches, :touches, :failed?, :shared_with, :item, :still_sent?, :dropped?, :with_id,
-                         :changed?, :memory_changed?, :same_path?, :differs?, :stamp_hash, :stamp_of, :field, :event, :body_of,
+    private_class_method :all_touches, :touches, :shared_with, :item, :still_sent?, :dropped?, :with_id,
+                         :changed?, :memory_changed?, :same_path?, :stamp_hash, :stamp_of, :field, :event, :body_of,
                          :lines_of, :saved_diff, :memory_entries, :memory_part, :overlay_tail, :memory_scope, :memory_item_scope
   end
 end
