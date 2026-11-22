@@ -539,7 +539,11 @@ head, so its session stays in 5: accepted.
 **The locator.** Every "now" the working set shows is fetched by one resolver, `WorkingSet::Locator`
 (`working_set_locator.rb`, `Data.define(:origin, :kind, :ref, :scope, :params)`; loaded only when a fetch runs, for the
 testing kit's file budget): "where a held text came from and how to fetch it again". `#fetch` has three outcomes: nil
-(refused, or nothing to fetch), a `WorkingSet::Now` with `gone`, a `Now` with its text (diff nil). Its guard follows
+(refused, or nothing to fetch), a `WorkingSet::Now` with `gone`, a `Now` with its text (diff nil). `#composed` is the
+same fetch with the files it read (`Locator::Composed`: `now`, `files` of `Locator::Source` `{path, role: :base |
+:overlay, key}`, at most two); a gone prompt memory names the base it was sent from (identity's saved `system_dir`, a
+preload's built `scope`'s folder, a note's `requested_scope`'s). A note's overlay is found by
+`ModelNotes.overlay_path`, the build's own lookup (its label keeps the key as given). Its guard follows
 `origin`, and the two stay apart:
 
 - `:run`, a `memory_read` stamp's entry (`WorkingSet.memory_now`): resolved with chi web's own `MemoryPaths.system_dir`,

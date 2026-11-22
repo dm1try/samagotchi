@@ -25,7 +25,9 @@ module Samagotchi
     #            came with a run's flags); base, the kit, a plugin's section,
     #            an index and the session lines are chi's own text.
     # #fetch has three outcomes: nil (refused, or nothing to fetch), a Now
-    # with gone (the source is gone), a Now with its text (diff nil).
+    # with gone (the source is gone), a Now with its text (diff nil);
+    # #composed adds the files it was read from (a prompt part's own
+    # changes are matched to them, WorkingSetPart.states).
     # Not loaded with WorkingSet (the testing kit's file budget,
     # sandbox_spec): WorkingSet.memory_now requires it when it runs.
     Locator = Data.define(:origin, :kind, :ref, :scope, :params)
@@ -37,6 +39,17 @@ module Samagotchi
       FETCHED = (MEMORY_KINDS + %w[agents]).freeze
       READ = ->(path) { File.read(path, encoding: "UTF-8") }
       GONE = Now.new(text: nil, diff: nil, gone: true)
+
+      # One file a fetched text was composed from: its +path+, its +role+
+      # (:base, the memory's or AGENTS.md's own file; :overlay, the model
+      # overlay appended to it) and an overlay's +key+ (the one in its file
+      # name).
+      Source = Data.define(:path, :role, :key)
+      # #composed's answer: the Now #fetch gives and the +files+ (Source,
+      # at most two) it was read from. A gone prompt memory's files are the
+      # base it was sent from (the build's scope's <ref>.md): chi's remove
+      # of it is matched there (WorkingSetPart.states).
+      Composed = Data.define(:now, :files)
 
       # A prompt part's (PromptPart, its saved params).
       def self.of_part(part)
@@ -53,14 +66,18 @@ module Samagotchi
       # +cwd+: the session's folder (an AGENTS.md's chain); +read+: File.read,
       # or a stand-in (a memory's files).
       # @return [Now, nil]
-      def fetch(root:, cwd: nil, read: READ)
+      def fetch(root:, cwd: nil, read: READ) = composed(root: root, cwd: cwd, read: read)&.now
+
+      # #fetch's Now and the files it read (Composed), nil when #fetch is.
+      # @return [Composed, nil]
+      def composed(root:, cwd: nil, read: READ)
         return prompt_fetch(root, cwd, read) unless origin == :run
 
         found = resolve(root: root)
-        return found == :gone ? GONE : nil unless found.is_a?(Hash)
+        return found == :gone ? Composed.new(now: GONE, files: []) : nil unless found.is_a?(Hash)
 
         text = body(found, read: read)
-        text ? Now.new(text: text, diff: nil, gone: false) : GONE
+        Composed.new(now: text ? Now.new(text: text, diff: nil, gone: false) : GONE, files: run_files(found))
       end
 
       # A run's entry as it answers now (:run): the paths to read ({path,
@@ -98,6 +115,16 @@ module Samagotchi
 
       private
 
+      # A resolved run entry's files.
+      def run_files(entry)
+        overlay = MemoryGuard.field(entry, :overlay)
+        overlay_path = overlay.is_a?(Hash) ? MemoryGuard.field(overlay, :path).to_s : nil
+        base = [Source.new(path: MemoryGuard.field(entry, :path).to_s, role: :base, key: nil)]
+        return base unless overlay_path
+
+        base + [Source.new(path: overlay_path, role: :overlay, key: Tools::MemoryRead.overlay_key(ref, overlay_path))]
+      end
+
       def prompt_fetch(root, cwd, read)
         if MEMORY_KINDS.include?(kind)
           memory_fetch(root, read)
@@ -117,19 +144,31 @@ module Samagotchi
                           (project_dir.nil? || MemoryGuard.inside_root?(project_dir, root))
         return nil if ref.to_s.strip.empty? || Tools::MemoryRead.invalid_name?(ref.to_s)
 
-        kind == "notes" ? note_fetch(system_dir, project_dir, root) : read_fetch(system_dir, root, read)
+        kind == "notes" ? note_fetch(system_dir, project_dir, root) : read_fetch(system_dir, project_dir, root, read)
       rescue SystemCallError, ArgumentError
         nil
       end
 
+      # A gone memory's answer: the base it was sent from, in the scope
+      # that answered at build (+dir+), when the guard lets it be named.
+      def gone(dir, root)
+        return Composed.new(now: GONE, files: []) unless dir
+
+        path = File.join(dir, "#{ref}.md")
+        files = MemoryGuard.memory_paths?({ path: path }, root) ? [Source.new(path: path, role: :base, key: nil)] : []
+        Composed.new(now: GONE, files: files)
+      end
+
       # A preload's or identity's text: resolved as memory_read resolves it.
-      def read_fetch(system_dir, root, read)
+      def read_fetch(system_dir, project_dir, root, read)
         resolved = MemoryGuard.resolve_memory(ref.to_s, params, system_dir: system_dir)
         return nil if resolved == :stamped_paths
-        return GONE unless resolved
+        return gone(kind == "preloads" && scope.to_s == "project" ? project_dir : system_dir, root) unless resolved
         return nil unless MemoryGuard.memory_paths?(MemoryGuard.resolved_memory_entry(resolved), root)
 
-        Now.new(text: Tools::MemoryRead.compose(resolved, read: read), diff: nil, gone: false)
+        files = [Source.new(path: resolved.path, role: :base, key: nil)]
+        files << Source.new(path: resolved.overlay_path, role: :overlay, key: resolved.overlay_key) if resolved.overlay_path
+        Composed.new(now: Now.new(text: Tools::MemoryRead.compose(resolved, read: read), diff: nil, gone: false), files: files)
       end
 
       # A model note's text: its scope's file, its overlay beside it. Every
@@ -146,10 +185,13 @@ module Samagotchi
         path = File.join(dir, "#{name}.md")
         overlays = keys.compact.map { |key| key.to_s.strip }.reject(&:empty?).map { |key| File.join(dir, "#{name}.#{key}.md") }
         return nil unless [path, *overlays].all? { |candidate| MemoryGuard.memory_paths?({ path: candidate }, root) }
-        return GONE unless File.file?(path)
+        return gone(dir, root) unless File.file?(path)
 
         text = ModelNotes.body_at(path, keys, dir: dir)
-        Now.new(text: text, diff: nil, gone: text.nil?)
+        overlay, = ModelNotes.overlay_path(name, keys, dir: dir)
+        files = [Source.new(path: path, role: :base, key: nil)]
+        files << Source.new(path: overlay, role: :overlay, key: Tools::MemoryRead.overlay_key(name, overlay)) if overlay
+        Composed.new(now: Now.new(text: text, diff: nil, gone: text.nil?), files: files)
       end
 
       # An AGENTS.md's text, only when it is on +cwd+'s chain.
@@ -162,7 +204,7 @@ module Samagotchi
         return nil unless chain.include?(real(path))
 
         text = PromptFiles.content(path)
-        Now.new(text: text, diff: nil, gone: text.nil?)
+        Composed.new(now: Now.new(text: text, diff: nil, gone: text.nil?), files: [Source.new(path: path, role: :base, key: nil)])
       rescue SystemCallError, ArgumentError
         # A path or folder a session file names that no file call takes (a NUL byte): nothing to fetch.
         nil
