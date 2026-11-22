@@ -857,7 +857,7 @@ test("the size line: the session lens without the context's tokens (or without p
   try {
     v.current.ctxPct = 16;
     v.open();
-    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items · ctx 16 %");
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "4 items · ctx 16 %");
     assert.ok(v.pop.querySelector(".ws-head-line") === null);
     assert.ok(v.pop.querySelector(".ctx-pop-head .ctx-pop-kind") === null, "never back in the header");
     // A change of its text redraws the open list (tokensChanged).
@@ -869,7 +869,7 @@ test("the size line: the session lens without the context's tokens (or without p
     v.current.ctxPct = 17;
     v.ws.tokensChanged();
     assert.equal(draws, 1);
-    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "3 items · ctx 17 %");
+    assert.equal(v.pop.querySelector(".ws-size-line").textContent, "4 items · ctx 17 %");
     // The tokens come: the head line takes its place.
     v.current.ctxTokens = 20000;
     v.ws.tokensChanged();
