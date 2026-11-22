@@ -17,6 +17,8 @@ require_relative "../model_profile"
 require_relative "../grants"
 require_relative "http_transport"
 require_relative "../chi_invocation"
+require_relative "../client_id"
+require_relative "../delivery"
 
 module Samagotchi
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
@@ -251,7 +253,7 @@ module Samagotchi
       # @param follow [Boolean] +id+ is the head #head resolved: sent only
       #   when true (an older chi web ignores it and delivers as before)
       def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false)
-        body = { prompt: prompt, client_id: client_id, history: false }
+        body = { prompt: prompt, client_id: sent_id(client_id), history: false }
         body[:follow] = true if follow
         body[:images] = images.map { |ref| { file: ref[:file], name: ref[:name] } } unless images.empty?
         body[:check_vision] = true unless images.empty?
@@ -751,6 +753,17 @@ module Samagotchi
         reply
       end
 
+      # compat shim agent_client_id: +client_id+ as that chi web reads it:
+      # an agent's (agent:<name>) to one from before agent: senders goes as
+      # chi send's, today's owner row (Delivery::AGENT_FEATURE in its
+      # /api/info features).
+      def sent_id(client_id)
+        return client_id unless ClientId.agent?(client_id)
+
+        check_server!
+        Array(@features).include?(Delivery::AGENT_FEATURE) ? client_id : ClientId::CLI_SEND
+      end
+
       def check_server!
         return if @checked
 
@@ -870,7 +883,7 @@ module Samagotchi
       end
 
       def create_body(spec)
-        body = { model: spec.model_name, client_id: spec.client_id, history: false }
+        body = { model: spec.model_name, client_id: sent_id(spec.client_id), history: false }
         if spec.preview || spec.idle
           body.merge!(idle: true, preview: spec.preview)
         else
@@ -882,6 +895,9 @@ module Samagotchi
         else
           body[:dir] = spec.working_directory
           body.merge!(setup_body(spec.setup)) if spec.setup
+          # An older chi web ignores it: no driver named (its creator's id
+          # downgraded too, #sent_id).
+          body[:driver] = spec.driver if spec.driver
         end
         body.compact
       end

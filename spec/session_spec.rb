@@ -78,6 +78,7 @@ RSpec.describe Samagotchi::Session do
       session.review = { "subjects" => ["docs/plan.md"], "from" => "abc" }
       session.first_turn_id = "turn-1"
       session.first_turn_client_id = "delegate:0123abcd"
+      session.driver = "agent:claude"
       session.project_id = "notes-0a1b2c3d"
       session.verdicts = [
         { anchor: { turn_id: "source-turn", quote: "claim" }, verdict: "confirmed", reason: "supported",

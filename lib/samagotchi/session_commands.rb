@@ -32,6 +32,7 @@ module Samagotchi
   # Loaded on first use (a /objectives line): keeps the bundle test kit's
   # load budget (spec/samagotchi/testing/sandbox_spec.rb).
   autoload :ObjectivesCommand, File.expand_path("objectives_command", __dir__)
+  autoload :DriverCommand, File.expand_path("driver_command", __dir__)
 
   # The session commands a session worker runs (a -p one-shot too): /model,
   # /models, /llm-context, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on
@@ -189,6 +190,7 @@ module Samagotchi
       # an anytime command runs on another thread against this instance.
       return continue_command(text, as_parent: as_parent) if entry.id == :continue
       return parent_answers(text, user_ui: user_ui) if entry.id == :parent_answers
+      return driver(text, user_ui: user_ui) if entry.id == :driver
       return callback(text, as_parent: as_parent) if entry.id == :callback
 
       instance_exec(text, &entry.handler)
@@ -520,6 +522,13 @@ module Samagotchi
       output, changed, status = ParentAnswersCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
                                                     .run(text.delete_prefix(PARENT_ANSWERS_COMMAND), user_ui: user_ui)
       reply(output, status: status, changed: changed ? [:parent_answers] : [])
+    end
+
+    # /driver (DriverCommand); :driver in changed when it named one.
+    def driver(text, user_ui: false)
+      output, changed, status = DriverCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                             .run(text.delete_prefix(DRIVER_COMMAND), user_ui: user_ui)
+      reply(output, status: status, changed: changed ? [:driver] : [])
     end
 
     # /working-set (WorkingSetCommand): an op that changes the conversation

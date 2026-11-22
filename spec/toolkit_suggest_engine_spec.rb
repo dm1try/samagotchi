@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Engine do
 
   def start(engine, session: self.session, prompt: "Fix the browser workflow")
     context = Struct.new(:state_dir).new(engine.send(:session_state_dir))
-    turn = Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author).new(nil), context)
+    turn = Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author, :client_id).new(nil, nil), context)
     engine.send(:toolkit_suggestion).start(turn, recorder: engine.send(:system_one_recorder))
   end
 

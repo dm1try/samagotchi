@@ -106,7 +106,11 @@ module Samagotchi
       STEER_CUT_FOR = { "chi_send" => "a message sent with chi send", "parent_agent" => "the parent agent's message" }.freeze
 
       def format_steer_cut_line(event)
-        paint("↪ cut in for #{STEER_CUT_FOR.fetch(event[:source].to_s, "your message")}", 90)
+        source = event[:source].to_s
+        whose = if ClientId.agent?(source) then "a message from the agent #{ClientId.agent_name(source)}"
+                else STEER_CUT_FOR.fetch(source, "your message")
+                end
+        paint("↪ cut in for #{whose}", 90)
       end
 
       # What a line submitted at the open prompt says became of it: a plain
@@ -245,6 +249,10 @@ module Samagotchi
           return "task #{Tools::TaskRecord.short_id(task)} finished" unless task.empty?
         when "schedule"
           return "schedule"
+        when "agent"
+          return "agent #{ClientId.agent_name(id)}"
+        when "session"
+          return "session #{ClientId.session_name(id)}"
         end
 
         ClientId.sender(id).label || fallback
@@ -308,12 +316,14 @@ module Samagotchi
 
       # The last prompt as a join shows it: a delegate report (a wake
       # turn's) as the child's lines, a participant's with their name (the
-      # one saved with it), anything else as the user's.
+      # one saved with it), a visitor's opener (saved with its sender's id,
+      # Steer::OPENER_HEADERS) by that sender, anything else as the user's.
       def join_prompt_line(message)
         source = (message[:source] || message["source"]).to_s
         content = (message[:content] || message["content"]).to_s
         author = Steer.sender_author(message[:author] || message["author"])
         return prompt_line(ClientId::PARTICIPANT_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
+        return prompt_line(source, content) if Steer.opener_header(message)
         return prompt_line(nil, content) unless source == Steer::DELEGATE_REPORT
 
         content.split(/\n\n(?=session: )/).map { |report| report_line(report) }.join("\n")

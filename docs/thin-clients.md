@@ -44,7 +44,7 @@ another link ran it. Body fields:
   message as its own turn, and you get that turn's answer. `false` refuses a
   running session with 409 `busy`.
 - `client_id`: who is asking. Leave it out for yourself (the line is the
-  owner's, as from the web composer). An agent sends `"cli:send"`: see
+  owner's, as from the web composer). An agent sends `"agent:NAME"`: see
   [An agent over HTTP](#an-agent-over-http).
 - `request_id`: your own key for this ask, 1 to 128 printable ASCII
   characters. Send the same ask again with the same `request_id` (a retry
@@ -127,8 +127,15 @@ the sender for it. An MCP host can add chi as an MCP server instead
 on chi web), which names it too. An agent that calls these routes itself must name itself
 the same way:
 
-- `"client_id": "cli:send"` on every ask (and on `POST /api/sessions`);
+- `"client_id": "agent:NAME"` on every ask (and on `POST /api/sessions`), NAME
+  lowercase letters, digits, `-` and `_`: its turns are labelled "agent NAME" and
+  it is a driver or a visitor as `chi send`'s agents are ([driver and
+  visitor](sub-agent.md#an-agents-messages-driver-and-visitor)); `POST
+  /api/sessions` also takes `"driver": "agent:NAME"`;
 - `"client_id": "cli:answer"` on every answer.
+
+`"cli:send"` still works and is held the same way, but it is the owner's row: it
+restarts a stopped session and runs `!` lines.
 
 Then `guardrails.parent_answers` applies as it does to `chi send` and `chi
 answer` ([Answers from a parent agent](guardrails.md#answers-from-a-parent-agent)):

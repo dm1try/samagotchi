@@ -34,10 +34,6 @@ module Samagotchi
       # What a continue takes from the previous link: refused beside it.
       CONTINUE_TAKES = %w[dir llm_context thinking settings toolkit tools no_tools parent_answers].freeze
 
-      # chi send's client ids: its lines are checked as chi send checks them
-      # (#parent_gate).
-      CLI_SEND_IDS = [ClientId::CLI_SEND, ClientId::CLI_ANSWER].freeze
-
       private
 
       def handle_create(req)
@@ -91,11 +87,19 @@ module Samagotchi
         parent_answers, error = request_parent_answers(body["parent_answers"])
         return error if error
 
+        # driver: the agent (agent:<name>) the owner names its driver (chi
+        # send --new --driver); none: its creator when that is an agent.
+        driver = body["driver"]
+        unless driver.nil? || (ClientId.agent?(driver) && ClientId.agent(ClientId.agent_name(driver)) == driver)
+          return error_response(400, "invalid_driver", "driver is an agent's id: agent:<name>")
+        end
+
         model = (body["model"] || body["model_name"]).to_s.strip
         refused = create_refusal(body, idle ? body["preview"] : prompt, values: [parent_answers], model: model)
         return refused if refused
 
         folder = { working_directory: dir || start_dir }
+        folder[:driver] = driver if driver
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
         folder[:model_name] = model unless model.empty?
@@ -178,7 +182,7 @@ module Samagotchi
       # for #create_refusal; nil when the previous link isn't there
       # (continue_from says so).
       def continue_refusal(given, body, line, model:)
-        return nil unless body["check_vision"] == true || CLI_SEND_IDS.include?(body["client_id"])
+        return nil unless body["check_vision"] == true || ClientId.parent_line?(body["client_id"])
 
         previous = Session.load(SessionChain.resolve(given, state_dir: default_state_dir), state_dir: default_state_dir)
         create_refusal(body, line, values: [previous.parent_answers], model: model, previous: previous)
@@ -220,9 +224,9 @@ module Samagotchi
       # @return [Array, nil] the response, or nil to go on
       def parent_gate(line, client_id:, values:)
         line = line.to_s
-        return nil unless CLI_SEND_IDS.include?(client_id)
+        return nil unless ClientId.parent_line?(client_id)
 
-        if client_id == ClientId::CLI_ANSWER && TurnFlow.continue_yes?(line) &&
+        if (client_id == ClientId::CLI_ANSWER || ClientId.agent?(client_id)) && TurnFlow.continue_yes?(line) &&
            (refusal = SendCommand::ParentGate.continue_refusal_for(values))
           return error_response(403, "parent_continue_refused", refusal)
         end

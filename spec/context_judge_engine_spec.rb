@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::Engine do
   end
 
   def turn(session, prompt, author: nil)
-    Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author).new(author),
+    Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author, :client_id).new(author, nil),
                                                          Struct.new(:state_dir).new(state_dir))
   end
 

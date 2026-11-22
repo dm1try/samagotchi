@@ -98,11 +98,9 @@ module Samagotchi
     # @param origin [TurnOrigin] a participant's
     # @return [nil]
     def refuse(origin, reason)
-      TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason, author: origin.participant_author)
       Participants.log(source_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
                                          enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
-      @event_log.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
-      nil
+      TurnCheckpoint.refuse_queued(@session_dir, @event_log, origin, reason, author: origin.participant_author)
     end
 
     # A participant invited, revoked or expired since the last look: the

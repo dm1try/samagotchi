@@ -141,10 +141,12 @@ module Samagotchi
     # /continue yes) and +images+ (images follow) are for a Remote's server,
     # which checks the first line and the model as chi send checks them
     # here (Local checks before it creates).
+    # +driver+: the agent (agent:<name>) chi send --new --driver names its
+    # driver; nil: its creator, when an agent (Session#driver).
     NewSession = Data.define(:prompt, :preview, :continues, :working_directory, :model_name, :setup, :client_id,
-                             :images, :idle) do
+                             :images, :idle, :driver) do
       def initialize(prompt:, preview: nil, continues: nil, working_directory: nil, model_name: nil, setup: nil,
-                     client_id: nil, images: false, idle: false) = super
+                     client_id: nil, images: false, idle: false, driver: nil) = super
     end
 
     # chi send --new's setup flags as typed, for a Remote: +llm_context+

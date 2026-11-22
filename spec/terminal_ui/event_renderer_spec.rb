@@ -422,4 +422,8 @@ RSpec.describe Samagotchi::TerminalUI::Formatting, "#join_prompt_line" do
     expect(view.join_prompt_line(reports)).to eq("delegate report> aaaaaaaa answered: 3\ndelegate report> bbbbbbbb answered: 2")
     expect(view.join_prompt_line({ role: "user", content: "hi" })).to eq("user> hi")
   end
+
+  it "shows a visitor's opener (saved with its sender) by that sender" do
+    expect(view.join_prompt_line({ role: "user", content: "hi", turn_id: "t", source: "agent:codex" })).to eq("agent codex> hi")
+  end
 end

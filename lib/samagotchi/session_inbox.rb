@@ -390,6 +390,8 @@ module Samagotchi
     # participant's file waits, as before.
     def self.turn_end_data?(data, running_author: nil)
       return true if Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || TurnAnchors.named_in?(data)
+      # Another session's question (ask_session) is a turn of its own.
+      return true if ClientId.session?(data["client_id"])
 
       author = Steer.sender_author(data["author"])
       running_author ? author != running_author : Steer.participant_author?(data["author"])

@@ -249,6 +249,8 @@ module Samagotchi
           # A participant's turn only to a worker that runs it under the
           # owner's rules: an older one would run it read-only.
           return pair_unavailable if Steer.participant_author?(author) && !worker_has?(client, Delivery::PAIR_FEATURE)
+          # Another session's question only to a worker that runs it as a visitor's.
+          return ask_unavailable if ClientId.session?(client_id) && !worker_has?(client, Delivery::ASK_FEATURE)
           # A participant's Revise only to a worker that checks it at the
           # stamp (ParticipantRevise): an older one would stamp it unchecked.
           if Steer.participant_author?(author) && anchors.revises && !worker_has?(client, ReviseAnchor::PARTICIPANT_FEATURE)
@@ -261,6 +263,9 @@ module Samagotchi
           if ClientId.participant?(client_id) && !worker_has?(client, Delivery::PARTICIPANT_ID_FEATURE)
             client_id = ClientId.legacy_participant(client_id)
           end
+          # compat shim agent_client_id: a worker from before agent: reads
+          # an agent's line as chi send's (today's owner row).
+          client_id = ClientId::CLI_SEND if ClientId.agent?(client_id) && !worker_has?(client, Delivery::AGENT_FEATURE)
 
           begin
             options = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id }
@@ -297,11 +302,20 @@ module Samagotchi
         # still holding the session with its Bridge gone (exiting) may be an
         # older one, which would run it without the pair boundary.
         # (A one-turn chi run holding it is refused as for anyone, below.)
-        if Steer.participant_author?(author) && (holder = delivery_presence(manager, session_id, state_dir)).owned? &&
-           !holder.tui_owned?
+        # So is another session's question (ask_session: an older worker runs
+        # it with no header).
+        if (Steer.participant_author?(author) || ClientId.session?(client_id)) &&
+           (holder = delivery_presence(manager, session_id, state_dir)).owned? && !holder.tui_owned?
           return DeliverResult.new(status: :timeout, via: :file,
                                    ack: { "error" => "worker_timeout",
                                           "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
+        end
+        # compat shim agent_client_id: a worker still holding the session
+        # with its Bridge gone (exiting) may be an older one, which reads
+        # no agent: id: chi send's instead (a downgrade to today's owner
+        # row, not a refusal). A worker that starts for the file reads it.
+        if ClientId.agent?(client_id) && delivery_presence(manager, session_id, state_dir).owned?
+          client_id = ClientId::CLI_SEND
         end
         input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
         input[:images] = images unless images.empty?
@@ -426,6 +440,8 @@ module Samagotchi
       private def queue_unavailable
         DeliverResult.new(status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE)
       end
+
+      private def ask_unavailable = DeliverResult.new(status: :refused, code: 409, ack: Delivery::ASK_UNAVAILABLE)
 
       private def pair_unavailable
         DeliverResult.new(status: :refused, code: 409, ack: Delivery::PAIR_UNAVAILABLE)

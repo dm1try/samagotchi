@@ -2,6 +2,7 @@
 
 require "delegate"
 require_relative "../bridge_client"
+require_relative "../agent_caller"
 require_relative "../client_id"
 require_relative "../reply_wait"
 require_relative "../session"
@@ -174,11 +175,12 @@ module Samagotchi
 
       # Who asks: the owner (WEB_UNNAMED) unless the body names a sender
       # (owner_sender's rule); a parent agent's /continue yes sent as
-      # cli:send goes in as cli:answer, as chi send sends it (the worker
-      # holds that one to guardrails.parent_answers).
+      # cli:send or an agent's id (ClientId.parent_line?) goes in as
+      # cli:answer, as chi send sends it (the worker holds that one to
+      # guardrails.parent_answers).
       def ask_sender(client_id, prompt)
         sender = owner_sender({ "client_id" => client_id })
-        sender == ClientId::CLI_SEND && TurnFlow.continue_yes?(prompt) ? ClientId::CLI_ANSWER : sender
+        TurnFlow.continue_yes?(prompt) ? AgentCaller.continue_id(sender) : sender
       end
 
       # A parent agent's line refused before anything is sent, as POST
@@ -186,7 +188,7 @@ module Samagotchi
       # session asked and of its chain's newest link (where it goes).
       # @return [Array, nil] the response, or nil to go on
       def ask_gate(id, prompt, client_id)
-        return nil unless App::CLI_SEND_IDS.include?(client_id)
+        return nil unless ClientId.parent_line?(client_id)
 
         asked = session_access.resolve(id)
         ids = [asked, session_access.head(asked).id].uniq

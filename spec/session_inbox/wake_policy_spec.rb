@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     # Pick 1 (R3): a turn delivery's unattended senders start an idle
     # session as a send does, but a stop and an archive are the owner's.
     it "lets an unattended sender start an idle session only" do
-      %i[schedule plugin delegate participant automatic].each do |kind|
+      %i[schedule plugin delegate participant agent automatic].each do |kind|
         expect(row(kind)).to eq(gone: :gone, tui: :owned, deleting: :deleting, owned: :live, stopped: :stopped, archived: :archived,
                                 starting: :starting, scratch: :scratch, idle: :start)
       end
@@ -102,7 +102,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
       expect(refusals(:send)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
       expect(refusals(:note)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
       %i[push ring fresh_verdict].each { |kind| expect(refusals(kind)).to eq(gone: :gone, deleting: :deleting) }
-      %i[schedule plugin delegate participant automatic].each do |kind|
+      %i[schedule plugin delegate participant agent automatic].each do |kind|
         expect(refusals(kind)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
       end
     end
@@ -110,12 +110,12 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
 
   it "has one row per kind, and only send un-stops; send and a worker's leave start an archived link" do
     expect(described_class::ROWS.keys)
-      .to eq(%i[send note push ring fresh_verdict leave schedule plugin delegate participant automatic])
+      .to eq(%i[send note push ring fresh_verdict leave schedule plugin delegate participant agent automatic])
     expect(described_class::ROWS.values.select(&:unstops).map(&:kind)).to eq([:send])
     expect(described_class::ROWS.values.select(&:starts_archived).map(&:kind)).to eq(%i[send leave])
     expect(described_class::ROWS.transform_values(&:resolves))
       .to eq(send: :head, note: :head, push: :pinned, ring: :reader, fresh_verdict: :pinned, leave: :pinned,
-             schedule: :pinned, plugin: :pinned, delegate: :pinned, participant: :pinned, automatic: :pinned)
+             schedule: :pinned, plugin: :pinned, delegate: :pinned, participant: :pinned, agent: :pinned, automatic: :pinned)
     expect { described_class.for(:bogus) }.to raise_error(ArgumentError)
   end
 
@@ -123,7 +123,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     it "reads the row by the sender's client id" do
       senders = { "cli:send" => :send, "web:tab1" => :send, "web:unnamed" => :send, "tui:42" => :send,
                   "system:schedule:s1" => :schedule, "plugin" => :plugin, "delegate:abcdef12" => :delegate,
-                  "participant:p_1" => :participant, "system:reminder" => :automatic, "child:ab12cd34" => :automatic,
+                  "participant:p_1" => :participant, "agent:claude" => :agent, "system:reminder" => :automatic, "child:ab12cd34" => :automatic,
                   "cli:answer" => :automatic, "bot:x" => :automatic, "plugin:x" => :automatic }
       expect(senders.keys.to_h { |id| [id, described_class.for_sender(id).kind] }).to eq(senders)
     end

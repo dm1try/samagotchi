@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../agent_caller"
 require_relative "../client_id"
 require_relative "../session_inbox"
 require_relative "../turn_flow"
@@ -22,6 +23,8 @@ module Samagotchi
       # Seconds one call waits before it answers "still running" (spike D2:
       # well inside Claude Code HTTP's 60 s and Codex's 300 s).
       SLICE = 25
+      # The agent an MCP host's messages go as when nothing names it.
+      DEFAULT_AGENT = "mcp"
       # The most seconds a chi_ask or a chi_answer takes in all
       # (Web::AskRoutes::ASK_MAX_SECONDS); under --remote about a minute for
       # a slow worker (the other chi web's routes make their own tries).
@@ -73,8 +76,11 @@ module Samagotchi
       # @param cap [Numeric] seconds a chi_ask or chi_answer takes in all (CAP)
       # @param exchange [#call, nil] (access) -> the Exchange a call uses
       #   (chi web's carries its stop check); nil: a plain one
-      def initialize(access, slice: SLICE, cap: CAP, exchange: nil, cancelled: nil)
+      # @param agent [String] the name its messages go as (agent:<name>):
+      #   the host's marker on stdio (McpCommand), "mcp" over HTTP
+      def initialize(access, slice: SLICE, cap: CAP, exchange: nil, cancelled: nil, agent: DEFAULT_AGENT)
         @access = access
+        @agent = agent
         @slice = slice
         @cap = cap
         @exchange = exchange || ->(backend) { SessionAccess::Exchange.new(backend) }
@@ -169,9 +175,9 @@ module Samagotchi
       # parent_answers of the session asked and its chain's newest link; on
       # a remote chi web's turn route gates the same ids itself.
       def sender(asker, given, prompt)
-        return TurnFlow.continue_yes?(prompt) ? ClientId::CLI_ANSWER : ClientId::CLI_SEND if @access.remote?
+        return TurnFlow.continue_yes?(prompt) ? ClientId::CLI_ANSWER : AgentCaller.send_id(name: @agent) if @access.remote?
 
-        asker.agent_line(prompt, session: targets(given))
+        asker.agent_line(prompt, session: targets(given), name: @agent)
       end
 
       def targets(given)

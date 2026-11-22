@@ -55,6 +55,8 @@ module Samagotchi
         "send --timeout" => SUPPORTED,
         "send --format" => SUPPORTED,
         "send --turn" => SUPPORTED,
+        "send --as" => SUPPORTED,
+        "send --driver" => SUPPORTED,
         # Refused on both (there is no --all).
         "send --all" => SUPPORTED,
 

@@ -40,10 +40,53 @@ A client with no chi of its own (an iOS Shortcut, a script) can do the same
 over HTTP: one `POST …/ask` to chi web, then a wait token until the answer
 comes ([Thin clients](thin-clients.md)). An agent uses `chi send` and `chi
 answer` (with `--remote NAME` for another machine) whenever it can run chi.
-Over HTTP it must send `"client_id": "cli:send"` on an ask and
+Over HTTP it must send `"client_id": "agent:NAME"` on an ask and
 `"client_id": "cli:answer"` on an answer: without them its lines are the
 owner's and `guardrails.parent_answers` does not hold them ([An agent over
 HTTP](thin-clients.md#an-agent-over-http)).
+
+## An agent's messages: driver and visitor
+
+An agent's `chi send` goes in as the agent, not as you: `agent:claude`, labelled
+"agent claude" in the web and the terminal. Who it is: chi's own marker first
+(`SAMAGOTCHI_PARENT_SESSION`, which chi's `execute` and tasks set: `agent:chi-<id8>`,
+even over `--as`, said on stderr), then `chi send --as NAME` (lowercase letters,
+digits, `-` and `_`, up to 32), then `CLAUDECODE` (`claude`), `CODEX_THREAD_ID`
+(`codex`), `AI_AGENT` (its value). With none of these it is yours, `cli:send`, as
+before: a pipe alone is not a marker, so your own script or cron line stays yours.
+The id is self-declared, as `cli:send` is: a convention for an honest agent, not a
+security boundary. Every Claude Code session is `claude` unless it passes `--as`.
+
+An agent's message can't restart a stopped session (`refused: the session is
+stopped; only its owner's message starts it again`), bring back an archived one,
+or run a `!` line (refused with the shell-line text). It may send session commands
+(`/model x`, `/thinking low`); its `/continue yes` goes in as `chi answer`'s, held to
+`guardrails.parent_answers`.
+
+- **The driver.** The agent that created a session (`chi send --new` from Claude
+  Code), or the one you named (`chi send --new --driver NAME`, `/driver NAME` at a
+  terminal or the web), drives it: its messages are as `chi send`'s were. No extra
+  line, never counted; each resets the wake budget and releases the delegate
+  reports held back, as your message does (but never brings back an archived
+  session). A continue keeps the chain's driver; a fork and a delegate child have
+  none. Sessions an agent started before this change have no driver: name it with
+  `/driver claude` once.
+- **A visitor.** Any other agent's message, and another chi session's
+  `ask_session` question, is a visitor's: its turn opens with one line naming it
+  (`[From the agent codex, sent with chi send; your user did not type this.]`), it
+  is not taken as your prompt (no objectives audit, toolkit suggestion or context
+  candidates for it), and it counts toward `session.max_wakes` (10 in a row), the
+  budget delegate, task and context wake turns use: after ten wake turns a
+  visitor's message is refused, and the reverse. Your next message resets the
+  count. A refused visitor turn ends a `--wait` with exit 1, status `refused`,
+  `cancel_reason: max_wakes` and the sentence `session.max_wakes turns ran in a
+  row with no message from this session's owner; it runs again after their next
+  message`; a `chi send` without `--wait` is told nothing (it printed `sent`). You
+  hear it once per stretch in the session's UIs. A visitor's line merged into a
+  running turn is not counted (the step limit bounds that turn).
+
+Against an older worker or chi web (no `agent_sender` feature) an agent's message
+goes as `chi send`'s, today's behaviour.
 
 ## The commands
 
@@ -82,7 +125,7 @@ Exit codes, both commands:
 | 3 | `question` | chi waits for an answer: `question`, `answer_with` |
 | 3 | `waiting_for_owner` | (a participant's wait, `chi --remote NAME send --wait` with their link's token) their turn waits on the session's owner: a question or an approval it raised, or the owner's step-limit Continue; wait again |
 | 4 | `running` | `--timeout` passed; the turn goes on, wait again |
-| 1 | `refused` | (a participant's wait) their queued turn was refused before it ran: `cancel_reason` `revoked` (their link was revoked or expired), `outdated` (their link is an older chi's read-only one) or `cap_reached` (they spent their cap); no turn ran for it |
+| 1 | `refused` | the queued turn was refused before it ran, no turn ran for it: `cancel_reason` `max_wakes` (an agent's message as a visitor, past `session.max_wakes`: [driver and visitor](#an-agents-messages-driver-and-visitor)), or for a participant's wait `revoked` (their link was revoked or expired), `outdated` (their link is an older chi's read-only one) or `cap_reached` (they spent their cap) |
 | 1 | `failed`, `canceled`, `limit`, `removed`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened (`limit`: the turn ran out of steps and nobody can be asked, e.g. an older worker; `chi send ID -m '/continue yes'` continues it, except under `guardrails.parent_answers: hard`, where a parent's `/continue yes` is refused as its `chi answer --option Continue` is; `removed`: the `--queue` message waited for was taken back before it ran, no turn ran for it). `failed` adds `error_kind` (the provider error's kind: `credits`, `credits_held`, `rate_limited`, `server`, `auth`, `connection`, …) and `retryable` when known; `canceled` adds `cancel_reason` (`user`: a Stop in the web; `session_stopped`: a session stop, `chi sessions stop` or the web's; `worker_stopped`: the turn waited for (a `--queue` message's, a message's to an idle session, the running turn a message merged into or a plain `--wait` saw running) died with its worker (detail "its worker exited mid-turn"), settled by the next one; `hook`; `ctrl_c`; `manual`) and `stopped_by` (the hook that stopped it, e.g. `loop-guard`) when known |
 | 2 | (no JSON) | usage error, or an option the question doesn't offer |
 | 130 | `running` | Ctrl-C; the turn goes on |

@@ -15,6 +15,7 @@ require_relative "owner_prompt"
 require_relative "session"
 require_relative "steer"
 require_relative "tools/objectives_tool"
+require_relative "visitor"
 
 module Samagotchi
   autoload :Objectives, File.expand_path("objectives", __dir__)
@@ -107,7 +108,7 @@ module Samagotchi
       session = turn.session
       return false unless active?(Objectives.current(session.id, session.messages, state_dir: engine.session_state_dir))
       return false if engine.interface == :non_interactive
-      return false unless OwnerPrompt.turn?(author: turn.origin.author)
+      return false unless OwnerPrompt.turn?(author: turn.origin.author) && !Visitor.of?(turn.origin.client_id, session)
 
       worked_without_move?(session.messages)
     end

@@ -51,7 +51,7 @@ module Samagotchi
     class PairBoundary
       RULE = "pair-boundary"
       SOURCE = "core"
-      OWNER_VOICED = %w[delegate register_reminder cancel_reminder send_note forget_outputs task_create task_stop
+      OWNER_VOICED = %w[delegate register_reminder cancel_reminder send_note ask_session forget_outputs task_create task_stop
                         find_tools objectives schedule_task list_schedules cancel_schedule].freeze
       OWNER_VOICED_PREFIX = "delegate_"
       # The background task tools that read the owner's tasks (a pair turn

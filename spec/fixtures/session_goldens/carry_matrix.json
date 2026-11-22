@@ -257,6 +257,12 @@
     "respawn": "same",
     "continue": "absent"
   },
+  "driver": {
+    "fork": "absent",
+    "delegate": "absent",
+    "respawn": "same",
+    "continue": "same"
+  },
   "verify_fresh": {
     "fork": "absent",
     "delegate": "absent",

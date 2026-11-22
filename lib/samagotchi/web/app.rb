@@ -1126,7 +1126,7 @@ module Samagotchi
       # delegates: chi --remote sessions delete --dry-run asks for this first.
       DELETE_PLAN_FEATURE = "delete_plan_all"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, McpRoute::FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, McpRoute::FEATURE, Delivery::AGENT_FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and

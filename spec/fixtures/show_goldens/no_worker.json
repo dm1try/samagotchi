@@ -370,6 +370,15 @@
       "source": "core"
     },
     {
+      "name": "/driver",
+      "description": "show or name the agent that drives this session (NAME|none)",
+      "anytime": true,
+      "mid_turn": "anytime",
+      "local": false,
+      "uis": null,
+      "source": "core"
+    },
+    {
       "name": "/title",
       "description": "show or set this session's title (--clear: back to its first message)",
       "anytime": true,

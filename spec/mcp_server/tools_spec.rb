@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::McpServer::Tools do
   end
 
   describe "chi_ask" do
-    it "answers done with the reply, sent as chi send's queued turn" do
+    it "answers done with the reply, sent as an agent's queued turn (agent:mcp, no name given)" do
       session = make
       worker(reply: "the answer")
 
@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::McpServer::Tools do
       # The words in structuredContent too: a host may hand its model that alone.
       expect(result["structuredContent"]).to eq("status" => "done", "session_id" => session.id, "turn_id" => "t1",
                                                 "text" => "the answer")
-      expect(deliveries.first.last).to include(client_id: "cli:send", delivery: Samagotchi::Delivery::QUEUE)
+      expect(deliveries.first.last).to include(client_id: "agent:mcp", delivery: Samagotchi::Delivery::QUEUE)
     end
 
     it "follows a /continue yes under --remote to the continued turn: a chi_wait token, not ran as a command" do

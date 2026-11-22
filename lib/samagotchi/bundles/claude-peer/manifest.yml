@@ -1,6 +1,6 @@
 ---
 name: claude-peer
-version: 0.6.0
+version: 0.6.1
 scope: system
 description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as a note with its text (claude-outbox); /claude install-skill installs Claude's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -14,7 +14,7 @@ plugin:
 scripts:
   pair-remote: sha256:d7681f87a194e540b629564f84cad9f2d0a763197502c74614276ef88a8920cc
   pair: sha256:23d79bb8cf37517d20d15b6716f6666038858a4c5c09d3b85085d1e98475d6b3
-  chi-peer-SKILL.md: sha256:fc8c5f1ba9f3ed17f7d4291e3ee417959173089877e69e1cf99afc58fbee9bd6
+  chi-peer-SKILL.md: sha256:8d2266d3a13e9fe8091e0e431c08555eaf1b48fe154a6250ce171c8b0bd2d947
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.

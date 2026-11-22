@@ -66,9 +66,9 @@ RSpec.describe "Engine: a scratch session" do
 
   it "offers no delegate tools (a child would outlive it) and no send_note (the note would); memory_write is still declared" do
     names = Samagotchi::Engine.new(client: client, scratch: true).instance_variable_get(:@tools).names
-    expect(names).not_to include("delegate", "delegate_result", "send_note")
+    expect(names).not_to include("delegate", "delegate_result", "send_note", "ask_session")
     expect(names).to include("memory_write", "memory_read")
-    expect(Samagotchi::Engine.new(client: client).instance_variable_get(:@tools).names).to include("delegate", "send_note")
+    expect(Samagotchi::Engine.new(client: client).instance_variable_get(:@tools).names).to include("delegate", "send_note", "ask_session")
   end
 end
 

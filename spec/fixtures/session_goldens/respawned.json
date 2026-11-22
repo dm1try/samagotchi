@@ -199,6 +199,7 @@
   },
   "first_turn_id": "22222222-2222-4222-8222-222222222222",
   "first_turn_client_id": "delegate:0123abcd",
+  "driver": "agent:claude",
   "verify_fresh": {
     "author": "p:alice",
     "mode": "pair",

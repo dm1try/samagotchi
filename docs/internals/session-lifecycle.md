@@ -74,7 +74,7 @@ state. A cell is `:go`, `:wait` or the decider's own refusal reason; `SessionLif
 `:go`, `:wait` or `:refused` (resume's `live` and `starting` wait, restart's `fallback` goes).
 
 - **Delivery columns** (send, note, push, ring, fresh_verdict, leave, schedule, plugin, delegate, participant,
-  automatic) are generated at load from `SessionInbox::WakePolicy::ROWS`, unchanged: each row's `decide` on
+  agent, automatic) are generated at load from `SessionInbox::WakePolicy::ROWS`, unchanged: each row's `decide` on
   `CANONICAL[state]` (a worker asked for, no scratch file), `:start`/`:live` as go, `:starting`/`:stopped`/
   `:archived`/`:none` as wait, `:gone`/`:owned`/`:deleting` as themselves. `:off` and `:scratch` are op-local.
   `deleting` refuses every kind: `WakePolicy#refusal` before the write (nothing written), `#decide` after it (a

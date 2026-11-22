@@ -115,7 +115,15 @@ RSpec.describe Samagotchi::McpCommand do
       result = answers[2]["result"]
       expect(result["content"].first["text"]).to eq("from afar"), result.inspect
       expect(result["structuredContent"]).to include("status" => "done", "session_id" => session.id)
-      expect(delivered).to eq([[session.id, "hi", "cli:send"]])
+      # The host named by no marker: "mcp" (AgentCaller).
+      expect(delivered).to eq([[session.id, "hi", "agent:mcp"]])
+    end
+
+    it "names its messages by the host's agent marker (CLAUDECODE: agent:claude)" do
+      command = described_class.new(["serve"], access: remote, env: { "CLAUDECODE" => "1" })
+      expect(command.send(:build_tools).instance_variable_get(:@agent)).to eq("claude")
+      expect(described_class.new(["serve"], access: remote, env: {}).send(:build_tools).instance_variable_get(:@agent))
+        .to eq("mcp")
     end
   end
 end

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "agent_caller"
 require_relative "client_id"
 require_relative "delivery"
 require_relative "terminal_ui/formatting"
@@ -42,7 +43,6 @@ module Samagotchi
     include CLI::Command
     include CLI::ParentWait
 
-    CLIENT_ID = ClientId::CLI_SEND
     # The cap on one turn's images the Bridge checks.
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
     # A cut's outcomes in the Bridge's ack (SteerCut#cut_for_steer).
@@ -57,8 +57,8 @@ module Samagotchi
     def self.pause(seconds) = sleep(seconds)
 
     USAGE = <<~TEXT
-      Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set KEY=VALUE]... [--parent-answers LEVEL] [-m TEXT] [--image PATH]...
+      Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] [--as NAME] (ID|PREFIX)...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set KEY=VALUE]... [--parent-answers LEVEL] [--driver NAME] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
@@ -123,6 +123,17 @@ module Samagotchi
                     questions: hard, standard or soft, only stricter than
                     config.yml's guardrails.parent_answers (a looser one
                     warns; config.yml's applies)
+        --driver NAME
+                    (--new) name the agent NAME its driver (its messages go
+                    in uncounted, with no header); an agent that creates
+                    one drives it
+        --as NAME   send as the agent NAME (agent:NAME; lowercase letters,
+                    digits, - and _, up to 32), not as you. Without it, an
+                    agent's marker names the sender (CLAUDECODE: claude,
+                    CODEX_THREAD_ID: codex, AI_AGENT: its value; inside a
+                    chi session its own, chi-ID8, and --as is ignored).
+                    An agent's message restarts no stopped session, brings
+                    back no archived one and runs no ! line
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -191,6 +202,8 @@ module Samagotchi
       f.value "--timeout"
       f.value "--format"
       f.value "--turn"
+      f.value "--as", key: :as
+      f.value "--driver", key: :driver
       # Starting a turn in every live session at once is too easy to do
       # by accident.
       f.refuse "--all", "there is no --all: name the sessions"
@@ -258,8 +271,10 @@ module Samagotchi
     # @param argv [Array<String>] the arguments after "send"
     # @param access [SessionAccess::Local, nil] where the sessions are;
     #   default this machine's, in +state_dir+
-    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
+    # @param env [Hash] where the agent markers are read (ENV; specs pass their own)
+    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil, env: ENV)
       @argv = argv.dup
+      @env = env
       @stdin = stdin
       @stdout = stdout
       @stderr = stderr
@@ -279,6 +294,9 @@ module Samagotchi
       @waiting = options[:wait] == true
       @cut = options[:cut] == true
       @queue = options[:queue] == true
+      return CLI::Exit::USAGE unless (@agent = agent_name(options))
+
+      @agent = nil if @agent == :owner
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
       # Before the wait-only case, which would drop the images.
       return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
@@ -377,7 +395,7 @@ module Samagotchi
       return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
 
-      %i[dir model continues thinking toolkit].each { |key| return usage_error("--#{key} needs --new") if options[key] }
+      %i[dir model continues thinking toolkit driver].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       TOOLKIT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") unless Array(options[key]).empty? }
       LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
       return usage_error("--set needs --new") unless Array(options[:sets]).empty?
@@ -396,6 +414,8 @@ module Samagotchi
 
     def new_options(options)
       return usage_error("--new takes no session ids: it starts one session") unless options[:ids].empty?
+      return usage_error("--driver takes an agent's name: lowercase letters, digits, - and _") if options[:driver] && !AgentCaller.clean(options[:driver])
+      return usage_error("--continues keeps the previous session's driver; leave out --driver") if options[:driver] && options[:continues]
 
       if options[:continues]
         taken = [("--dir" if options[:dir])] +
@@ -564,6 +584,8 @@ module Samagotchi
       setup = options[:setup_words] || SessionSetup.from_request(llm_context: options[:llm_context], thinking: options[:thinking],
                                                                  toolkit: options[:toolkit_value], settings: options[:settings],
                                                                  parent_answers: options[:parent_answers])
+      # --driver: the agent the owner names as its driver (Session#driver).
+      start[:driver] = ClientId.agent(AgentCaller.clean(options[:driver])) if options[:driver]
       SessionAccess::NewSession.new(**start, working_directory: options[:dir], model_name: options[:model], setup: setup)
     end
 
@@ -727,9 +749,24 @@ module Samagotchi
 
     SENT_COMMAND = "sent as a session command"
 
-    # chi send's client id, or chi answer's for a parent agent's /continue
-    # yes (the worker holds that to its guardrails.parent_answers).
-    def client_id_for(prompt) = ParentGate.parent_continue?(prompt) ? ClientId::CLI_ANSWER : CLIENT_ID
+    # chi send's client id (an agent's, agent:<name>, when one sends:
+    # #agent_name), or chi answer's for a parent agent's /continue yes (the
+    # worker holds that to its guardrails.parent_answers): an agent's
+    # always is one, a marker-less process's when ParentGate says so.
+    def client_id_for(prompt)
+      continue = @agent ? TurnFlow.continue_yes?(prompt) : ParentGate.parent_continue?(prompt, env: @env)
+      continue ? ClientId::CLI_ANSWER : AgentCaller.send_id(name: @agent)
+    end
+
+    # Who sends (AgentCaller.send_name): the agent's name, :owner for none,
+    # or nil after a usage error (an --as that is not a name).
+    def agent_name(options)
+      name, error, note = AgentCaller.send_name(as: options[:as], env: @env)
+      return usage_error(error) && nil if error
+
+      @stderr.puts("chi send: #{note}") if note
+      name || :owner
+    end
 
     # Whether +text+ may be a session command, which only its worker knows
     # (a bundle's too).

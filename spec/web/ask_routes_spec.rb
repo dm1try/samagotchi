@@ -510,6 +510,18 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(deliveries.last.last).to include(client_id: "cli:answer")
     end
 
+    it "holds an agent's /continue yes (agent:<name>) as chi send's and sends it as cli:answer" do
+      parent_answers_config("soft")
+      hard = make(parent_answers: "hard")
+      worker(accepted(nil, "command_id" => "c1"))
+
+      expect(ask(hard, { prompt: "/continue yes", client_id: "agent:claude" }))
+        .to match([403, include("error" => "parent_continue_refused")])
+      expect(deliveries).to be_empty
+      expect(ask(make, { prompt: "/continue yes", client_id: "agent:claude" }).first).to eq(200)
+      expect(deliveries.last.last).to include(client_id: "cli:answer")
+    end
+
     it "holds a parent's line to config.yml's parent_answers when no session file is left to read (fails closed)" do
       parent_answers_config("hard")
       session = make

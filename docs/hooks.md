@@ -627,6 +627,7 @@ stripped of surrounding whitespace, except file text, an edit's
 | `cancel_schedule` | `name` | — | `all` |
 | `list_sessions` | — | — | `cwd` |
 | `send_note` | `text` | — | `session` |
+| `ask_session` | `question` | — | `session`, `token` |
 | `context_read` | `name` | — | `offset`, `limit` |
 | `delegate` | `task` | — | `model`, `session`, `cwd`, `toolkit`, `wait`, `timeout` |
 | `delegate_result` | — | — | `session`, `timeout` |

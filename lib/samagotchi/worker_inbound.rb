@@ -334,7 +334,10 @@ module Samagotchi
                                                 what: "command", reason: "not_permitted")
         return true
       end
-      return false unless CommandIntake.allowed?(origin.client_id) || CommandIntake.shell_line?(text)
+      # A ! line from a sender that may not run one (an agent's too:
+      # CommandIntake.refused?, asked first) is queued for its refusal
+      # (Worker::CommandQueue#command_result).
+      return false unless CommandIntake.refused?(text, origin.client_id) || CommandIntake.allowed?(origin.client_id)
 
       @queue_command.call(text, origin.client_id, after_file, origin.enqueued_id)
       true

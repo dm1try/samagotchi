@@ -208,6 +208,60 @@ RSpec.describe Samagotchi::SendCommand do
       expect(events.map { |e| e[:type] }).to eq(%i[command_queued turn_enqueued])
     end
 
+    # An agent's chi send (AgentCaller): its marker or --as names it.
+    describe "an agent's message" do
+      def run_env(env, *argv)
+        described_class.new(argv, stdin: StringIO.new(""), stdout: out, stderr: err, state_dir: tmpdir,
+                                  access: backend_access(tmpdir), env: env).run
+      end
+
+      it "goes as agent:claude under CLAUDECODE, agent:NAME with --as, and the owner's chi send's without" do
+        a = make(owner: "worker")
+        serve(a)
+        expect(run_env({ "CLAUDECODE" => "1" }, "-m", "one", short(a))).to eq(0), err.string
+        expect(run_env({}, "--as", "Builder", "-m", "two", short(a))).to eq(0), err.string
+        expect(run_env({}, "-m", "three", short(a))).to eq(0), err.string
+        expect(inputs_of(a).sort_by { |i| i["prompt"] }.map { |i| [i["prompt"], i["client_id"]] })
+          .to eq([%w[one agent:claude], %w[three cli:send], %w[two agent:builder]])
+      end
+
+      it "takes chi's own marker over CLAUDECODE and --as, saying --as is ignored" do
+        a = make(owner: "worker")
+        serve(a)
+        env = { "CLAUDECODE" => "1", "SAMAGOTCHI_PARENT_SESSION" => "0b9e1c2a-1111-4222-8333-444455556666" }
+        expect(run_env(env, "--as", "bob", "-m", "hi", short(a))).to eq(0), err.string
+        expect(inputs_of(a).map { |i| i["client_id"] }).to eq(["agent:chi-0b9e1c2a"])
+        expect(err.string).to include("--as ignored: this runs inside a chi session")
+      end
+
+      it "names the new session's driver with --new --driver; the agent that creates one drives it" do
+        dir = Dir.mktmpdir("send-driver", tmpdir)
+        allow(Process).to receive(:spawn).and_return(12_345)
+        expect(run_env({}, "--new", "--dir", dir, "--driver", "Claude", "-m", "hi")).to eq(0), err.string
+        expect(run_env({ "CLAUDECODE" => "1" }, "--new", "--dir", dir, "-m", "hey")).to eq(0), err.string
+        drivers = Samagotchi::Session.list(state_dir: tmpdir).to_h { |s| [s.first_preview, s.driver] }
+        expect(drivers).to eq("hi" => "agent:claude", "hey" => "agent:claude")
+        expect(run_env({}, "--new", "--dir", dir, "--driver", "a b", "-m", "x")).to eq(2)
+        expect(run_env({}, "--driver", "claude", "-m", "x", "abc")).to eq(2)
+      end
+
+      it "refuses an --as that is not a name" do
+        expect(run_env({}, "--as", "two words", "-m", "hi", "abc")).to eq(2)
+        expect(err.string).to include("--as takes a name")
+      end
+
+      it "sends an agent's /continue yes as chi answer's, at a terminal too (--as)" do
+        a = make(owner: "worker")
+        queued = []
+        serve(a, on_command: ->(command) { queued << command })
+        allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(false)
+        expect(run_env({}, "--as", "claude", "-m", "/continue yes", short(a))).to eq(0), err.string
+        expect(run_env({}, "--as", "claude", "-m", "/model qwen", short(a))).to eq(0), err.string
+        expect(queued.map { |c| c.to_h.slice(:client_id, :line) })
+          .to eq([{ client_id: "cli:answer", line: "/continue yes" }, { client_id: "agent:claude", line: "/model qwen" }])
+      end
+    end
+
     # A parent agent's /continue yes is an answer to the step-limit question:
     # it goes as chi answer's (cli:answer), so the worker holds it to its
     # guardrails.parent_answers, and chi send refuses it first under hard.

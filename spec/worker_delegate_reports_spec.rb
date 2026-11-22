@@ -667,6 +667,84 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         pop!(wake_turns, "the wake turn")
       end
 
+      # An agent's message (agent:<name>): its session's driver's is as chi
+      # send's was; any other agent's is a visitor's (Visitor), counted
+      # toward session.max_wakes, the budget these wakes use.
+      describe "an agent's message" do
+        def send_as(prompt, client_id)
+          id = Samagotchi::SessionInbox.new_enqueued_id
+          Samagotchi::SessionManager.write_turn_input(parent.id, prompt: prompt, client_id: client_id, enqueued_id: id,
+                                                                 state_dir: tmpdir)
+          id
+        end
+
+        def drive_by(driver)
+          parent.driver = driver
+          save(parent)
+        end
+
+        it "from the driver resets the wake budget: a held report wakes again after it, never counted itself" do
+          max_wakes[0] = 1
+          drive_by("agent:claude")
+          start_worker(parent)
+          child_answers("one")
+          pop!(wake_turns, "the wake turn")
+          wait_for("the report's ring to be taken") { rings.empty? }
+          child_answers("two")
+          wait_for("the max_wakes notice") { drain.any? { |e| e[:type] == :hook_notice } }
+
+          # Two driver's turns with a budget of 1: neither is counted, neither has a header.
+          send_as("hi", "agent:claude")
+          prompt, kwargs, lines = next_turn
+          expect([prompt, lines.map(&:text)]).to eq(["hi", ["session: #{child.id}\nstatus: answered\n---\ntwo"]])
+          expect(kwargs).not_to have_key(:opener_source)
+          send_as("again", "agent:claude")
+          expect(next_turn.first).to eq("again")
+          child_answers("three")
+          pop!(wake_turns, "the wake turn after the driver's message")
+        end
+
+        it "from the driver never brings back an archived session" do
+          drive_by("agent:claude")
+          allow(Samagotchi::ArchiveStore).to receive(:user_input)
+          start_worker(parent)
+          send_as("hi", "agent:claude")
+          next_turn
+          send_as("hello", "web:tab1")
+          next_turn
+          expect(Samagotchi::ArchiveStore).to have_received(:user_input).once
+        end
+
+        it "from a visitor opens with its sender, counts, and is refused past the budget until the owner writes" do
+          max_wakes[0] = 2
+          drive_by("agent:claude")
+          start_worker(parent)
+          2.times do |i|
+            send_as("visit #{i}", "agent:codex")
+            prompt, kwargs, = next_turn
+            expect([prompt, kwargs[:opener_source]]).to eq(["visit #{i}", "agent:codex"])
+          end
+
+          refused = send_as("visit 2", "agent:codex")
+          wait_for("the refused turn's record") { Samagotchi::TurnCheckpoint.settled_turn(parent_dir, refused) }
+          expect(Samagotchi::TurnCheckpoint.settled_turn(parent_dir, refused))
+            .to have_attributes(outcome: "canceled", cancel_reason: "max_wakes")
+          wait_for("the dequeue") { drain.any? { |e| e[:type] == :turn_dequeued && e[:enqueued_id] == refused } }
+          send_as("visit 3", "agent:codex")
+          loop_rounds
+          expect(turns).to be_empty
+          notices = drain.select { |e| e[:type] == :hook_notice }
+          expect(notices.map { |e| e[:text] })
+            .to eq(["codex's message was not run: 2 turns ran in a row with no message from you " \
+                    "(session.max_wakes); agents' messages run again after your next one"])
+
+          send_as("hello", "web:tab1")
+          expect(next_turn.first).to eq("hello")
+          send_as("visit 4", "agent:codex")
+          expect(next_turn.first).to eq("visit 4")
+        end
+      end
+
       context "with the real start grace" do
         let(:wake_start_grace) { Samagotchi::Worker::WAKE_START_GRACE }
 

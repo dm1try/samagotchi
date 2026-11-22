@@ -34,7 +34,9 @@ module Samagotchi
       end
 
       # A /continue yes (or bare /continue) from a parent agent's process.
-      def self.parent_continue?(prompt) = TurnFlow.continue_yes?(prompt) && Guardrails::ParentApprovals.parent_process?
+      def self.parent_continue?(prompt, env: ENV)
+        TurnFlow.continue_yes?(prompt) && Guardrails::ParentApprovals.parent_process?(env: env)
+      end
 
       # The first refusal of a parent's /continue yes among targets whose
       # own parent_answers are +values+, held to this process's config.yml

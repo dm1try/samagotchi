@@ -33,8 +33,10 @@ module Samagotchi
 
     # @param access [SessionAccess::Local, SessionAccess::Remote, nil]
     #   where the sessions are; default this machine's, in +state_dir+
-    def initialize(argv, access: nil, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param env [Hash] where the agent markers are read (ENV; specs pass their own)
+    def initialize(argv, access: nil, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, env: ENV)
       @argv = argv.dup
+      @env = env
       @access = access
       @stdin = stdin
       @stdout = stdout
@@ -73,12 +75,15 @@ module Samagotchi
 
     def build_tools
       require_relative "mcp_server/tools"
+      require_relative "agent_caller"
       access = @access || begin
         require_relative "session_access/local"
         SessionAccess::Local.new(state_dir: @state_dir)
       end
       load_for_calls unless access.remote?
-      McpServer::Tools.new(access)
+      # The host's agent marker names its messages (CLAUDECODE: claude), else
+      # "mcp" (AgentCaller).
+      McpServer::Tools.new(access, agent: AgentCaller.name(env: @env) || McpServer::Tools::DEFAULT_AGENT)
     end
 
     def load_for_calls

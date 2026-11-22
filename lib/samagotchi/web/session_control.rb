@@ -266,7 +266,7 @@ module Samagotchi
       # @return [Array, nil] the response, or nil to go on
       def turn_refusal(id, body, prompt, images)
         vision = body["check_vision"] == true && !images.empty?
-        return nil unless vision || App::CLI_SEND_IDS.include?(body["client_id"])
+        return nil unless vision || ClientId.parent_line?(body["client_id"])
 
         session = @session_class.load(id, state_dir: default_state_dir)
         refused = parent_gate(prompt, client_id: body["client_id"], values: [session.parent_answers])

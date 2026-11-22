@@ -223,6 +223,32 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  # compat shim agent_client_id: a chi web from before agent: senders gets
+  # chi send's id, for a turn and for a create; one that lists the feature
+  # gets the agent's own.
+  describe "an agent's message" do
+    def body_of(calls, path_end)
+      calls.find { |_m, path, _o| path.end_with?(path_end) }&.last&.dig(:body)
+    end
+
+    it "goes as cli:send to a chi web without agent_sender, as agent:<name> to one with" do
+      sent = [%w[session_commands], ["session_commands", Samagotchi::Delivery::AGENT_FEATURE]].map do |features|
+        access, calls = scripted([202, { status: "accepted", enqueued_id: "e1" }],
+                                 info: { app: "chi-web", version: "9.9.9", features: features })
+        access.deliver_turn("s-1", prompt: "hi", client_id: "agent:claude", images: [])
+        body_of(calls, "/turn")[:client_id]
+      end
+      expect(sent).to eq(%w[cli:send agent:claude])
+      expect(Samagotchi::Web::App::INFO_FEATURES).to include(Samagotchi::Delivery::AGENT_FEATURE)
+    end
+
+    it "leaves any other id as it is, asking chi web nothing for it" do
+      access, calls = scripted([202, { status: "accepted", enqueued_id: "e1" }])
+      access.deliver_turn("s-1", prompt: "hi", client_id: "cli:send", images: [])
+      expect(body_of(calls, "/turn")[:client_id]).to eq("cli:send")
+    end
+  end
+
   describe "a delete plan (chi --remote sessions delete --dry-run)" do
     it "names the feature chi web lists (Web::App::DELETE_PLAN_FEATURE), and that chi web lists it" do
       expect(described_class::DELETE_PLAN_FEATURE).to eq(Samagotchi::Web::App::DELETE_PLAN_FEATURE)

@@ -23,6 +23,7 @@ require_relative "list_schedules"
 require_relative "cancel_schedule"
 require_relative "list_sessions"
 require_relative "send_note"
+require_relative "ask_session"
 require_relative "context_read"
 require_relative "delegate"
 require_relative "delegate_result"
@@ -62,6 +63,7 @@ module Samagotchi
         CancelSchedule,
         ListSessions,
         SendNote,
+        AskSession,
         ContextRead,
         Delegate,
         DelegateResult,
@@ -122,6 +124,9 @@ module Samagotchi
         end,
         ListSessions::NAME => ->(call, kctx) { ListSessions.call(call[:content], peers: kctx.peers, cwd: call[:cwd]) },
         SendNote::NAME => ->(call, kctx) { SendNote.call(call[:content], session: call[:session], peers: kctx.peers) },
+        AskSession::NAME => lambda do |call, kctx|
+          AskSession.call(call[:content], session: call[:session], token: call[:token], peers: kctx.peers)
+        end,
         ContextRead::NAME => lambda do |call, kctx|
           ContextRead.call(call[:content], offset: call[:offset], limit: call[:limit], peers: kctx.peers)
         end,

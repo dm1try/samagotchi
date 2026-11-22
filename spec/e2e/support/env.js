@@ -166,8 +166,11 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
     env.procs.push(fake);
     await waitFor(`http://127.0.0.1:${fakePort}/v1/models`, "fake_openai.py", fake);
 
-    // Nothing from the caller's chi settings leaks in (SAMAGOTCHI_WEB_PORT, …).
-    const childEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("SAMAGOTCHI_")));
+    // Nothing from the caller's chi settings leaks in (SAMAGOTCHI_WEB_PORT, …),
+    // nor an agent's markers (a run from Claude Code would send as an agent).
+    const agentMarkers = ["CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID"];
+    const childEnv = Object.fromEntries(Object.entries(process.env)
+      .filter(([k]) => !k.startsWith("SAMAGOTCHI_") && !agentMarkers.includes(k)));
     // A fake gh (support/fake_gh.sh) for the github-pr bundle's line links:
     // first on PATH, so no scenario reaches GitHub.
     const bin = path.join(root, "bin");
