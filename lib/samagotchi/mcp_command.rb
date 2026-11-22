@@ -75,12 +75,15 @@ module Samagotchi
 
     def build_tools
       require_relative "mcp_server/tools"
+      require_relative "agent_caller"
       access = @access || begin
         require_relative "session_access/local"
         SessionAccess::Local.new(state_dir: @state_dir)
       end
       load_for_calls unless access.remote?
-      McpServer::Tools.new(access)
+      # The host's agent marker names its messages (CLAUDECODE: claude), else
+      # "mcp" (AgentCaller).
+      McpServer::Tools.new(access, agent: AgentCaller.name(env: @env) || McpServer::Tools::DEFAULT_AGENT)
     end
 
     def load_for_calls

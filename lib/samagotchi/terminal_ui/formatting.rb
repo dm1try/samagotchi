@@ -106,7 +106,11 @@ module Samagotchi
       STEER_CUT_FOR = { "chi_send" => "a message sent with chi send", "parent_agent" => "the parent agent's message" }.freeze
 
       def format_steer_cut_line(event)
-        paint("↪ cut in for #{STEER_CUT_FOR.fetch(event[:source].to_s, "your message")}", 90)
+        source = event[:source].to_s
+        whose = if ClientId.agent?(source) then "a message from the agent #{ClientId.agent_name(source)}"
+                else STEER_CUT_FOR.fetch(source, "your message")
+                end
+        paint("↪ cut in for #{whose}", 90)
       end
 
       # What a line submitted at the open prompt says became of it: a plain
@@ -245,6 +249,8 @@ module Samagotchi
           return "task #{Tools::TaskRecord.short_id(task)} finished" unless task.empty?
         when "schedule"
           return "schedule"
+        when "agent"
+          return "agent #{ClientId.agent_name(id)}"
         end
 
         ClientId.sender(id).label || fallback

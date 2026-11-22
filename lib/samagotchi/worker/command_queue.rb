@@ -218,9 +218,12 @@ module Samagotchi
       def confirm?(command) = ClientId.interactive?(command.client_id) && !command.card
 
       # Whether +command+ is a parent agent's (chi answer's marker, which chi
-      # send and a parent's attach give a /continue yes too): held to
+      # send and a parent's attach give a /continue yes too, or an agent's
+      # id that reached the worker unmapped): held to
       # guardrails.parent_answers (SessionCommands#continue_answer).
-      def as_parent?(command) = command.client_id.to_s == ClientId::CLI_ANSWER
+      def as_parent?(command)
+        command.client_id.to_s == ClientId::CLI_ANSWER || ClientId.agent?(command.client_id)
+      end
 
       # Whether +command+ is a user's at a UI (a web tab, a chi TUI, a card's
       # click), not a parent agent's: only such a line loosens

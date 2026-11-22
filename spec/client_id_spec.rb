@@ -24,7 +24,8 @@ RSpec.describe Samagotchi::ClientId do
       "plugin" => false,
       "relay:1234abcd" => false,
       "participant:p_0123abcd" => true,
-      "review:p_0123abcd" => true
+      "review:p_0123abcd" => true,
+      "agent:claude" => false
     }
   end
 

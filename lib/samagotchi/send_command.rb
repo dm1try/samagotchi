@@ -57,7 +57,7 @@ module Samagotchi
     def self.pause(seconds) = sleep(seconds)
 
     USAGE = <<~TEXT
-      Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
+      Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] [--as NAME] (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [--set KEY=VALUE]... [--parent-answers LEVEL] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
@@ -123,6 +123,13 @@ module Samagotchi
                     questions: hard, standard or soft, only stricter than
                     config.yml's guardrails.parent_answers (a looser one
                     warns; config.yml's applies)
+        --as NAME   send as the agent NAME (agent:NAME; lowercase letters,
+                    digits, - and _, up to 32), not as you. Without it, an
+                    agent's marker names the sender (CLAUDECODE: claude,
+                    CODEX_THREAD_ID: codex, AI_AGENT: its value; inside a
+                    chi session its own, chi-ID8, and --as is ignored).
+                    An agent's message restarts no stopped session, brings
+                    back no archived one and runs no ! line
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -191,6 +198,7 @@ module Samagotchi
       f.value "--timeout"
       f.value "--format"
       f.value "--turn"
+      f.value "--as", key: :as
       # Starting a turn in every live session at once is too easy to do
       # by accident.
       f.refuse "--all", "there is no --all: name the sessions"
@@ -281,6 +289,9 @@ module Samagotchi
       @waiting = options[:wait] == true
       @cut = options[:cut] == true
       @queue = options[:queue] == true
+      return CLI::Exit::USAGE unless (@agent = agent_name(options))
+
+      @agent = nil if @agent == :owner
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
       # Before the wait-only case, which would drop the images.
       return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
@@ -729,9 +740,31 @@ module Samagotchi
 
     SENT_COMMAND = "sent as a session command"
 
-    # chi send's client id, or chi answer's for a parent agent's /continue
-    # yes (the worker holds that to its guardrails.parent_answers).
-    def client_id_for(prompt) = ParentGate.parent_continue?(prompt, env: @env) ? ClientId::CLI_ANSWER : AgentCaller.send_id
+    # chi send's client id (an agent's, agent:<name>, when one sends:
+    # #agent_name), or chi answer's for a parent agent's /continue yes (the
+    # worker holds that to its guardrails.parent_answers): an agent's
+    # always is one, a marker-less process's when ParentGate says so.
+    def client_id_for(prompt)
+      continue = @agent ? TurnFlow.continue_yes?(prompt) : ParentGate.parent_continue?(prompt, env: @env)
+      continue ? ClientId::CLI_ANSWER : AgentCaller.send_id(name: @agent)
+    end
+
+    # Who sends (AgentCaller.name): the agent's name, :owner for none, or
+    # nil after a usage error (an --as that is not a name). Inside a chi
+    # session --as is ignored, said on stderr.
+    def agent_name(options)
+      as = options[:as]
+      if as
+        clean = AgentCaller.clean(as)
+        unless clean
+          usage_error("--as takes a name: lowercase letters, digits, - and _, up to #{ClientId::AGENT_NAME_MAX}, not #{as}")
+          return nil
+        end
+        @stderr.puts("chi send: --as ignored: this runs inside a chi session, which names the sender") if AgentCaller.inside_chi?(env: @env)
+        as = clean
+      end
+      AgentCaller.name(env: @env, as: as) || :owner
+    end
 
     # Whether +text+ may be a session command, which only its worker knows
     # (a bundle's too).

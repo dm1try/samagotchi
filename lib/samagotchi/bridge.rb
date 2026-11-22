@@ -809,7 +809,7 @@ module Samagotchi
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
                 Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE,
-                WorkingSet::ITEM_FEATURE, BlockFix::FEATURE].freeze
+                WorkingSet::ITEM_FEATURE, BlockFix::FEATURE, Delivery::AGENT_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -1095,9 +1095,8 @@ module Samagotchi
       client_id = fetched(parsed, "client_id")
       return UNNAMED_COMMAND_REPLY if client_id.to_s.strip.empty?
 
-      # Only the owner's senders and chi answer's (CommandIntake.allowed?),
-      # as for a command sent as a message.
-      unless CommandIntake.allowed?(client_id)
+      # As for a command sent as a message (CommandIntake: refused? first, then allowed?).
+      if CommandIntake.refused?(line, client_id) || !CommandIntake.allowed?(client_id)
         Log.warn(:bridge, "command_refused", client_id: client_id)
         return [{}, 403, { error: CommandIntake::REFUSED_ERROR, detail: CommandIntake.refusal(line) }]
       end
@@ -1342,11 +1341,11 @@ module Samagotchi
       # schedule's or a plugin's /word line is a prompt, its shell line
       # refused (403, nothing queued).
       if images.empty? && @on_command && command_registry.command?(prompt.to_s)
-        if CommandIntake.allowed?(client_id)
-          return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline, author: author)
-        elsif CommandIntake.shell_line?(prompt)
+        if CommandIntake.refused?(prompt, client_id) # an agent's ! line too: before allowed? would queue it
           Log.warn(:bridge, "shell_line_refused", client_id: client_id)
           return [{}, 403, { error: CommandIntake::REFUSED_ERROR, detail: CommandIntake::REFUSED }]
+        elsif CommandIntake.allowed?(client_id)
+          return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline, author: author)
         end
       end
       return CommandIntake::PRIVATE_REFUSED if command_registry.private_args?(prompt.to_s) # never a message

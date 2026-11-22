@@ -261,6 +261,9 @@ module Samagotchi
           if ClientId.participant?(client_id) && !worker_has?(client, Delivery::PARTICIPANT_ID_FEATURE)
             client_id = ClientId.legacy_participant(client_id)
           end
+          # compat shim agent_client_id: a worker from before agent: reads
+          # an agent's line as chi send's (today's owner row).
+          client_id = ClientId::CLI_SEND if ClientId.agent?(client_id) && !worker_has?(client, Delivery::AGENT_FEATURE)
 
           begin
             options = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id }
@@ -302,6 +305,13 @@ module Samagotchi
           return DeliverResult.new(status: :timeout, via: :file,
                                    ack: { "error" => "worker_timeout",
                                           "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
+        end
+        # compat shim agent_client_id: a worker still holding the session
+        # with its Bridge gone (exiting) may be an older one, which reads
+        # no agent: id: chi send's instead (a downgrade to today's owner
+        # row, not a refusal). A worker that starts for the file reads it.
+        if ClientId.agent?(client_id) && delivery_presence(manager, session_id, state_dir).owned?
+          client_id = ClientId::CLI_SEND
         end
         input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
         input[:images] = images unless images.empty?

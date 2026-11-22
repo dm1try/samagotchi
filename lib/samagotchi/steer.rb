@@ -120,6 +120,9 @@ module Samagotchi
                            "Don't call delegate_result for it; to retry or redirect that child, use delegate with " \
                            "its session:.]"
     }.freeze
+    # A line an agent sent (its source the agent's client id, agent:<name>):
+    # never taken for the user's. Its name is cleaned again as it is read.
+    AGENT_STEER_HEADER = "[Steer from the agent %s, sent with chi send, #{HEADER_TAIL}".freeze
     # A line from a client chi doesn't know (AUTOMATIC_SOURCE_PREFIX):
     # never taken for the user's.
     AUTOMATIC_HEADER = "[Automatic input from %s, sent mid-task; not your user's message. " \
@@ -158,10 +161,15 @@ module Samagotchi
     # The saved source of a worker input line from +client_id+, as its
     # ClientId::Sender row says: nil for the user (no client id, the web, an
     # attached TUI); automatic:<client id> for a client that is no human's
-    # and chi doesn't name (an unknown id is not the user).
+    # and chi doesn't name (an unknown id is not the user); a named sender's
+    # (an agent's) the client id itself, agent:<name>.
     def source_for_client(client_id)
       source = ClientId.sender(client_id).source
-      source == :automatic ? "#{AUTOMATIC_SOURCE_PREFIX}#{client_id}" : source
+      case source
+      when :automatic then "#{AUTOMATIC_SOURCE_PREFIX}#{client_id}"
+      when :named then client_id.to_s
+      else source
+      end
     end
 
     # The header for a steer or merged input message, else nil. No source
@@ -177,6 +185,7 @@ module Samagotchi
 
       source = (message[:source] || message["source"]).to_s
       return HEADERS[source] if HEADERS.key?(source)
+      return format(AGENT_STEER_HEADER, ClientId.agent_name(source)) if ClientId.agent?(source)
       return automatic_header(source.delete_prefix(AUTOMATIC_SOURCE_PREFIX)) if source.start_with?(AUTOMATIC_SOURCE_PREFIX)
 
       source = "user" if source.empty?
@@ -347,11 +356,12 @@ module Samagotchi
 
     # The senders whose message may cut a generation that has only been
     # thinking (Engine#cut_for_steer): the user (no source), chi send, a
-    # parent agent. A plugin's never does.
+    # parent agent, and an agent (its source agent:<name>). A plugin's never
+    # does.
     CUT_SOURCES = ["", "user", "chi_send", "parent_agent"].freeze
 
     def cuts?(source)
-      CUT_SOURCES.include?(source.to_s)
+      CUT_SOURCES.include?(source.to_s) || ClientId.agent?(source)
     end
 
     # A steer a person sent: what a recap and a side question keep.

@@ -25,6 +25,7 @@ RSpec.describe Samagotchi::CommandIntake do
       "plugin" => false,
       "relay:1234abcd" => false,
       "participant:p_0123abcd" => false,
+      "agent:claude" => true,
       "other" => false
     }
   end
@@ -54,5 +55,12 @@ RSpec.describe Samagotchi::CommandIntake do
     expect(described_class.refused?("!ls", "cli:send")).to be(false)
     expect(described_class.refused?("!ls", nil)).to be(true)
     expect(described_class.refused?("!ls", Samagotchi::ClientId::FIRST_PROMPT)).to be(false)
+  end
+
+  it "lets an agent send session commands but never a shell line; chi answer keeps its rights" do
+    expect(described_class.refused?("!ls", "agent:claude")).to be(true)
+    expect(described_class.refused?("/model x", "agent:claude")).to be(false)
+    expect(described_class.refused?("!ls", "cli:answer")).to be(false)
+    expect([described_class.shell_allowed?("agent:claude"), described_class.shell_allowed?("cli:answer")]).to eq([false, true])
   end
 end

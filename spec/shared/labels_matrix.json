@@ -39,6 +39,11 @@
       { "client_id": "plugin", "expected": "plugin" },
       { "client_id": "participant:p_0123abcd", "expected": "invited" },
       { "client_id": "review:p_0123abcd", "expected": "invited" },
+      { "client_id": "agent:claude", "expected": "agent claude" },
+      { "client_id": "agent:Codex", "expected": "agent codex" },
+      { "client_id": "agent:chi-0b9e1c2a", "expected": "agent chi-0b9e1c2a" },
+      { "client_id": "agent:", "expected": "agent agent" },
+      { "client_id": "agent:a b]\n[x", "expected": "agent abx" },
       { "client_id": "system:schedule:1234abcd", "expected": "schedule" },
       { "client_id": "system:schedule:", "expected": "schedule" },
       { "client_id": "web:restart", "expected": "web" },
@@ -85,6 +90,8 @@
       { "event": { "source": "user" }, "expected": "↪ cut in for your message" },
       { "event": { "source": "chi_send" }, "expected": "↪ cut in for a message sent with chi send" },
       { "event": { "source": "parent_agent" }, "expected": "↪ cut in for the parent agent's message" },
+      { "event": { "source": "agent:claude" }, "expected": "↪ cut in for a message from the agent claude" },
+      { "event": { "source": "agent:chi-0b9e1c2a" }, "expected": "↪ cut in for a message from the agent chi-0b9e1c2a" },
       { "event": { "source": "something-else" }, "expected": "↪ cut in for your message" }
     ]
   },

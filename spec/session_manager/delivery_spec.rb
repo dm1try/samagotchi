@@ -331,6 +331,28 @@ RSpec.describe Samagotchi::SessionManager do
         expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::PARTICIPANT_ID_FEATURE)
       end
 
+      # compat shim agent_client_id: a worker from before agent: senders
+      # reads an agent's line as chi send's.
+      it "sends an agent's turn as cli:send to a worker without agent_sender, agent:<name> to one with" do
+        own("worker")
+        sent = {}
+        [%w[delivery], %w[delivery agent_sender]].each do |features|
+          bridge = client_naming(features)
+          allow(bridge).to receive(:post_turn) { |**options| (sent[features.size] = options[:client_id]) && Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}') }
+          expect(described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "q", state_dir: tmpdir,
+                                                          bridge: -> { bridge }).status).to eq(:accepted)
+        end
+        expect(sent).to eq(1 => "cli:send", 2 => "agent:claude")
+        expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::AGENT_FEATURE)
+      end
+
+      it "writes an agent's file as cli:send while a worker with no readable Bridge holds the session" do
+        own("worker")
+        expect(described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "q", state_dir: tmpdir,
+                                                        bridge: -> {}).status).to eq(:accepted)
+        expect(input_files.map { |path| JSON.parse(File.read(path))["client_id"] }).to eq(["cli:send"])
+      end
+
       it "refuses a participant's Revise to a worker without participant_revise in their words; the owner's goes" do
         own("worker")
         revises = { revises: { turn_id: "123e4567-e89b-12d3-a456-426614174001" } }

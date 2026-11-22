@@ -165,7 +165,9 @@ module Samagotchi
       #   session asked and its chain's newest link); none: config.yml's
       #   value alone (fail closed)
       # @return [String, Refused] the client_id to send as, or why not
-      def agent_line(prompt, session:)
+      # @param name [String, nil] the agent's name (AgentCaller): its line
+      #   goes as agent:<name>; nil: chi send's
+      def agent_line(prompt, session:, name: nil)
         sessions = Array(session).compact
         values = sessions.empty? ? [nil] : sessions.map(&:parent_answers)
         continue = TurnFlow.continue_yes?(prompt)
@@ -173,7 +175,7 @@ module Samagotchi
         refusal ||= ParentAnswersCommand::REFUSED if SendCommand::ParentGate.loosens_any?(prompt, values)
         return Refused.new(kind: :parent_refused, session_id: sessions.first&.id, message: refusal) if refusal
 
-        continue ? ClientId::CLI_ANSWER : AgentCaller.send_id
+        continue ? ClientId::CLI_ANSWER : AgentCaller.send_id(name: name)
       end
 
       # The answer to the question session +id+ waits on, then one slice of

@@ -2448,6 +2448,41 @@ RSpec.describe Samagotchi::Worker do
         end
       end
 
+      # An agent (agent:<name>) sends session commands as chi send did, but
+      # never a ! line: refused before it is queued, at each intake.
+      describe "an agent's command line" do
+        def turn_from(prompt, client_id)
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
+                         JSON.generate(session_id: session.id, prompt: prompt, client_id: client_id),
+                         "Content-Type" => "application/json", **bridge_auth(sidecar))
+        end
+
+        let(:marker) { File.join(tmpdir, "AGENT_MARKER") }
+
+        it "refuses its ! line with a 403 at POST /turn and POST /command, in an input file as a command_ran error" do
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "!touch #{marker}", client_id: "agent:claude")
+          start_worker(poll_interval: 5)
+          wait_for("the file's line to run") { events_seen.any? { |e| e[:type] == :command_ran && e[:line] == "!touch #{marker}" } }
+          expect(seen.find { |e| e[:type] == :command_ran }).to include(status: "error", output: Samagotchi::CommandIntake::REFUSED)
+
+          reply = turn_from("!touch #{marker}", "agent:claude")
+          expect(reply.code).to eq("403")
+          expect(JSON.parse(reply.body)).to eq("error" => "command_not_permitted", "detail" => Samagotchi::CommandIntake::REFUSED)
+          command = post_command("!touch #{marker}", client_id: "agent:claude")
+          expect(command.code).to eq("403")
+          expect(JSON.parse(command.body)["detail"]).to eq(Samagotchi::CommandIntake::REFUSED)
+          expect(File.exist?(marker)).to be(false)
+          expect(turns).to be_empty
+        end
+
+        it "runs its session command (/parent-answers hard) as a command" do
+          start_worker(poll_interval: 5)
+          expect(turn_from("/parent-answers hard", "agent:claude").code).to eq("202")
+          wait_for("the command to run") { events_seen.any? { |e| e[:type] == :command_ran && e[:line] == "/parent-answers hard" } }
+          expect(seen.find { |e| e[:type] == :command_ran }).to include(status: "ok", changed: ["parent_answers"])
+        end
+      end
+
       describe "a command's output in its command_ran" do
         let(:limit) { described_class::COMMAND_OUTPUT_LIMIT }
 

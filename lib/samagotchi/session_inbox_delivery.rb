@@ -172,8 +172,10 @@ module Samagotchi
       # the sender, ClientId.wake_kind): they start an idle session as a send
       # does, but a stop and an archive are the owner's (the sender is
       # refused, SessionManager::DeliverResult::STOPPED / ARCHIVED). They
-      # stay on the id they name. :automatic is any sender chi doesn't name.
-      **%i[schedule plugin delegate participant automatic].to_h do |kind|
+      # stay on the id they name. :agent is an agent's chi send (it follows a
+      # chain itself: SendCommand#target). :automatic is any sender chi
+      # doesn't name.
+      **%i[schedule plugin delegate participant agent automatic].to_h do |kind|
         [kind, WakePolicy.new(kind: kind, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
                               refuse_tui: true, refuse_scratch: true)]
       end

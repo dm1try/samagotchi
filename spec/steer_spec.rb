@@ -83,10 +83,13 @@ RSpec.describe Samagotchi::Steer do
                    "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send",
                    "child:abcd1234" => "delegate_report", "context:pr-1" => "automatic:context:pr-1",
                    "system:reminder" => "automatic:system:reminder", "cli:answer" => "automatic:cli:answer",
-                   "other" => "automatic:other", "" => "automatic:", "participant:p_0123abcd" => "participant" }
+                   "other" => "automatic:other", "" => "automatic:", "participant:p_0123abcd" => "participant",
+                   "agent:claude" => "agent:claude" }
       expect(expected.keys.to_h { |id| [id, described_class.source_for_client(id)] }).to eq(expected)
       expect(described_class.cuts?("delegate_report")).to be(false)
       expect(described_class.cuts?("participant")).to be(false)
+      # An agent's line cuts, as chi send's did.
+      expect(described_class.cuts?("agent:claude")).to be(true)
     end
 
     it "never takes a line from a client it doesn't know for the user's: it doesn't cut, its header names the client" do
@@ -201,6 +204,8 @@ RSpec.describe Samagotchi::Steer do
         { kind: "input", source: "parent_agent" } => "[Steer from the parent agent that started this session, #{tail}",
         { kind: "input", source: "plugin_send" } => "[Steer sent by a plugin, #{tail}",
         { kind: "input", source: "mystery" } => "[Steer from the user, #{tail}",
+        { kind: "input", source: "agent:claude" } => "[Steer from the agent claude, sent with chi send, #{tail}",
+        { kind: "input", source: "agent:Bad]\n[x" } => "[Steer from the agent badx, sent with chi send, #{tail}",
         { kind: "steer", source: "user" } => "[Steer from the user, #{tail}",
         { kind: "steer", source: "parent_agent" } => "[Steer from the parent agent that started this session, #{tail}",
         { "kind" => "steer", "source" => "check-in" } => "[Steer from the check-in plugin, #{tail}"

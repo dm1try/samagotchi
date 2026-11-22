@@ -68,6 +68,12 @@ module Samagotchi
     # be automatic:… and a participant's Verify fresh child would ring its
     # parent), so chi web sends it the old id (SessionManager's delivery).
     PARTICIPANT_ID_FEATURE = "participant_client_id"
+    # A worker (Bridge::FEATURES) or a chi web (Web::App::INFO_FEATURES)
+    # that reads an agent's client id (ClientId::AGENT_PREFIX). One without
+    # it would read agent:<name> as an unknown sender (automatic), so it is
+    # sent chi send's id instead: today's owner row (compat shim
+    # agent_client_id).
+    AGENT_FEATURE = "agent_sender"
     # The one sentence for a live worker without PAIR_FEATURE; each caller
     # adds what to do (PAIR_UNAVAILABLE, ShareTerms::OLDER_WORKER_REFUSAL).
     OLDER_THAN_PAIR = "this session's worker is too old to run a participant's turn"

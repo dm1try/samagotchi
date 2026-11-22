@@ -39,6 +39,9 @@ RSpec.describe "ClientId: what each sender gets" do
     "participant:p_0123abcd" => [true, false, false, :participant, "participant", "participant"],
     # compat shim review_client_id: an older chi's participant id, origin "review" before the rename.
     "review:p_0123abcd" => [true, false, false, :participant, "participant", "participant"],
+    # An agent's chi send: no human's, not the owner; its source its id.
+    "agent:claude" => [false, false, false, :agent, "agent", "agent:claude"],
+    ids::AGENT_PREFIX => [false, false, false, :agent, "agent", "agent:"],
     "other:1" => automatic.call,
     "webby" => automatic.call,
     "web" => automatic.call,

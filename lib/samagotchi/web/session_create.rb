@@ -218,7 +218,7 @@ module Samagotchi
         line = line.to_s
         return nil unless ClientId.parent_line?(client_id)
 
-        if client_id == ClientId::CLI_ANSWER && TurnFlow.continue_yes?(line) &&
+        if (client_id == ClientId::CLI_ANSWER || ClientId.agent?(client_id)) && TurnFlow.continue_yes?(line) &&
            (refusal = SendCommand::ParentGate.continue_refusal_for(values))
           return error_response(403, "parent_continue_refused", refusal)
         end
