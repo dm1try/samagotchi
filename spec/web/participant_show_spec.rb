@@ -233,6 +233,28 @@ RSpec.describe Samagotchi::Web::App, "a participant's show" do
     }])
   end
 
+  it "never gives a participant the prompt parts' states (GET …/working_set): the owner's alone" do
+    memories = Samagotchi::MemoryPaths.system_dir.tap { |dir| FileUtils.mkdir_p(dir) }
+    File.write(File.join(memories, "style.md"), "changed since\n")
+    snapshot["snapshot"]["working_set"] = { "items" => [], "at" => 4 }
+    snapshot["session_state_snapshot"]["prompt_parts"] = [
+      { "kind" => "preloads", "label" => "style", "chars" => 9, "tokens" => 3, "ref" => "style", "scope" => "system",
+        "at" => 0, "len" => 9, "lead" => 0, "digest" => "000000000000", "head" => "0000000000000000",
+        "params" => { "requested_scope" => nil, "model_key" => nil, "fallback_model_key" => nil, "project_dir" => nil,
+                      "system_dir" => memories } }
+    ]
+    answers = [owner_token, issued.token].map do |bearer|
+      env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/working_set")
+      env["HTTP_HOST"] = "#{lan_ip}:4567"
+      env["REMOTE_ADDR"] = "192.168.1.20"
+      env["HTTP_AUTHORIZATION"] = "Bearer #{bearer}"
+      _status, _headers, chunks = app.call(env)
+      JSON.parse(chunks.join)
+    end
+    expect(answers.first["parts"]).to eq([{ "key" => "preloads:style@system", "state" => "stale" }])
+    expect(answers.last).not_to have_key("parts")
+  end
+
   # A participant's link opens index.html stamped with these.
   it "stamps the main page's <body> for a participant with nothing of the owner's machine" do
     session.working_directory = File.join(root, "secret-project")

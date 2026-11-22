@@ -25,6 +25,9 @@ module Samagotchi
       idle: "chi's prompt changed after it was sent. This is the source now; the sent text shows after the next turn."
     }.freeze
 
+    # A part whose source changed since chi was sent it (#states).
+    STALE = "stale"
+
     # The route's refusals.
     INVALID = "expected key (a prompt part's key)"
     UNKNOWN = "no such prompt part in this session"
@@ -67,6 +70,33 @@ module Samagotchi
       end
 
       shown.merge(sent: sent_of(part, parts, text))
+    end
+
+    # The parts of +parts+ (a saved or wire list) whose source changed
+    # since chi was sent it: [{key: PromptPart.keys', state: "stale"}],
+    # only the stale ones. A part is stale when its locator
+    # (WorkingSet::Locator, origin :prompt: the saved params, the guard)
+    # fetches text whose PromptPart.digest_of differs from the part's saved
+    # digest, or finds the source gone. Only what a locator fetches gets a
+    # state (identity, preloads, notes, AGENTS.md): never an index (it
+    # changes at every memory write, D5), an appended file, chi's own text
+    # or a part an older chi built (no digest). A digest sees a part's text
+    # only: a note newly applying, a new AGENTS.md in the chain, a memory
+    # muted since change which parts exist, and say nothing here. +root+,
+    # +cwd+: as #answer's.
+    # @return [Array<Hash>]
+    def states(parts, root:, cwd:)
+      parts = PromptPart.list(parts)
+      keys = PromptPart.keys(parts)
+      parts.each_with_index.filter_map do |part, index|
+        next unless part.digest && WorkingSet::Locator::FETCHED.include?(part.kind)
+
+        now = WorkingSet::Locator.of_part(part).fetch(root: root, cwd: cwd)
+        next unless now
+        next unless now.gone || PromptPart.digest_of(now.text) != part.digest
+
+        { key: keys[index], state: STALE }
+      end
     end
 
     # Whether a worker that says it runs +version+ (its Bridge snapshot's
