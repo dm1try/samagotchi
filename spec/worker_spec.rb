@@ -1277,7 +1277,7 @@ RSpec.describe Samagotchi::Worker do
         pop!(requests, "turn 1's request")
         expect(pop!(in_turn, "turn 2")).to be(true)
 
-        expect(@asked).to eq([202, { state: "running" }])
+        expect(@asked).to eq([202, { state: "running", key: Samagotchi::BlockFix.key("mermaid", bad) }])
         sent = answer_in(pop!(requests, "turn 2's request"))
         expect(sent[:content]).to eq("One:\n\n```mermaid\n#{good}\n```\n")
         expect(pop!(fix_events, "the fix's event")).to include(state: "fixed", landed: "answer")

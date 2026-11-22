@@ -28,6 +28,7 @@ and commands may change between minor versions. How releases are made:
 - An owner's disable stays off after an in-flight skip or failure; a `date` one-off still returns after a skip, and
   run-now refusals on disabled schedules leave their counters alone.
 - The mcp bundle bounds waits for a concurrent session re-handshake by the request's timeout and Stop (0.9.2).
+- A block-fix result settles only its own block, so another block in the same answer stays asking while its fix runs.
 
 ## [0.184.0] - 2026-11-22
 

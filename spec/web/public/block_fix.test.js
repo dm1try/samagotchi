@@ -161,6 +161,40 @@ test("the worker's event: fixed redraws the answer from a tail read; failed and 
   }
 });
 
+test("a keyed event settles only its block and leaves another asking block's give-up timer running", async () => {
+  const { root, fix, timers } = setup(bubble("t1", pre("a") + pre("b")), {
+    answers: [
+      { status: 202, body: { state: "running", key: "key-a" } },
+      { status: 202, body: { state: "running", key: "key-b" } },
+    ],
+  });
+  const [a, b] = root.querySelectorAll("pre");
+  fail(a);
+  fail(b);
+  await settle();
+  assert.equal(a.dataset.blockFixKey, "key-a");
+  assert.equal(b.dataset.blockFixKey, "key-b");
+  assert.equal(timers.live.size, 1);
+
+  fix.onEvent({ turn_id: "t1", key: "key-a", state: "failed" });
+  assert.equal(a.nextElementSibling.dataset.fix, "nohelp");
+  assert.equal(b.nextElementSibling.dataset.fix, "asking");
+  assert.equal(timers.live.size, 1);
+  timers.fire();
+  assert.equal(b.nextElementSibling.dataset.fix, "older");
+});
+
+test("an event without a key keeps settling every asked block", async () => {
+  const { root, fix } = setup(bubble("t1", pre("a") + pre("b")));
+  const [a, b] = root.querySelectorAll("pre");
+  fail(a);
+  fail(b);
+  await settle();
+  fix.onEvent({ turn_id: "t1", state: "failed" });
+  assert.equal(a.nextElementSibling.dataset.fix, "nohelp");
+  assert.equal(b.nextElementSibling.dataset.fix, "nohelp");
+});
+
 test("an answer is read again at most once per block: a copy still failing after the redraw says a fix didn't help, no loop", async () => {
   const fixed = { status: 200, body: { state: "fixed" } };
   const reads = [];

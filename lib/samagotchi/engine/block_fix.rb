@@ -72,7 +72,7 @@ module Samagotchi
         # is that answer's own ask (its result lands in it, its event names it).
         asking = [index, key]
         @block_fix_mutex.synchronize do
-          return [202, { state: "running" }] if block_fix_pending?(asking)
+          return [202, { state: "running", key: key }] if block_fix_pending?(asking)
           return block_fix_refused(429, :fix_limit) if block_fix_asked(answer, index) >= BlockFix::PER_ANSWER
           return block_fix_refused(429, :fix_busy) if @block_fix_running.size >= BlockFix::MAX_RUNNING
 
@@ -83,7 +83,7 @@ module Samagotchi
         Log.info(:model, "block_fix_asked", lang: lang, key: key, bytes: source.to_s.bytesize)
         start_block_fix(conversation, turn_id: turn_id.to_s, lang: lang.to_s, key: key, source: source.to_s,
                                       reason: reason.to_s, anchor: anchor)
-        [202, { state: "running" }]
+        [202, { state: "running", key: key }]
       end
 
       # The results waiting, applied: on the worker's loop, between turns

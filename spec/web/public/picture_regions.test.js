@@ -154,6 +154,8 @@ test("only the hovered and the selected edges have a line", () => {
   assert.equal(layer.hover({ x: 0.6, y: 0.45 }, SIZE), true);
   assert.deepEqual(qa("polyline").map((p) => p.getAttribute("class")), ["pv-hover"]);
   assert.equal(qa("polyline")[0].getAttribute("points"), "0.5,0.45 0.7,0.45");
+  assert.equal(qa("svg.pv-lines")[0].getAttribute("style"), "position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none");
+  assert.equal(qa("polyline")[0].getAttribute("fill"), "none");
   layer.tap({ x: 0.6, y: 0.45 }, SIZE, "mouse");
   assert.deepEqual(qa("polyline").map((p) => p.getAttribute("class")), ["pv-on"], "the selected one has no hover line");
   layer.hover({ x: 0.45, y: 0.7 }, SIZE);

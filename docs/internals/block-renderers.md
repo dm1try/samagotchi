@@ -130,7 +130,7 @@ page: a drawer fails a block in the newest answer, marked fixable
   └─ POST /api/sessions/:id/blocks/fix {turn_id, lang, source, reason}   (chi web, :owner: Web::BlockFixRoutes)
        → Bridge POST /session/:id/blocks/fix (Bridge::BlockFixRoute) → Engine#fix_block
          ├─ the answer's stamp knows this block → 200 {state: "fixed" | "failed"}
-         └─ else 202 {state: "running"}; a side thread asks the model, checks the answer,
+         └─ else 202 {state: "running", key}; a side thread asks the model, checks the answer,
             queues the result and wakes the worker's loop
 worker loop, between turns (before any queued prompt): Engine#apply_block_fixes
   └─ patches the answer (its text, or its display), stamps it, saves, announces :block_fix
@@ -161,7 +161,9 @@ characters.
 **its stamp before its text**: 200 with the stamp's state when the stamp knows the block, even when the block is no
 longer in the answer (a page that drew the answer before its fix, a second tab: `fixed`, and it reads the answer
 again); a block that is a fix and fails again, or a `fixed` block still in the shown text (a copy no fix reached),
-answers `failed`, never `fixed`, so a page can't redraw and ask again. Then 409 `block_not_found` (the source isn't a
+answers `failed`, never `fixed`, so a page can't redraw and ask again. The 202's `key` is the block's
+`BlockFix.key(lang, source)`; the page stores it so a `:block_fix` event settles only that block while another is still
+running. A pre-202 event or an older worker without a key keeps the page's all-asked fallback. Then 409 `block_not_found` (the source isn't a
 block of the answer), 202 `running` while that answer's block is asked (in flight per answer and block: the same block
 in a newer answer is that answer's own ask), 429 `fix_limit` past 2 blocks of one answer (`BlockFix::PER_ANSWER`: its
 stamp and its asks in flight or waiting, so a reload's page can't ask for a third), 429 `fix_busy` past 2 in flight

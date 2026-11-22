@@ -67,7 +67,8 @@ RSpec.describe Samagotchi::Bridge::BlockFixRoute do
   end
 
   it "relays Engine#fix_block: 202 running, 409 for another block, 413 Content Too Large" do
-    expect(post({ turn_id: "t1", lang: "mermaid", source: bad, reason: "Parse error" })).to eq([202, "Accepted", { "state" => "running" }])
+    key = Samagotchi::BlockFix.key("mermaid", bad)
+    expect(post({ turn_id: "t1", lang: "mermaid", source: bad, reason: "Parse error" })).to eq([202, "Accepted", { "state" => "running", "key" => key }])
     expect(post({ turn_id: "t1", lang: "mermaid", source: "graph LR" })[2]).to include("error" => "block_not_found")
     expect(post({ turn_id: "t1", lang: "mermaid", source: "x" * (17 * 1024) })[0..1]).to eq([413, "Content Too Large"])
   end
