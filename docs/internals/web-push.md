@@ -186,6 +186,17 @@ from saying it twice across restarts). The key's `chi:` prefix keeps sw.js from 
 | `updated` | `chi:updated:<X>` | "chi updated to X" / "chi web and 3 sessions restarted; 1 restarts when idle." + the edited files |
 | `restart_failed` | `chi:restart_failed:<X>` | "chi X is installed; chi web didn't restart" / why (a failed `--version` preflight, no wrapper), "Restart chi web in its terminal." |
 
+**A disabled schedule's show.** `SessionHub#run_schedule_tick` emits one `schedule_disabled` hub event per
+`Schedules::Outcome#disabled` of its tick (`#publish_disabled`, under `@monitor` like `publish_notice`): `{id, title,
+kind: skipped|failed, count, reason, session_id, at}`, `session_id` being `Schedules#session_of` (the resolved
+target, else the head) and `at` the tick's wall time. The page's event stream passes it to the tabs, which have no
+listener. The Notifier shows it with reason `schedule`, key and tag `chi:schedule_disabled:<id>:<at>` (`chi:`: not
+a waiting key; `<at>`: a later disable shows again; the same event twice shows once, `@updates_seen`), title
+"Schedule disabled: <title or the id's first 8>", body "skipped 12 times: <reason>" + a line `chi schedule enable
+<short id>`, url `Notifier.session_url` of the session's summary, `/` when it has none. Two exceptions to the rules
+above: it is pushed with a page in front (`UNSEEN_ON_PAGE`: the page has no schedules view), and it gets
+`UPDATE_TTL` (24 h) like an update. A cron tick or `chi schedule run-now` emits nothing (no hub).
+
 `updated` is sent by the **restarted** chi web (its AutoUpdate finds the run at `phase: web`): the exec ends the
 old process, and `Notifier#stop` does not flush the shows still in their hold, so a push queued just before it would
 be lost. Sending from the new process also proves it came up. The workers left then restart without another show.

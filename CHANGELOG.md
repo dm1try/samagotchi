@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   and its peek gets a "now" tab with the difference (a stopped session too).
 - A thin client's ask takes an optional `request_id`: the same ask sent again (a retry after a dropped connection)
   answers the first one's turn instead of queuing it twice.
+- The phone gets a notification when chi web's schedule tick turns off a recurring schedule that kept failing or
+  being skipped, with the last reason and the `chi schedule enable` that turns it back on.
 
 ### Changed
 
@@ -27,6 +29,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi schedule enable` resets a schedule's skip and failure counts, so its next skip no longer turns it off again.
 - The mcp bundle: concurrent tool calls whose remote session expired now wait for one new session instead of failing
   with "the session expired (404)" or sending a half-initialized request.
 - The web's delete sheet: closing it while "Stop its worker, then delete" runs no longer leaves the worker stopped and

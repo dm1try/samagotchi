@@ -2123,7 +2123,8 @@ Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reac
 
 chi web as an app on your iPhone's Home Screen that buzzes (the Watch too) when a session needs you: an
 **approval**, a **question**, a **step-limit** question, a **card** that asks (check-in's Nudge / Keep going / Stop),
-or a **failed turn**, also while the app is closed. A tap opens that session; once it is answered anywhere (the Mac,
+or a **failed turn**, also while the app is closed; chi web's schedule tick also says when it turned off a
+recurring schedule that kept failing or being skipped ([docs/scheduling.md](scheduling.md#skip-not-failure)). A tap opens that session; once it is answered anywhere (the Mac,
 the phone, `chi answer`), its notification goes when you open the app (or swipe it away; a failed turn's stays until
 you do). Every push shows a notification: iOS turns off an app's pushes after a few that show none.
 

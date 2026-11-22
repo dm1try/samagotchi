@@ -194,6 +194,20 @@ disables the entry and `chi schedule list` says why. **Any successful firing res
 both counters**, so twelve skips spread over months do not kill a healthy weekly
 schedule. `list` prints the skip budget as a time window — 12 skips at a 5 minute
 tick is about an hour of patience, which is what the count really measures.
+`chi schedule enable` resets both counters too: a schedule turned back on gets its
+whole budget again, not one skip.
+
+The tick line that disabled an entry ends `(disabled)` (`chi schedule tick`,
+`run-now`), and `tick --format json` gives that outcome `"disabled": true`
+(`Schedules::Outcome#disabled`). When **chi web's** tick (`schedule.auto_tick`)
+disables a recurring schedule, the phone gets one notification
+([Phone notifications](configuration.md#phone-notifications-web-push)): "Schedule
+disabled: Heartbeat", "skipped 12 times: <the last reason>" and the `chi schedule
+enable <id>` that turns it back on; a tap opens its session. It shows even with a chi
+web page in front and waits a day for a phone that is offline. Nothing notifies for a
+cron tick or `chi schedule run-now` (only chi web pushes), a `--dry-run`, your own
+`chi schedule disable`, or a `date` one-off (spent when it fires; one that then fails
+stays disabled with the failure in `chi schedule list`).
 
 An accepted delivery is **pending**, not fired: `schedules.json` records its
 session and turn id, and the next tick follows that turn's own outcome, even if a
