@@ -353,3 +353,14 @@ test("a ref-less preloads / notes part: the preloaded-only memories stay out of 
   assert.deepEqual(listed.sort(), ["/p/a.rb", "b"], "a and model_notes_x (never read) are the prompt's; b was read");
   assert.equal(read.meta, "2 held");
 });
+
+// The part route's keys (spec/shared/prompt_part_keys.json, PromptPart.keys
+// in Ruby): every start row carries the keys of the parts it stands for.
+test("headSections: start rows carry their parts' keys, as PromptPart.keys gives them", () => {
+  const fixture = JSON.parse(readFileSync(new URL("../../shared/prompt_part_keys.json", import.meta.url), "utf8"));
+  const sections = byKey(headSections(setOf(), 6, { parts: fixture.parts }));
+  const rows = sections.start.rows;
+  assert.deepEqual(rows.flatMap((r) => r.partKeys), fixture.keys);
+  for (const merged of fixture.merged) assert.ok(rows.some((r) => JSON.stringify(r.partKeys) === JSON.stringify(merged)), merged.join(" + "));
+  assert.ok(rows.every((r) => r.partKeys.length >= 1));
+});

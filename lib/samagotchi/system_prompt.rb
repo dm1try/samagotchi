@@ -17,6 +17,7 @@ require_relative "thinking"
 require_relative "prompt_files"
 require_relative "plugin/prompt_sections"
 require_relative "prompt_part"
+require_relative "prompt_layout"
 require "json"
 
 module Samagotchi
@@ -114,10 +115,12 @@ module Samagotchi
     # for a section that is one item. label, ref, scope: the PromptPart's.
     # chars: what the item's part is charged when it is not its section's
     # first (the first part takes the rest of the section's text: its joins
-    # and, for notes, the scope headings; PromptPart's rule).
-    Item = Data.define(:kind, :label, :ref, :scope, :lead, :text, :chars) do
-      def initialize(kind:, label:, text:, ref: nil, scope: nil, lead: "", chars: nil)
-        super(kind: kind, label: label, ref: ref, scope: scope, lead: lead, text: text, chars: chars || (lead.length + text.length))
+    # and, for notes, the scope headings; PromptPart's rule). params: how
+    # to fetch it again (PromptPart#params), nil for what chi makes itself.
+    Item = Data.define(:kind, :label, :ref, :scope, :lead, :text, :chars, :params) do
+      def initialize(kind:, label:, text:, ref: nil, scope: nil, lead: "", chars: nil, params: nil)
+        super(kind: kind, label: label, ref: ref, scope: scope, lead: lead, text: text, chars: chars || (lead.length + text.length),
+              params: params)
       end
 
       # The item as the prompt holds it.
@@ -272,7 +275,7 @@ module Samagotchi
       composed = compose(assist_system_prompt(chat: chat, surface: surface), chat: chat, thinking: thinking, surface: surface)
       sections = composed.sections
       prompt_parts = Degrade.call(:prompt, "prompt_parts_failed", fallback: []) do
-        prompt_parts_for(sections, chat: chat, surface: surface)
+        prompt_parts_for(sections, prompt: composed.prompt, chat: chat, surface: surface)
       end
       by_kind = sections.to_h { |section| [section.kind, section] }
       files = %i[agents appended].flat_map { |kind| Array(by_kind[kind]&.ref) }
@@ -297,36 +300,43 @@ module Samagotchi
     LABELS = { base: "base prompt", kit: "toolkit prompt", participants: "participants", model: "model",
                location: "location", session: "session" }.freeze
 
-    # The PromptParts of +sections+ (a build's), the tools part first: one
-    # per Item. A multi-item section's headings and joins go into its first
-    # part, so the parts sum to the section's text.
-    def prompt_parts_for(sections, chat:, surface:)
-      tools_chars = tools_chars(chat: chat, surface: surface)
-      parts = sections.flat_map { |part| section_parts(part) }
-      if tools_chars[:from_base]
+    # The PromptParts of +sections+ (a build's, whose +prompt+ they are),
+    # the tools part first: one per Item, with its place (PromptLayout). A
+    # multi-item section's headings and joins go into its first part's
+    # chars, so the parts sum to the section's text.
+    def prompt_parts_for(sections, prompt:, chat:, surface:)
+      declarations = chat ? nil : tool_declarations(surface)
+      layout = PromptLayout.new(prompt, sections, declarations: declarations, tail: !chat && gemma_tail_declarations?)
+      tools_chars = chat ? JSON.generate(surface.schemas).length : declarations.length
+      parts = sections.flat_map { |section| section_parts(section, layout) }
+      if layout.tools_in_base?
         base = parts.index { |part| part.kind == "base" }
-        parts[base] = PromptPart.build(kind: :base, label: parts[base].label, chars: parts[base].chars - tools_chars[:chars]) if base
+        parts[base] = parts[base].with(chars: parts[base].chars - tools_chars, tokens: PromptPart.tokens_for(parts[base].chars - tools_chars)) if base
       end
-      [PromptPart.build(kind: :tools, label: "#{surface.declared_names.size} declared", chars: tools_chars[:chars]), *parts]
+      tools = PromptPart.build(kind: :tools, label: "#{surface.declared_names.size} declared", chars: tools_chars,
+                               params: { "tools" => tool_sizes(surface, chat: chat) }, **layout.tools_place)
+      [tools, *parts]
     end
 
-    # The tool declarations' size, once. chat: the schemas as the request's
-    # tools field sends them. Native: the declarations text, inside the base
-    # prompt (from_base: its chars move out of the base part) or, on Gemma,
-    # after the last section (nothing to move).
-    def tools_chars(chat:, surface:)
-      return { chars: JSON.generate(surface.schemas).length, from_base: false } if chat
-
-      { chars: tool_declarations(surface).length, from_base: !gemma_tail_declarations? }
+    # The declared tools' names and sizes: chat, each schema as the tools
+    # field sends it (their sum is not the part's chars: the field's own
+    # brackets and commas); native, each declaration as rendered, except
+    # Qwen's one JSON list, which gives no per-tool length: names only.
+    def tool_sizes(surface, chat:)
+      per_tool = !chat && profile.name != "qwen36" ? ToolDeclarations.native_schemas(surface) : nil
+      surface.declared.each_with_index.map do |entry, index|
+        chars = chat ? JSON.generate(entry.schema).length : per_tool && ToolDeclarations.gemma_declaration(per_tool[index]).length
+        chars ? { "name" => entry.name, "chars" => chars } : { "name" => entry.name }
+      end
     end
 
-    def section_parts(section)
+    def section_parts(section, layout)
       items = section.items
       # The first item's own chars are the rest of the text.
       rest = items.drop(1).sum(&:chars)
       items.each_with_index.map do |item, index|
         PromptPart.build(kind: section.kind, label: item.label, ref: item.ref, scope: item.scope,
-                         chars: index.zero? ? section.text.length - rest : item.chars)
+                         chars: index.zero? ? section.text.length - rest : item.chars, params: item.params, **layout.place(item))
       end
     end
 
@@ -387,7 +397,7 @@ module Samagotchi
       tools = if gemma_tail_declarations?
                 "Your tools are declared at the end of this system prompt."
               else
-                "You have access to the following tools:\n\n#{tool_declarations(surface)}\n"
+                "#{PromptLayout::TOOLS_LEAD}#{tool_declarations(surface)}\n"
               end
 
       <<~SYS
@@ -604,7 +614,7 @@ module Samagotchi
           next if body.start_with?("Error:")
           next if body.strip.empty?
 
-          item = Item.new(kind: :identity, label: name, ref: name, scope: "system",
+          item = Item.new(kind: :identity, label: name, ref: name, scope: "system", params: memory_params("system"),
                           lead: "System identity (auto-loaded, scope=system):\n", text: body.to_s)
           return Section.of(:identity, [item], ref: name)
         end
@@ -627,7 +637,8 @@ module Samagotchi
           list.each_with_index.map do |note, index|
             own = "## #{note.name}\n"
             Item.new(kind: :notes, label: note.name, ref: note.name, scope: note.scope, text: note.body.to_s,
-                     lead: index.zero? ? "#{heading}\n\n#{own}" : own, chars: own.length + note.body.to_s.length)
+                     lead: index.zero? ? "#{heading}\n\n#{own}" : own, chars: own.length + note.body.to_s.length,
+                     params: memory_params(note.scope))
           end
         end
         Section.of(:notes, items, ref: notes)
@@ -635,6 +646,19 @@ module Samagotchi
     end
 
     # ── Memory helpers ─────────────────────────────────────────────────────────
+
+    # How a prompt memory is fetched again (PromptPart#params): the scope
+    # asked for (nil: a bare name, project then system), the overlay keys
+    # and both scopes' folders as this build read them. A note's
+    # requested_scope is its own scope.
+    def memory_params(scope)
+      keys = overlay_keys
+      Degrade.call(:prompt, "memory_params_failed") do
+        { "requested_scope" => scope, "model_key" => keys[:model_key], "fallback_model_key" => keys[:fallback_model_key],
+          "project_dir" => File.expand_path(Tools::MemoryRead.memories_dir("project")),
+          "system_dir" => File.expand_path(Tools::MemoryRead.memories_dir("system")) }
+      end
+    end
 
     # The session model's overlay keys, so the prompt's own memory bodies
     # (identity, preloads) get `<name>.<key>.md` as memory_read gives it.
@@ -726,6 +750,7 @@ module Samagotchi
           # SystemPrompt is the single source of truth for the system prompt.
           @activated_memory_names << actual_name
           items << Item.new(kind: :preloads, label: actual_name, ref: actual_name, scope: scope || answered_scope(body, actual_name),
+                            params: memory_params(scope),
                             lead: "this memory is required by the user in the current context: memory name: #{actual_name}\n",
                             text: body.to_s)
         end
@@ -804,7 +829,8 @@ module Samagotchi
     # A file's Item: its PromptFiles::Section, the header line its lead.
     def file_item(kind, section, top)
       lead, text = section.text.split("\n", 2)
-      Item.new(kind: kind, label: file_label(section.path, top), ref: section.path, lead: "#{lead}\n", text: text.to_s)
+      Item.new(kind: kind, label: file_label(section.path, top), ref: section.path, lead: "#{lead}\n", text: text.to_s,
+               params: { "path" => section.path })
     end
 
     # [absolute path, "config" | "cli"], in prompt order.

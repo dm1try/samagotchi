@@ -1,0 +1,27 @@
+{
+  "about": "One prompt_parts list and each part's key (PromptPart.keys in Ruby, ws_sections.js startRows' partKeys on the page): a note that is also preloaded, a duplicate preload, x in two scopes. merged: the parts one start row stands for.",
+  "parts": [
+    { "kind": "tools", "label": "3 declared", "chars": 30, "tokens": 8, "ref": null },
+    { "kind": "base", "label": "base prompt", "chars": 400, "tokens": 100, "ref": null },
+    { "kind": "identity", "label": "identity", "chars": 40, "tokens": 10, "ref": "identity", "scope": "system" },
+    { "kind": "notes", "label": "model_notes_y", "chars": 36, "tokens": 9, "ref": "model_notes_y", "scope": "system" },
+    { "kind": "preloads", "label": "model_notes_y", "chars": 48, "tokens": 12, "ref": "model_notes_y", "scope": "system" },
+    { "kind": "preloads", "label": "dup", "chars": 20, "tokens": 5, "ref": "dup" },
+    { "kind": "preloads", "label": "dup", "chars": 20, "tokens": 5, "ref": "dup" },
+    { "kind": "preloads", "label": "x", "chars": 24, "tokens": 6, "ref": "x", "scope": "project" },
+    { "kind": "preloads", "label": "x", "chars": 24, "tokens": 6, "ref": "x", "scope": "system" },
+    { "kind": "agents", "label": "AGENTS.md", "chars": 60, "tokens": 15, "ref": "/p/AGENTS.md" },
+    { "kind": "indexes", "label": "project memory index", "chars": 30, "tokens": 8, "ref": "project" },
+    { "kind": "indexes", "label": "system memory index", "chars": 30, "tokens": 8, "ref": "system" },
+    { "kind": "session", "label": "session", "chars": 50, "tokens": 13, "ref": null }
+  ],
+  "keys": [
+    "tools:3 declared", "base:base prompt", "identity:identity@system", "notes:model_notes_y@system",
+    "preloads:model_notes_y@system", "preloads:dup", "preloads:dup#2", "preloads:x@project", "preloads:x@system",
+    "agents:/p/AGENTS.md", "indexes:project", "indexes:system", "session:session"
+  ],
+  "merged": [
+    ["notes:model_notes_y@system", "preloads:model_notes_y@system"],
+    ["preloads:dup", "preloads:dup#2"]
+  ]
+}
