@@ -478,6 +478,15 @@ module Samagotchi
       # find_tools result's loaded names and a tool change's TOOL_CHANGE
       # (sent only to a wire that loads tools), and an entry's wall time
       # (MessageTime::KEY, display-only, never sent).
+      #
+      # The rule: a saved message field the wire needs must be listed here
+      # (a key below, or one of the lists it reads: ContextNote::KEYS,
+      # Steer::AUTHOR_KEYS, ToolResponse::SAVED_KEYS). This rebuilds every
+      # kept message, earlier turns' included, from these keys alone: an
+      # unlisted field is gone from the saved history once its turn ends,
+      # so the next request reads that message without it and the chat
+      # wires' prompt prefix breaks (a visitor opener's +source+ header,
+      # say). spec/llm/chat_loop_saved_keys_spec.rb fails on such a field.
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
