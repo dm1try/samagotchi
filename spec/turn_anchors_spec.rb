@@ -36,16 +36,32 @@ RSpec.describe Samagotchi::TurnAnchors do
     expect(anchors.present.map { |anchor| anchor.class::FEATURE }).to eq(%w[verify revise])
   end
 
-  it "requires every anchor member to declare its participant projection" do
+  it "has one rule per member, in the members' order; verify and revises are held and shown" do
+    expect(described_class::RULES.keys).to eq(described_class.members)
+    expect(described_class::RULES.values).to all(have_attributes(holds: true, participant: true))
+  end
+
+  it "shows a participant only the members whose rule shows them, leaving the others out" do
+    stub_const("#{described_class}::RULES", described_class::RULES.merge(
+      revises: described_class::Rule.new(holds: true, participant: false)
+    ))
     anchors = described_class.new(verify: verify, revises: { turn_id: v1 })
 
-    described_class.members.each do |member|
-      expect(anchors.public_send(member)).to respond_to(:participant_view), member.to_s
-    end
+    expect(anchors.participant_view).to eq("verify" => verify)
+    expect(described_class.new(revises: { turn_id: v1 }).participant_view).to eq({})
   end
 
   it "names an anchor in an input file by a Hash under its key, well-formed or not (held for the turn's end)" do
     expect(described_class.named_in?("revises" => { "turn_id" => "bad" })).to be(true)
     expect(described_class.named_in?("verify" => "x", "prompt" => "p")).to be(false)
+  end
+
+  it "holds an input file only for a member whose rule holds it" do
+    stub_const("#{described_class}::RULES", described_class::RULES.merge(
+      verify: described_class::Rule.new(holds: false, participant: true)
+    ))
+
+    expect(described_class.named_in?("verify" => verify)).to be(false)
+    expect(described_class.named_in?("verify" => verify, "revises" => { "turn_id" => v1 })).to be(true)
   end
 end
