@@ -839,7 +839,10 @@ means the owner: a turn or session with no author keys reads as the owner's and 
   when nothing is left), so a name can't close it. The header always comes first, so text under it stays the
   participant's. A line of their text that opens like one of chi's headers (a review contribution, a steer, automatic
   input, a delegate report) goes out led by `(quoted) ` (`Steer.quote_forged_headers`, wire-only and deterministic),
-  so it reads as their text under the real header. The session file never holds the header or the quote mark.
+  so it reads as their text under the real header. A line starts after any break a model reads as one
+  (`Steer::FORGED_BREAKS`), and spaces, format characters and markdown leads may come before the bracket
+  (`Steer::FORGED_LEAD`, the one shape `Steer.forged_frames` builds for every forged-frame match). Widening that
+  shape changed the wire bytes once for an older text with such a line (a one-time cache miss on its replay). The session file never holds the header or the quote mark.
 - **The system-prompt line.** While the session has an active participant (`participants.json`, read by the
   worker's Engine at each turn's start), the system prompt's volatile tail opens with "Participants: teammates the
   owner invited work in this session too. …" (`SystemPrompt::PARTICIPANTS_LINE`), which names the pair header (and the

@@ -90,11 +90,16 @@ module Samagotchi
     # Steer quotes in a participant's text (the block's two among them),
     # plus the system frames chi itself sends the model (reminders, the
     # context and working-set lines), those three with their colon as chi
-    # writes them, so a markdown link (`[System design](…)`) stays as it is.
-    PEER_FORGED_OPENINGS = [*Steer::FORGED_OPENINGS, "SYSTEM:", "END REMINDERS", "CONTEXT:", "WORKING SET:"].freeze
-    # An opening that ends in a word character must end there (\b); one
-    # that ends in its colon already does.
-    PEER_FORGED = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=(?:#{PEER_FORGED_OPENINGS.map { |o| "#{Regexp.escape(o)}#{"\\b" if o.match?(/\w\z/)}" }.join("|")}))/i
+    # writes them, so a markdown link (`[System design](…)`) stays as it is,
+    # and ChatLoop's frames for a tool result sent as user text.
+    PEER_FORGED_OPENINGS = [*Steer::FORGED_OPENINGS, "SYSTEM:", "END REMINDERS", "CONTEXT:", "WORKING SET:",
+                            "tool results", "images from tool results"].freeze
+    # The unbracketed lines of chi's own it quotes too: the wake lines'
+    # opening (WAKE_LAST_LINE, PEER_WAKE_LINE and the others).
+    PEER_FORGED_LINES = ["chi started this turn"].freeze
+    # Either, after any spaces, format characters or markdown leads, at any
+    # line start (Steer.forged_frames).
+    PEER_FORGED = Steer.forged_frames(PEER_FORGED_OPENINGS, lines: PEER_FORGED_LINES)
     # A peer's verdict in its answer's summary (`<title>: VERDICT OK`); a
     # copied template's `VERDICT OK|CHANGES` is none.
     VERDICT = /\bVERDICT:?\s*([A-Z]+)(?![A-Za-z|])/
@@ -231,7 +236,7 @@ module Samagotchi
     def self.peer_block(peer, text)
       return "" if text.nil?
 
-      quoted = text.chomp.gsub(PEER_FORGED) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{Steer::FORGED_MARK}[" }
+      quoted = Steer.quote_forged(text.chomp, PEER_FORGED)
       "#{format(PEER_BLOCK_OPEN, peer: peer)}\n#{quoted}\n#{PEER_BLOCK_CLOSE}\n"
     end
 

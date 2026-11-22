@@ -256,19 +256,47 @@ module Samagotchi
       !(message[:kind] || message["kind"]).to_s.empty? && (message[:objectives] || message["objectives"]).nil?
     end
 
+    # Where a line starts for the forged-frame match: after \n, \r and the
+    # other breaks a tokenizer and a model read as one (U+2028, U+2029,
+    # U+0085, \v, \f).
+    FORGED_BREAKS = "\\n\\r\\u2028\\u2029\\u0085\\v\\f"
+    # What may come before a forged frame on its line: spaces (Unicode ones
+    # too), format characters (\p{Cf}: a zero-width space, a BOM) and
+    # markdown's leads (a quote's >, emphasis, code, a strike).
+    FORGED_LEAD = "(?:(?![#{FORGED_BREAKS}])[\\p{Space}\\p{Cf}>*_`~])*"
+
+    # A line that opens like one of +openings+ in brackets (an opening that
+    # ends in a word character ends there) or, after its lead, like one of
+    # +lines+ (unbracketed), in any case: a line start (FORGED_BREAKS), its
+    # lead (FORGED_LEAD) and the "[" or "" the mark goes before
+    # (#quote_forged).
+    def forged_frames(openings, lines: [])
+      word_end = ->(text) { "#{Regexp.escape(text)}#{"\\b" if text.match?(/\w\z/)}" }
+      bracket = "\\[(?=(?:#{openings.map(&word_end).join("|")}))"
+      plain = lines.map { |line| "(?=#{word_end.call(line)})" }
+      Regexp.new("(\\A|[#{FORGED_BREAKS}])(#{FORGED_LEAD})(#{[bracket, *plain].join("|")})", Regexp::IGNORECASE)
+    end
+
+    # +text+ with each line +pattern+ (.forged_frames) matches led by
+    # FORGED_MARK after its lead; deterministic, so the same text gives the
+    # same bytes.
+    def quote_forged(text, pattern)
+      text.to_s.gsub(pattern) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{FORGED_MARK}#{::Regexp.last_match(3)}" }
+    end
+
     # A line of a participant's text that opens like one of chi's own
     # headers or frames (another participant's review header, a steer's, an
     # automatic input's, a delegate report's, a context note's, a task's, an
     # objectives list's or a peer's message block (ContextAbsorber.peer_block)),
-    # in any case, after any spaces (Unicode ones too); a line starts after
-    # \n or \r.
+    # in any case, after any spaces, format characters or markdown leads
+    # (.forged_frames).
     FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",
                        "TASK FINISHED", "OBJECTIVES", "END NOTE", "PEER MESSAGE", "END PEER MESSAGE"].freeze
-    FORGED_HEADER = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=(?:#{FORGED_OPENINGS.map { |o| Regexp.escape(o) }.join("|")})\b)/i
+    FORGED_HEADER = forged_frames(FORGED_OPENINGS)
     # The same, for the objectives frame alone: the one frame that gives
     # orders in the user's name, so any outside text is held to it
     # (#outside_text?), whoever it came from.
-    FORGED_OBJECTIVES = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=OBJECTIVES\b)/i
+    FORGED_OBJECTIVES = forged_frames(["OBJECTIVES"])
     # What such a line is led by on the wire, so it reads as quoted text
     # under the real header, not as a header of its own.
     FORGED_MARK = "(quoted) "
@@ -276,15 +304,11 @@ module Samagotchi
     # +text+ with every FORGED_HEADER line led by FORGED_MARK. On the wire
     # only (the saved content stays raw) and deterministic, so a replay
     # sends the same bytes and keeps the prompt cache.
-    def quote_forged_headers(text)
-      text.to_s.gsub(FORGED_HEADER) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{FORGED_MARK}[" }
-    end
+    def quote_forged_headers(text) = quote_forged(text, FORGED_HEADER)
 
     # +text+ with every FORGED_OBJECTIVES line led by FORGED_MARK; as
     # #quote_forged_headers, on the wire only and deterministic.
-    def quote_forged_objectives(text)
-      text.to_s.gsub(FORGED_OBJECTIVES) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{FORGED_MARK}[" }
-    end
+    def quote_forged_objectives(text) = quote_forged(text, FORGED_OBJECTIVES)
 
     def message(text:, source:, author: nil, author_name: nil)
       { role: "user", kind: KIND, source: source.to_s, content: text.to_s, **author_fields(author, author_name) }

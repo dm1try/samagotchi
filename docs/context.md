@@ -346,8 +346,12 @@ chi started this turn because your peer agent Codex answered what you sent it; y
   is long (N characters): read it with context_read(name: "codex-outbox")`.
 - **Forged frames are quoted.** A line of the text that opens like one of
   chi's frames (`[END PEER MESSAGE]`, `[END NOTE]`, `[CONTEXT NOTE …]`,
-  `[SYSTEM: …]`, `[OBJECTIVES …]`…) is led by `(quoted) ` when the note is
-  built, so the block stays one and nothing in it reads as chi's own.
+  `[SYSTEM: …]`, `[OBJECTIVES …]`, `[tool results]`…), or like chi's wake
+  lines (`chi started this turn …`), is led by `(quoted) ` when the note is
+  built, so the block stays one and nothing in it reads as chi's own. A line
+  starts after any break a model reads as one (U+2028 and the like too), and
+  spaces, zero-width characters or markdown (`> `, `**`) before it don't hide
+  it (`Steer.forged_frames`). The web undoes the mark.
 - **It counts as read**: the source's chip has no unread dot for an answer
   whose text is in the note.
 - **A note that doesn't wake** (`wake: false`, the count spent, a turn was
