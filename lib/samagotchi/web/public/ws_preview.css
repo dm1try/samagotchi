@@ -42,6 +42,10 @@
 .ws-tab.on{color:var(--text);background:var(--bg-panel);border-color:var(--border);margin-bottom:-1px;padding-bottom:6px}
 .ws-tab:hover:not(:disabled){filter:none}@media(hover:hover){.ws-tab:not(.on):hover{color:var(--text-2)}}
 .ws-held>.ws-peek{margin:0;border:0;border-radius:0}
+/* A prompt row whose source changed since chi was sent it, and its now tab. */
+.ws-row .st.ws-pstale{color:var(--warn-text)}
+.ws-tab.warn,.ws-tab.warn.on{color:var(--warn-text)}
+@media(hover:hover){.ws-tab.warn:not(.on):hover{color:var(--warn-bright)}}
 
 /* A tool row's way in. */
 .activity-ws{flex:none;padding:0 6px;border:1px solid var(--ws-act-border);border-radius:4px;background:transparent;font-size:11px;line-height:16px;color:var(--ws-muted);cursor:pointer;opacity:0}

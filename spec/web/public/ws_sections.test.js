@@ -364,3 +364,20 @@ test("headSections: start rows carry their parts' keys, as PromptPart.keys gives
   for (const merged of fixture.merged) assert.ok(rows.some((r) => JSON.stringify(r.partKeys) === JSON.stringify(merged)), merged.join(" + "));
   assert.ok(rows.every((r) => r.partKeys.length >= 1));
 });
+
+// chi web's GET's parts (WorkingSetPart.states): each start row's states beside its keys.
+test("headSections: +states+ marks the start rows whose part is stale; a merged row by either part; none without", () => {
+  const parts = [...PARTS, { kind: "preloads", label: "model_notes_style", chars: 40, tokens: 10, ref: "model_notes_style" }];
+  const states = [{ key: "agents:/p/AGENTS.md", state: "stale" }, { key: "preloads:model_notes_style", state: "stale" },
+    { key: "nope:x", state: "stale" }, { key: "identity:identity", state: "live" }, null];
+  const rows = byKey(headSections(setOf(), 6, { parts, states })).start.rows;
+  const row = (kind) => rows.find((r) => r.partKind === kind || r.kind === kind);
+  assert.deepEqual(row("agents").partStates, ["stale"]);
+  assert.equal(row("agents").partStale, true);
+  const note = rows.find((r) => r.label === "model_notes_style");
+  assert.deepEqual(note.partKeys, ["notes:model_notes_style", "preloads:model_notes_style"]);
+  assert.deepEqual(note.partStates, [null, "stale"]);
+  assert.equal(note.partStale, true);
+  assert.equal(row("identity").partStale, false);
+  assert.ok(byKey(headSections(setOf(), 6, { parts })).start.rows.every((r) => r.partStale === false));
+});
