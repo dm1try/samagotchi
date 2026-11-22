@@ -151,6 +151,17 @@ RSpec.describe Samagotchi::McpServer::Protocol do
     expect { described_class.dump(answer.body) }.not_to raise_error
   end
 
+  it "refuses messages that have an id but no method, but ignores JSON-RPC responses" do
+    answer = protocol.handle({ "jsonrpc" => "2.0", "id" => 7 })
+    expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, 7, -32_600])
+
+    answer = protocol.handle({ "jsonrpc" => "2.0" })
+    expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, nil, -32_600])
+
+    expect(protocol.handle({ "jsonrpc" => "2.0", "id" => 7, "result" => {} })).to be_nil
+    expect(protocol.handle({ "jsonrpc" => "2.0", "id" => 7, "error" => { "code" => 1, "message" => "x" } })).to be_nil
+  end
+
   it "answers -32700 for text that isn't UTF-8 or has a lone surrogate, with the id when exactly one can be read" do
     surrogate = protocol.handle_text(%({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"text":"\\udc00"}}}))
     expect([surrogate.status, body(surrogate)["id"], body(surrogate)["error"]["code"]]).to eq([400, 7, -32_700])

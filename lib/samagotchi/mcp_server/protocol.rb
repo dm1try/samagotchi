@@ -170,7 +170,11 @@ module Samagotchi
         unless message.is_a?(Hash) && message["jsonrpc"] == "2.0"
           return error(self.class.request_id(message), INVALID_REQUEST, "Invalid Request", era)
         end
-        return nil unless message.key?("id") && message.key?("method")
+        return nil if message.key?("result") || message.key?("error")
+        unless message.key?("method")
+          return error(self.class.request_id(message), INVALID_REQUEST, "Invalid Request", era)
+        end
+        return nil unless message.key?("id")
 
         id = self.class.request_id(message)
         method = message["method"]

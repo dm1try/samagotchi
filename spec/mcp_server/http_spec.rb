@@ -75,4 +75,11 @@ RSpec.describe Samagotchi::McpServer::Http do
       [400, nil, -32_600, "Bad Request: Missing session ID"]
     )
   end
+
+  it "refuses an id-only legacy POST but ignores a response POST with a session" do
+    status, _headers, body = post({ jsonrpc: "2.0", id: 7 }, legacy_session)
+    expect([status, body["id"], body["error"]["code"]]).to eq([400, 7, -32_600])
+
+    expect(post({ jsonrpc: "2.0", id: 7, result: {} }, legacy_session)[0]).to eq(202)
+  end
 end
