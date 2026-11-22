@@ -65,7 +65,14 @@ right-hand column happens.
 
 - The sections above are recorded as `prompt_parts` (`SystemPrompt#prompt_parts`, `PromptPart`: kind, label, chars,
   tokens at `TokenUsage::CHARS_PER_TOKEN`, ref, a memory part's scope; one per memory, file and plugin section, plus a
-  `tools` part): sizes only, worked out once with the build and saved on the session; the prompt's text is unchanged.
+  `tools` part): sizes, and each part's place in the built prompt (`at`, `len`, `lead`, a 12-hex `digest` of its own
+  text, the prompt's 16-hex `head` digest, `params` to fetch it again), worked out once with the build
+  (`PromptLayout`) and saved on the session; the prompt's text is unchanged. Each builder returns its `Section` with
+  its `Item`s (lead and text) where it renders them; the parts derive from the items, so their places can't drift
+  from the bytes. `spec/prompt_parts_spec.rb` holds today's parts to a golden and every slice to its item. The text
+  itself is not copied: the head is the session's `messages[0]`, which a part's place points into
+  ([working-set.md](working-set.md#prompt-parts-as-sent)). `Engine#system_prompt` reads prompt, parts, notes and
+  index from the one `Built` (`SystemPrompt#built_for`), and the turn-end warm-up builds with `record: false`.
 - The system prompt is built **once per key** and kept (`SystemPrompt#build`, keyed by `[chat, thinking, layers]`:
   the loop, the thinking level, the turn's LLM context layers; a `/thinking` change builds under another key). All
   of them are dropped only on `@prompt_builder.reset!`: a model switch (`Engine#switch_model!`), a plugin's

@@ -388,13 +388,14 @@ chi's head, in three sections, drawn as Read, Conversation, From the start (ever
   server, `overlay`); a scope either side lacks (an older worker's part or item, an item the server hasn't stamped)
   matches by name alone, as before scopes. So a project `x` read beside a system `x` in the prompt is two rows: the
   read stays in Read as a plain read (not "prompt", never held twice), and the part's own row gets the key `x@system`
-  (no collision with the read's `x`), its words its scope ("preloaded · system") and, like identity's, no actions or
-  peek. A note and a preload of one name and scope stay one row with both sizes; of two scopes, two rows. The start
+  (no collision with the read's `x`), its words its scope ("preloaded · system") and, like identity's, no actions;
+  its ▸ is the prompt peek ([Prompt parts as sent](#prompt-parts-as-sent)). A note and a preload of one name and scope stay one row with both sizes; of two scopes, two rows. The start
   section tracks the items it shows by identity, not by key. It keeps the memory row's peek, state and the drop/pin rules of a preloaded memory (not
   droppable or pinnable until read). Its tokens are the part's, plus `+X` for the read's (the item's server tokens: a
   preloaded row carries none of its own, so the two never double-count). Other parts are read-only `part` rows: a
-  label, a sub (the tools part's "N declared"; dropped on a phone), `~tokens`, no actions, no peek; a turn lens dims
-  them.
+  label, a sub (the tools part's "N declared"; dropped on a phone), `~tokens`, no actions, and a ▸ that opens what chi
+  was sent ([Prompt parts as sent](#prompt-parts-as-sent)); a turn lens dims them. Each start row carries the keys of
+  the parts it stands for (`partKeys`, `partSizes`: a note also preloaded has two).
 - **Read in this session** (`read`): today's files / memories / urls folds (`bodySections`), minus the memories the
   start section shows. Its meta: held (not struck) and out (forgotten or dropped); its tokens the held items'.
 - **Conversation** (`talk`): one row at section level, "Conversation · N turns ~X" (`headSections` still returns the
@@ -484,3 +485,72 @@ The secondary text and the rail's rule read through their own tokens, a step bri
 base tokens on the light one: `--ws-faint` (the counts, the ops text, step tags; `--text-muted` on dark, `--text-faint`
 on light), `--ws-muted` (the rail's head, the list's `files · n` rows, the drop/pin buttons; `--text-3` / `--text-muted`),
 `--ws-rule` (the rail's left rule; `--border-strong` / `--border`) and `--ws-act-border` (the buttons' border).
+
+## Prompt parts as sent
+
+Every "From the start" row opens what chi was sent for its part: a slice of the prompt the session already keeps,
+never a copy.
+
+**The head and the places.** `Engine#turn_messages` puts the built prompt at `messages[0]`
+(`ContextNote.with_system_head`: `{role: "system", content:}` with no `kind`, `ContextNote.system_head?`) and
+`end_turn` saves it with the turn. Each `prompt_parts` entry says where it sits in that prompt (`PromptPart`, built by
+`PromptLayout` beside the build): `at` (where its lead starts), `len` (lead included), `lead` (the length of what chi
+adds before the item's own text: the identity line, a note's `## name`, the first note of a scope its heading, a
+preload's "this memory is required … memory name: x" line, a file's header, a plugin's `From b (n):`, an index's
+`Project memories:`; none for base, the kit and the volatile lines), so the slice is `head[at, len]` and the item's
+own text `head[at + lead, len - lead]`. Joins between items fall in no span. `chars` is not `len`: a section's first
+part is charged its joins. `digest` is 12 hex of SHA-256 over the item's own text, `head` 16 hex of the whole prompt
+(the same on every part of a build). The tools part has a place only where the declarations are in the prompt: inside
+the base text on a native non-Gemma profile (base's slice leaves them out, and so does its digest), after the
+rstripped prompt on Gemma (an item running into the rstrip is cut at it); on a chat host they are a request field and
+the part has none. `params` say how to fetch an item again: a memory's `requested_scope` (nil for a bare name),
+`model_key`, `fallback_model_key`, `project_dir`, `system_dir` as the build read them; a file's `path`; the tools'
+`[{name, chars}]` (chat: each schema's JSON; native Gemma declarations: each one's text; Qwen's one JSON list gives no
+per-tool length, so names only). The items are recorded where the builders render them
+(`SystemPrompt::Section#items`), so a place can't drift from the bytes. Cost: about 80 bytes a part plus 100–200 for
+a fetchable part's params, 2–3 KB a session, in the file, every snapshot, reset frame and owner show; one SHA-256 of
+the prompt and one per item per changed build.
+
+**The key.** A part is named from the parts list alone: `PromptPart.keys` (`kind:ref`, the label without a ref,
+`@scope` when it has one, `#n` for the nth repeat: a duplicate preload is `preloads:x#2`); `ws_sections.js startRows`
+has the twin, both held to `spec/shared/prompt_part_keys.json`.
+
+**The route.** `GET /api/sessions/:id/working_set/part?key=` (`WorkingSetRoutes#handle_working_set_part`, `:owner,
+:session`: a participant gets 403, and `Web::ParticipantShow` sends no parts) reads the parts and `messages[0]` from
+one source: a live worker's snapshot frame (`session_state_snapshot.prompt_parts`, `snapshot.messages`), else the
+session file. No Bridge route, no worker feature: one session-file parse. `WorkingSetPart.answer` then: tools always
+answer `{part, tools}` (names and sizes, saved with the part); otherwise case C's table, the first that holds winning,
+its words in `WorkingSetPart::WORDS` (the page shows them as given, `note`, with a `reason`):
+
+| # | Condition | `reason` | Source text under it? |
+|---|---|---|---|
+| 1 | the part has no `at`, a live worker of an older chi (its snapshot's `chi_version`; none said: older) | `older_worker` | no |
+| 2 | the part has no `at`, no live worker or one of this chi (a fresh worker keeps the file's parts until a turn) | `older_chi` | no |
+| 3 | `messages[0]` is not a system head | `no_prompt` | no |
+| 4 | the head's digest differs from the part's `head`, a turn runs | `running` (`changed`) | yes, a fetchable part |
+| 5 | the head's digest differs, idle (`!rollback`, a failed turn's old head, an older chi's run) | `idle` (`changed`) | yes, a fetchable part |
+
+Else `{part, sent: {text, lead}}`. Mid-turn the snapshot's messages lag the turn, but parts are recorded at its start,
+so the slice is exact unless the prompt was rebuilt (4). A memory file with invalid UTF-8 is scrubbed in the saved
+head, so its session stays in 5: accepted.
+
+**The fallback's fetch** (4 and 5). It reads paths a session file names, so it keeps `memory_now`'s guard: a memory
+(`WorkingSet.prompt_memory_now`) resolves with the saved keys, `requested_scope` and folders only when the saved
+`system_dir` and `project_dir` are inside chi web's own `MemoryPaths.system_dir`, and the files resolved pass
+`memory_paths?`; identity and preloads through `Tools::MemoryRead.resolve` and `.compose`, a note through
+`ModelNotes.body_at` (the composers the build used, so an unchanged memory's text has the build's digest). An AGENTS.md
+is read only when it is on the session `working_directory`'s chain (`PromptFiles.agents_paths`, `PromptFiles.content`).
+An appended file is never fetched (as sent from the head only); base, the kit, a plugin's section, an index and the
+session lines are chi's own text: the line alone. Nothing is recomputed: no model key, no folder.
+
+**The page.** `ws_part_peek.js` (made by `ws_reader.js` with the reader's markdown cache, handed to the view as
+`peek.part`): the peek's head "in the prompt · sent with every request", the text (a memory's and an `.md` file's
+rendered), chi's lead folded under "chi adds a line before it", no foot buttons; tools as names and sizes; case C's
+line with the source now under it. A row of several holds gets one tab per hold, its kind and size (`note · ~0.9k`,
+`preload · ~1.2k`, `in the prompt · ~1.4k`), and `read · t1·s1` for an item that was read: the item peek, first. One
+peek open at a time. The popover is 520 wide open or closed.
+
+**Compat.** An older page ignores the fields and the route; an older chi reading a newer file drops the fields
+(`PromptPart.from_h`), and its own save drops them (cases 1–2). The corpus's `compat-prompt` session has a head and
+placed parts (`ReleaseTools.write_compat_corpus!`, read in `spec/compat/readers_spec.rb`); in the wire samples the head
+is `CompatWire::SYSTEM_PROMPT`, so the digest never matches and a wire reader asserts the fallback.

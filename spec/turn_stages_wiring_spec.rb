@@ -402,9 +402,9 @@ RSpec.describe Samagotchi::Engine, "turn stages' wiring" do
         ended = true
         yield if block_given?
       end
-      allow(engine).to receive(:system_prompt).and_wrap_original do |original, *args|
+      allow(engine).to receive(:system_prompt).and_wrap_original do |original, *args, **kwargs|
         reads << :system_prompt if ended
-        original.call(*args)
+        original.call(*args, **kwargs)
       end
       allow(engine).to receive(:record_prompt_notes).and_wrap_original do |original, *args|
         reads << :record_prompt_notes if ended

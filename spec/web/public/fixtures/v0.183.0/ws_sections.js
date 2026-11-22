@@ -1,0 +1,261 @@
+// The working set's head view (docs/internals/working-set.md, The head
+// view): the popover's list as what is in chi's head, in three sections,
+// drawn in this order: read, talk, start (folded until the user opens it).
+//   start  From the start: the system prompt's parts (the session's
+//          prompt_parts), in prompt order, the tools part first. A memory
+//          part (identity, a model note, a preload) IS a memory row: merged
+//          with the session set's rows of that name and scope (`same`: a
+//          scope either side lacks matches by name alone, an older worker's
+//          or a set item not read yet), else a row of its own (identity:
+//          the set never lists it; a system x beside a project x read: key
+//          `x@system`, no actions). Other parts are `part` rows: a label, a
+//          sub, their tokens, no actions.
+//   read   Read in this session: today's files / memories / urls sections
+//          (working_set.js bodySections), minus the memories shown in start,
+//          in the order of the set given (the view's: last touched first,
+//          ws_order.js).
+//   talk   Conversation: one row (drawn at section level, no header, no
+//          fold), the rest of the context: the context's
+//          tokens minus the parts' and the held items'. Mixed units (parts and
+//          items are chars/4, the context's the server's count or the
+//          calibrated estimate): the "~" says so.
+// No parts (an old session or worker, a participant): none of this, the
+// list is today's (headSections returns null).
+//
+// No DOM: `node --test` covers the rules; working_set_view.js draws them.
+// A module of its own: static JS is cached at unversioned URLs, and a new
+// export on an old module would blank the page.
+import { bodySections, itemKey, tokensText } from "./working_set.js";
+
+// The sections folded by hand, per session (session_prefs.js): a JSON list
+// of section keys. None stored: start folded (DEFAULT_FOLDED).
+export const WS_SECTION_FOLD = "chi_ws_sections_folded";
+
+const DEFAULT_FOLDED = Object.freeze(["start"]);
+
+export const MEMORY_PARTS = Object.freeze(["identity", "notes", "preloads"]);
+
+// What a memory part's row says it is.
+const MEMORY_WORDS = { identity: "identity memory", notes: "model note", preloads: "preloaded" };
+// A part row's sub text, by kind (the tools part's is its label, "31 declared").
+const PART_SUBS = { agents: "project instructions", appended: "appended", plugins: "plugin section" };
+
+// A memory's name as memory_read takes it: a leading project/ or system/
+// scope is not part of it (an older page's preloaded key).
+export function memoryName(name) {
+  const m = /^(project|system)\/(.+)$/.exec(String(name || "").trim());
+  return m ? m[2] : String(name || "").trim();
+}
+
+const struck = (item) => item.state === "forgotten" || item.state === "dropped";
+const held = (item) => !item.muted && !item.added && !struck(item);
+const sum = (list, of) => list.reduce((n, x) => n + (Number.isFinite(of(x)) ? of(x) : 0), 0);
+
+// Whether two scopes can be the same memory's: equal, or either unknown
+// (an older worker's part or item, a set item the server hasn't read).
+const sameScope = (a, b) => !a || !b || a === b;
+
+// Whether +item+ (a set item) is the memory +part+ names: its name, and its
+// scope when both know theirs.
+// The server-side twin is Tools::MemoryRead.prompt_memory? in tools/memory.rb.
+export const same = (part, item) => item.kind === "memory" && memoryName(item.key) === memoryName(part.ref) && sameScope(part.scope, item.scope);
+
+// A part's row: never an item the set or a steer line knows.
+function partRow(part, key) {
+  const tools = part.kind === "tools";
+  return {
+    kind: "part", key, partKind: part.kind, label: tools ? "tools" : String(part.label || part.kind),
+    sub: tools ? String(part.label || "") : PART_SUBS[part.kind] || "", partTokens: Number.isFinite(part.tokens) ? part.tokens : 0,
+    ops: [], at: null, count: 0, state: "live",
+  };
+}
+
+// A memory part's row: the set's rows of that name merged (its read one
+// first: its tokens, its key for steering), or one of its own under +key+
+// (+scoped+: the name is another scope's row's too, so its words say its
+// scope).
+function memoryRow(part, name, matches, key, scoped) {
+  const main = matches.find((m) => m.ops.includes("read")) || matches[0];
+  const base = main ? { ...main } : { kind: "memory", key, label: name, ops: [], at: null, count: 0, state: "live" };
+  const ops = [...new Set(matches.flatMap((m) => m.ops))];
+  const at = matches.map((m) => m.at).find(Boolean) || base.at || null;
+  return {
+    ...base, ops, at, label: name, preloaded: true, partKind: part.kind, partScope: part.scope || null,
+    partTokens: Number.isFinite(part.tokens) ? part.tokens : 0, mergedKeys: matches.map(itemKey), ...(scoped ? { scopeWord: part.scope } : {}),
+  };
+}
+
+// A start memory row's read still sent (read, not forgotten or dropped):
+// what "held twice", its "+X" and the conversation's arithmetic count.
+const readHeld = (row) => row.kind === "memory" && !!row.partKind && row.ops.includes("read") && !struck(row);
+
+// Whether a start memory row is in the prompt and its read is held too.
+export const heldTwice = (row) => readHeld(row);
+
+// A start memory row's words: what it is in the prompt (a read again is
+// its "held twice" tag, or the turn lens's note).
+export const memoryPartWords = (row) => [MEMORY_WORDS[row.partKind] || "in the prompt", row.scopeWord || ""].filter(Boolean).join(" · ");
+
+// The keys of the set's items a start memory row stands for: never new to
+// the head in a turn lens (the prompt had them from the start).
+export function promptKeys(sections) {
+  return new Set((sections?.find((s) => s.key === "start")?.rows || []).flatMap((r) => r.mergedKeys || []));
+}
+
+// A start row's tokens: the part's, and "+X" for a memory's read (its item
+// tokens: a preloaded row carries none of its own, so the two never
+// double-count). "~0.6k +0.4k".
+export function startTokensText(row) {
+  const own = tokensText(row.partTokens);
+  if (!readHeld(row) || !Number.isFinite(row.tokens)) return own;
+  return `${own} +${tokensText(row.tokens).replace(/^~/, "")}`;
+}
+
+// The held-twice note under a start memory row in a turn lens whose items
+// read it: "read again in this turn: already in the prompt, held twice (+X)".
+export function heldTwiceNote(row, turnItem) {
+  if (!readHeld(row) || !turnItem?.ops?.includes("read")) return "";
+  const extra = Number.isFinite(row.tokens) ? ` (+${tokensText(row.tokens).replace(/^~/, "")})` : "";
+  return `read again in this turn: already in the prompt, held twice${extra}`;
+}
+
+// The head view's sections for +set+ ({items, muted}: the session's set,
+// overlaid), or null without parts (today's list). +parts+: the session's
+// prompt_parts; +ctxTokens+: the context's tokens now (null: unknown);
+// +turns+: how many turns the session has (the conversation row's).
+// @return [{key, title, meta, tokens, rows?, inner?, twice?}] read, talk?, start
+//   (start's +twice+: how many of its rows are held twice)
+export function headSections(set, budget, { parts = null, ctxTokens = null, turns = 0, inTurn = false } = {}) {
+  if (!Array.isArray(parts) || !parts.length) return null;
+  const { rows, used, partNames } = startRows(set, parts);
+  const partsTokens = sum(rows, (r) => r.partTokens);
+  // A preloaded memory never read is the prompt's, never "read in this
+  // session": one no part names (a ref-less preloads / notes part, whose
+  // items' sizes didn't line up; a preload that failed to load) stays out.
+  const rest = {
+    items: normalized(set.items, used, partNames).filter((item) => !used.has(item) && !(item.preloaded && !item.ops.includes("read"))),
+    muted: set.muted,
+  };
+  const readItems = rest.items;
+  const out = readItems.filter(struck).length;
+  // The read section's tokens: its held items'; the start rows' reads count
+  // into the conversation's arithmetic, not into either section.
+  const readTokens = sum(readItems.filter(held), (i) => i.tokens);
+  const heldTokens = readTokens + sum(rows.filter(readHeld), (r) => r.tokens);
+  const sections = [{
+    key: "read", title: "Read in this session", meta: [`${readItems.filter(held).length} held`, out ? `${out} out` : ""].filter(Boolean).join(" · "),
+    tokens: readTokens, inner: bodySections(rest, budget),
+  }];
+  const talk = Number.isFinite(ctxTokens) ? ctxTokens - partsTokens - heldTokens : NaN;
+  if (talk > 0) {
+    const row = { kind: "talk", key: "conversation", label: "conversation", sub: `${turns} turn${turns === 1 ? "" : "s"}`, partTokens: talk, ops: [], at: null, count: 0, state: "live" };
+    sections.push({ key: "talk", title: "Conversation", meta: "", tokens: talk, rows: [row] });
+  }
+  sections.push({
+    key: "start", title: "From the start", meta: inTurn ? "in every turn" : `${rows.length} part${rows.length === 1 ? "" : "s"} · in every turn`, tokens: partsTokens, rows,
+    twice: rows.filter(heldTwice).length,
+  });
+  return sections;
+}
+
+// The session set's items as the head view sees them (+parts+: the
+// session's prompt_parts; none: the items as they are): an item another
+// scope's part names (a project x read beside a system x preload) is a
+// plain read, not the prompt's (preloaded: false). The Read section and a
+// turn lens's counts (turnLens) both read this list.
+export function headItems(set, parts) {
+  if (!Array.isArray(parts) || !parts.length) return set.items;
+  const { used, partNames } = startRows(set, parts);
+  return normalized(set.items, used, partNames);
+}
+
+// +items+ with each one no start row shows, named by a memory part, made
+// a plain read (a copy; the rest unchanged).
+function normalized(items, used, partNames) {
+  return items.map((item) => (!used.has(item) && item.preloaded && item.kind === "memory" && partNames.has(memoryName(item.key)) ? { ...item, preloaded: false } : item));
+}
+
+// The start section's rows for +parts+, the set's items they show (+used+,
+// by identity) and the memory names the parts claim (+partNames+).
+function startRows(set, parts) {
+  // The set's items a start row shows, by identity: a key can be two
+  // memories' (a project x read, a system x in the prompt).
+  const used = new Set();
+  const memories = set.items.filter((item) => item.kind === "memory");
+  const rows = [];
+  const keys = new Set();
+  const seenMemory = new Map();
+  // Names a part claims: a set item of that name no part matched (another
+  // scope's) reads as read, not as the prompt's.
+  const partNames = new Set();
+  for (const part of parts) {
+    if (!part || !part.kind) continue;
+    if (MEMORY_PARTS.includes(part.kind) && part.ref) {
+      const name = memoryName(part.ref);
+      partNames.add(name);
+      const again = (seenMemory.get(name) || []).find((r) => sameScope(r.partScope, part.scope));
+      // A memory in two parts (a note also preloaded): one row, both sizes.
+      if (again) {
+        again.partTokens += Number.isFinite(part.tokens) ? part.tokens : 0;
+        if (!again.partScope && part.scope) again.partScope = part.scope;
+        continue;
+      }
+      const matches = memories.filter((m) => !used.has(m) && same(part, m));
+      matches.forEach((m) => used.add(m));
+      // Its own row's key: the name, or name@scope when another row or
+      // item holds that name (never two rows of one key).
+      const taken = keys.has(`memory:${name}`) || memories.some((m) => memoryName(m.key) === name && !matches.includes(m));
+      const own = !matches.length && taken ? `${name}@${part.scope || part.kind}` : name;
+      const row = memoryRow(part, name, matches, own, taken && !!part.scope);
+      seenMemory.set(name, [...(seenMemory.get(name) || []), row]);
+      keys.add(itemKey(row));
+      rows.push(row);
+      continue;
+    }
+    let key = `${part.kind}:${part.ref ?? part.label ?? ""}`;
+    for (let n = 2; keys.has(`part:${key}`); n += 1) key = `${part.kind}:${part.ref ?? part.label ?? ""}#${n}`;
+    keys.add(`part:${key}`);
+    rows.push(partRow(part, key));
+  }
+  return { rows, used, partNames };
+}
+
+// +touched+ (a turn lens: the turn's items by key) with each start memory
+// row's merged keys under its own key, so a read of `system/x` lights the
+// row of `x` (the set holds both spellings). A turn's rows come from tool
+// titles, which carry no scope: a part-only row (no merged item, e.g.
+// `x@system`) lights by its bare name too (a turn that read a project x,
+// never as held twice: that row holds no read). A row with a merged item
+// lights by its items' keys only. The map given is not changed.
+export function lensTouched(sections, touched) {
+  if (!touched || !sections) return touched;
+  const out = new Map(touched);
+  for (const row of sections.find((s) => s.key === "start")?.rows || []) {
+    if (!row.mergedKeys || out.has(itemKey(row))) continue;
+    const keys = row.mergedKeys.length ? row.mergedKeys : [`memory:${row.label}`];
+    const hit = keys.find((k) => touched.has(k));
+    if (hit) out.set(itemKey(row), touched.get(hit));
+  }
+  return out;
+}
+
+// The section keys folded, from the stored value (a JSON list). Nothing
+// stored (null) or unreadable: the default, start folded; a stored list,
+// an empty one too, as it is (the user folded or opened them by hand).
+// Conversation never folds (one row): an older page's stored "talk" is ignored.
+export function foldedSections(stored) {
+  try {
+    const list = stored == null ? null : JSON.parse(stored);
+    return new Set((Array.isArray(list) ? list : DEFAULT_FOLDED).filter((k) => typeof k === "string" && k !== "talk"));
+  } catch (_) {
+    return new Set(DEFAULT_FOLDED);
+  }
+}
+
+// The head line in the session lens: "in chi's head now · ~X of Y" (Y the
+// window; no "of Y" when unknown), "" without the context's tokens.
+export function headLine(ctxTokens, windowTokens) {
+  if (!Number.isFinite(ctxTokens)) return "";
+  const of = Number.isFinite(windowTokens) && windowTokens > 0 ? ` of ${tokensText(windowTokens).replace(/^~/, "")}` : "";
+  return `in chi's head now · ${tokensText(ctxTokens)}${of}`;
+}

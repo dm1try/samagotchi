@@ -7,6 +7,10 @@ require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/session"
 require "samagotchi/working_set_steer"
+require "samagotchi/system_prompt"
+require "samagotchi/model_profile"
+require "samagotchi/tools/registry"
+require "uri"
 
 # GET /api/sessions/:id/working_set: the set as the model has it
 # (WorkingSet), from a live worker's snapshot or the session file.
@@ -293,6 +297,179 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       expect(item(session, "dir", path).first).to eq(400)
       expect(item(session, "file", " ").first).to eq(400)
       expect(call("/api/sessions/00000000-0000-4000-8000-000000000000/working_set/item?kind=file&key=x").first).to eq(404)
+    end
+  end
+
+  # GET …/working_set/part?key=: a "From the start" part as chi sent it, a
+  # slice of the saved head (WorkingSetPart), or case C's line.
+  describe "a prompt part" do
+    let(:config) { File.join(tmpdir, "cfg") }
+    let(:model) { Samagotchi::SystemPrompt::ModelIdentity.new(ref: "box:m", host: "box", key: "m", fallback_key: "fb") }
+
+    around { |example| with_config_home(config) { example.run } }
+
+    before do
+      allow(Samagotchi::BundleNeeds).to receive(:found?).and_call_original
+      allow(Samagotchi::BundleNeeds).to receive(:found?).with("rg").and_return(false)
+      FileUtils.mkdir_p(File.join(repo, ".git"))
+      File.write(File.join(repo, "AGENTS.md"), "Widgets only.\n\n\n")
+      write_memory("system", "identity.md", "I am chi.\n")
+      write_memory("system", "identity.m.md", "Overlay for m.")
+      write_memory("system", "style.md", "be brief\n")
+      write_memory("system", "style.fb.md", "Fallback overlay.")
+      write_memory("system", "model_notes_tips.md", "models: *\nNote body\n")
+      write_memory("system", "model_notes_tips.m.md", "note overlay")
+    end
+
+    def write_memory(scope, name, text)
+      dir = Samagotchi::MemoryPaths.scope_dir(scope, cwd: repo)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, name), text)
+    end
+
+    def part_call(session, key) = call("/api/sessions/#{session.id}/working_set/part?key=#{URI.encode_www_form_component(key)}")
+
+    # A session whose head and parts are a real build's (chat), saved.
+    def built_session(memories: %w[style], head: nil)
+      notes = -> { Dir.chdir(repo) { Samagotchi::ModelNotes.for(name: "m", key: "m", fallback_key: "fb", warn: false) } }
+      prompt = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
+                                            session: -> {}, thinking: -> { :off }, model: -> { model }, model_notes: notes,
+                                            memories: memories)
+      @built = Dir.chdir(repo) { prompt.built_for(chat: true) }
+      saved_session([{ role: "system", content: head || @built.prompt }, { role: "user", content: "hi" }]).tap do |session|
+        session.prompt_parts = @built.prompt_parts
+        session.save(state_dir: state_dir)
+      end
+    end
+
+    def keys = Samagotchi::PromptPart.keys(@built.prompt_parts)
+
+    def part_of(kind) = @built.prompt_parts.find { |part| part.kind == kind }
+
+    it "answers each part's slice of the saved head: its own text, chi's lead apart" do
+      session = built_session
+      status, body = part_call(session, "identity:identity@system")
+      expect(status).to eq(200)
+      expect(body["part"]).to include("kind" => "identity", "ref" => "identity", "scope" => "system")
+      expect(body["sent"]).to eq("lead" => "System identity (auto-loaded, scope=system):\n",
+                                 "text" => "I am chi.\n\n\n---\n\nModel-specific guidance (m):\nOverlay for m.")
+      expect(part_call(session, keys[@built.prompt_parts.index(part_of("agents"))]).last["sent"]).to eq(
+        "lead" => "Project specific description:\n", "text" => "Widgets only."
+      )
+      expect(part_call(session, "base:base prompt").last["sent"]).to include("lead" => "")
+      expect(part_call(session, "session:session").first).to eq(404) # no session line in this build
+      expect(part_call(session, "nope:x").first).to eq(404)
+      expect(part_call(session, " ").first).to eq(400)
+    end
+
+    it "opens tools as their names and sizes, whatever the head" do
+      session = built_session(head: "not the head")
+      expect(part_call(session, keys.first).last).to include("tools" => [])
+    end
+
+    it "says the worker runs an older chi (live) or the prompt was an older chi's (no worker): parts without a place" do
+      session = built_session
+      session.prompt_parts = @built.prompt_parts.map { |part| Samagotchi::PromptPart.from_h(part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope)) }
+      session.save(state_dir: state_dir)
+      expect(part_call(session, "identity:identity@system").last).to include("note" => Samagotchi::WorkingSetPart::WORDS[:older_chi])
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => nil },
+        "session_state_snapshot" => { "prompt_parts" => session.prompt_parts.map(&:to_h) }
+      )
+      body = part_call(session, "identity:identity@system").last
+      expect(body).to include("note" => Samagotchi::WorkingSetPart::WORDS[:older_worker], "reason" => "older_worker")
+      expect(body).not_to have_key("sent")
+    end
+
+    it "gives a live worker of this chi the older chi's words, not a restart (a fresh worker: the file's parts until a turn)" do
+      session = built_session
+      session.prompt_parts = @built.prompt_parts.map { |part| Samagotchi::PromptPart.from_h(part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope)) }
+      session.save(state_dir: state_dir)
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => nil,
+                        "chi_version" => Samagotchi::VERSION },
+        "session_state_snapshot" => { "prompt_parts" => session.prompt_parts.map(&:to_h) }
+      )
+      expect(part_call(session, "identity:identity@system").last)
+        .to include("note" => Samagotchi::WorkingSetPart::WORDS[:older_chi], "reason" => "older_chi")
+      expect(Samagotchi::WorkingSetPart.older_worker?("0.1.0")).to be(true)
+      expect(Samagotchi::WorkingSetPart.older_worker?(nil)).to be(true)
+    end
+
+    it "says chi builds its prompt at the first turn when messages[0] is not a system head" do
+      session = built_session
+      session.messages.shift
+      session.save(state_dir: state_dir)
+      expect(part_call(session, "identity:identity@system").last).to include("note" => Samagotchi::WorkingSetPart::WORDS[:no_prompt])
+    end
+
+    it "under a changed head: rebuilt while a turn runs (live), changed after it was sent (idle), with the source now" do
+      session = built_session(head: "an older head")
+      idle = part_call(session, "identity:identity@system").last
+      expect(idle).to include("changed" => "idle", "note" => Samagotchi::WorkingSetPart::WORDS[:idle])
+      expect(idle["now"]).to eq("text" => "I am chi.\n\n\n---\n\nModel-specific guidance (m):\nOverlay for m.", "gone" => false)
+      expect(idle).not_to have_key("sent")
+
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => { "id" => "t" } },
+        "session_state_snapshot" => { "prompt_parts" => session.prompt_parts.map(&:to_h) }
+      )
+      running = part_call(session, "identity:identity@system").last
+      expect(running).to include("changed" => "running", "note" => Samagotchi::WorkingSetPart::WORDS[:running])
+      # Base, an index: chi's own text, the line alone.
+      expect(part_call(session, "base:base prompt").last).not_to have_key("now")
+      expect(part_call(session, "indexes:system").last).not_to have_key("now")
+    end
+
+    it "re-fetches each kind to its build's digest: identity's overlay by model key, a bare preload by the fallback key, a note's overlay, AGENTS.md" do
+      session = built_session(head: "an older head")
+      %w[identity preloads notes agents].each do |kind|
+        part = part_of(kind)
+        now = part_call(session, keys[@built.prompt_parts.index(part)]).last["now"]
+        expect(now).to include("gone" => false), kind
+        expect(Samagotchi::PromptPart.digest_of(now["text"])).to eq(part.digest), kind
+      end
+      expect(part_of("preloads").scope).to eq("system") # a bare name the system scope answered
+      expect(part_of("preloads").params).to include("requested_scope" => nil, "fallback_model_key" => "fb")
+    end
+
+    it "says gone when the memory left, and reads nothing for crafted params outside chi web's memories" do
+      session = built_session(head: "an older head")
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"))
+      expect(part_call(session, keys[@built.prompt_parts.index(part_of("preloads"))]).last["now"]).to eq("text" => nil, "gone" => true)
+
+      outside = File.join(tmpdir, "elsewhere").tap { |dir| FileUtils.mkdir_p(dir) }
+      File.write(File.join(outside, "identity.md"), "secret\n")
+      File.write(File.join(outside, "AGENTS.md"), "secret\n")
+      crafted = session.prompt_parts.map do |part|
+        case part.kind
+        when "identity" then part.with(params: part.params.merge("system_dir" => outside, "project_dir" => File.join(outside, "p")))
+        when "agents" then part.with(params: { "path" => File.join(outside, "AGENTS.md") })
+        when "appended" then part
+        else part
+        end
+      end
+      session.prompt_parts = crafted
+      session.save(state_dir: state_dir)
+      identity = part_call(session, "identity:identity@system").last
+      expect(identity).to include("changed" => "idle")
+      expect(identity).not_to have_key("now")
+      agents = part_call(session, keys[@built.prompt_parts.index(part_of("agents"))]).last
+      expect(agents).not_to have_key("now")
+    end
+
+    it "never fetches an appended file" do
+      extra = File.join(repo, "extra.md").tap { |file| File.write(file, "Extra.\n") }
+      prompt_files = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
+                                                  session: -> {}, thinking: -> { :off }, appended_files: [extra])
+      @built = Dir.chdir(repo) { prompt_files.built_for(chat: true) }
+      session = saved_session([{ role: "system", content: "changed" }]).tap do |saved|
+        saved.prompt_parts = @built.prompt_parts
+        saved.save(state_dir: state_dir)
+      end
+      body = part_call(session, "appended:#{extra}").last
+      expect(body).to include("changed" => "idle")
+      expect(body).not_to have_key("now")
     end
   end
 end

@@ -120,24 +120,36 @@ module Samagotchi
       return nil unless entries
       return nil unless ModelMatch.match?(entries, name: name, key: key, small: small)
 
-      body = File.read(path, encoding: "UTF-8").sub(/\A[^\n]*\n?/, "").strip
-      return nil if body.empty?
-
-      body = with_overlay(body, stem, scope, [key, fallback_key], env: env)
+      body = body_at(path, [key, fallback_key], dir: Tools::MemoryRead.memories_dir(scope, env: env))
+      return nil unless body
 
       Note.new(name: stem, scope: scope, body: body, chars: body.length, digest: Digest::SHA256.hexdigest(body)[0, 12])
     rescue StandardError
       nil
     end
 
+    # A note's body as the prompt carries it: the file at +path+ without
+    # its models: line, stripped, its model overlay in +dir+ (the note's
+    # scope's folder) appended (#with_overlay) for the first of +keys+ that
+    # has one; nil when the body is empty. The prompt's build (#for) and the
+    # working set's re-fetch of a note part (with the saved keys and dir).
+    def body_at(path, keys, dir:)
+      body = File.read(path, encoding: "UTF-8").sub(/\A[^\n]*\n?/, "").strip
+      return nil if body.empty?
+
+      with_overlay(body, File.basename(path, ".md"), keys, dir: dir)
+    end
+
     # The note's model overlay appended as memory_read appends one: the
     # key's, else the fallback key's. The file is read by its own path, not
-    # by name through memory_read (whose names are comma lists). +env+: the
-    # XDG env the scope's dir (and so the overlay) resolves from.
-    def with_overlay(body, stem, scope, keys, env: ENV)
+    # by name through memory_read (whose names are comma lists). +dir+: the
+    # scope's folder the overlay sits in.
+    def with_overlay(body, stem, keys, dir:)
       keys.compact.each do |overlay_key|
-        overlay = ModelOverlay.overlay_path_for(stem, overlay_key, scope, env: env)
-        next unless overlay && File.file?(overlay)
+        next if overlay_key.to_s.strip.empty?
+
+        overlay = File.join(dir, "#{stem}.#{overlay_key.to_s.strip}.md")
+        next unless File.file?(overlay)
 
         return "#{body}#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (#{overlay_key}):\n" \
                "#{File.read(overlay, encoding: "UTF-8").strip}"

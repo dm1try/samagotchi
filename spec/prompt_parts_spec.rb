@@ -30,6 +30,28 @@ RSpec.describe Samagotchi::PromptPart do
   end
 end
 
+RSpec.describe Samagotchi::PromptPart, "place fields and keys" do
+  it "round-trips at, len, lead, digest, head and params, and leaves out the ones it has none of" do
+    part = described_class.build(kind: :preloads, label: "x", ref: "x", chars: 8, at: 10, len: 12, lead: 4, digest: "abc123abc123",
+                                 head: "0123456789abcdef", params: { requested_scope: nil, project_dir: "/m/p" })
+    expect(part.params).to eq({ requested_scope: nil, project_dir: "/m/p" })
+    file = JSON.parse(JSON.generate(part.to_file))
+    expect(file).to include("at" => 10, "len" => 12, "lead" => 4, "digest" => "abc123abc123", "head" => "0123456789abcdef",
+                            "params" => { "requested_scope" => nil, "project_dir" => "/m/p" })
+    again = described_class.from_h(file)
+    expect(again.to_file).to eq(file)
+    expect(described_class.build(kind: :base, label: "base prompt", chars: 8).to_file.keys).to eq(%w[kind label chars tokens ref])
+    # Junk in a hand-edited file reads as none.
+    junk = described_class.from_h(file.merge("at" => "10", "params" => "x"))
+    expect([junk.at, junk.params]).to eq([nil, nil])
+  end
+
+  it "keys each part from the parts list alone, as the page does (spec/shared/prompt_part_keys.json)" do
+    fixture = JSON.parse(File.read(File.expand_path("shared/prompt_part_keys.json", __dir__)))
+    expect(described_class.keys(fixture["parts"])).to eq(fixture["keys"])
+  end
+end
+
 RSpec.describe Samagotchi::SystemPrompt, "#prompt_parts" do
   around do |example|
     Dir.mktmpdir do |tmp|
@@ -81,6 +103,166 @@ RSpec.describe Samagotchi::SystemPrompt, "#prompt_parts" do
   end
 
   def by_kind(parts, kind) = parts.select { |part| part.kind == kind.to_s }
+
+  # Every kind with one, two and three or more items, notes in two scopes, a
+  # duplicate preload and one name in two scopes: what R1 (the items made
+  # first-class) must keep byte for byte. The fixture was written by the
+  # code before R1.
+  describe "the parts golden" do
+    let(:many_notes) do
+      [note("model_notes_a", "system", "SYSTEM A"), note("model_notes_b", "system", "SYSTEM B\nline two"),
+       note("model_notes_c", "project", "PROJECT C")]
+    end
+    let(:plugins) { [plugin("alpha", "one", "First."), plugin("beta", "two", "Second.\nTwo lines."), plugin("gamma", "three", "Third.\n")] }
+
+    def golden_builds
+      FileUtils.mkdir_p(File.join(@project, ".git"))
+      FileUtils.mkdir_p(File.join(@project, "pkg", "inner"))
+      File.write(File.join(@project, "pkg", "AGENTS.md"), "Pkg rules.\n\n\n")
+      File.write(File.join(@project, "pkg", "inner", "AGENTS.md"), "Inner rules.")
+      File.write(File.join(@project, "more.md"), "More.\n")
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[dup dup project/x system/x])
+      allow(Samagotchi::ConfigFile).to receive(:appended_prompt_files).and_return(%w[../../extra.md ../../more.md])
+      Dir.chdir(File.join(@project, "pkg", "inner")) do
+        [[true, Samagotchi::ModelProfile.gemma4], [false, Samagotchi::ModelProfile.qwen36], [false, Samagotchi::ModelProfile.gemma4]].map do |chat, profile|
+          prompt = builder(profile: profile, memories: %w[cli_note], model_notes: -> { many_notes }, participants: -> { true },
+                           sections: -> { plugins })
+          allow(prompt).to(receive(:tool_surface).and_wrap_original { |_orig, layers| Samagotchi::Tools::ToolSurface.for(registry_with_tool, layers: layers) })
+          prompt.build(chat: chat)
+          { chat: chat, profile: profile.name, parts: prompt.prompt_parts.map { |part| part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope) } }
+        end
+      end
+    end
+
+    it "records the items where the builders render them: re-joined they are each section, the sections the prompt" do
+      FileUtils.mkdir_p(File.join(@project, ".git"))
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[dup dup])
+      [true, false].each do |chat|
+        prompt = builder(profile: Samagotchi::ModelProfile.qwen36, memories: %w[cli_note], model_notes: -> { many_notes },
+                         participants: -> { true }, sections: -> { plugins })
+        built = prompt.built_for(chat: chat)
+        built.parts.each do |section|
+          expect(section.items.map(&:sent).join(section.join)).to eq(section.text), section.kind.to_s
+          expect(section.items.map(&:kind).uniq).to eq([section.kind])
+        end
+        stable, volatile = built.parts.partition { |section| !%i[participants model location session].include?(section.kind) }
+        expect(built.prompt).to eq("#{stable.map(&:text).join("\n")}\n#{volatile.map(&:text).join("\n")}")
+        preloads = built.parts.find { |section| section.kind == :preloads }
+        expect(preloads.items.map(&:ref)).to eq(%w[dup dup cli_note])
+        notes = built.parts.find { |section| section.kind == :notes }
+        expect(notes.items.map(&:lead)).to eq(["Model notes (for box:m, scope=system):\n\n## model_notes_a\n", "## model_notes_b\n",
+                                               "Model notes (for box:m, scope=project):\n\n## model_notes_c\n"])
+        expect(notes.items.map(&:text)).to eq(many_notes.map(&:body))
+      end
+    end
+
+    it "keeps every build's prompt_parts as they were before R1" do
+      path = File.expand_path("fixtures/prompt_parts/golden.json", __dir__)
+      actual = JSON.pretty_generate(JSON.parse(JSON.generate(golden_builds)).each do |build|
+        build["parts"].each do |part|
+          part["ref"] = part["ref"]&.sub(@project, "<project>")
+          # The temp folder's path (its length varies with the pid) is in the location lines only.
+          part.merge!("chars" => 0, "tokens" => 0) if part["kind"] == "location"
+        end
+      end)
+      if ENV["UPDATE_PROMPTS"] == "1"
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "#{actual}\n")
+      end
+      expect("#{actual}\n").to eq(File.read(path))
+    end
+  end
+
+  # The sent slice: head[at, len] is lead + text for every item, on a chat
+  # host, a native non-Gemma one (the declarations inside base: base's
+  # slice without them) and Gemma (the declarations after the rstripped
+  # prompt). Joins and headings belonging to no item fall outside.
+  describe "where each part sits in the prompt" do
+    let(:many_notes) do
+      [note("model_notes_a", "system", "SYSTEM A"), note("model_notes_b", "system", "SYSTEM B"), note("model_notes_c", "project", "PROJECT C")]
+    end
+    let(:plugins) { [plugin("alpha", "one", "First."), plugin("beta", "two", "Second."), plugin("gamma", "three", "Third.\n")] }
+
+    def built_with(profile, chat:, volatile: true)
+      FileUtils.mkdir_p(File.join(@project, "pkg", "inner"))
+      FileUtils.mkdir_p(File.join(@project, ".git"))
+      File.write(File.join(@project, "pkg", "AGENTS.md"), "Pkg rules.\n\n\n")
+      File.write(File.join(@project, "pkg", "inner", "AGENTS.md"), "Inner rules.")
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[dup dup project/x system/x])
+      allow(Samagotchi::ConfigFile).to receive(:appended_prompt_files).and_return(%w[../../extra.md])
+      Dir.chdir(File.join(@project, "pkg", "inner")) do
+        prompt = builder(profile: profile, memories: %w[cli_note], model_notes: -> { many_notes }, participants: -> { volatile },
+                         sections: -> { plugins }, **(volatile ? {} : { session: -> {}, model: -> {} }))
+        allow(prompt).to(receive(:tool_surface).and_wrap_original { |_orig, layers| Samagotchi::Tools::ToolSurface.for(registry_with_tool, layers: layers) })
+        allow(prompt).to receive(:project_location).and_return(nil) unless volatile
+        prompt.built_for(chat: chat)
+      end
+    end
+
+    def items_and_parts(built)
+      items = built.parts.flat_map(&:items)
+      parts = built.prompt_parts.drop(1)
+      expect(parts.size).to eq(items.size)
+      items.zip(parts)
+    end
+
+    def expect_slices(built, cut: nil)
+      head = built.prompt
+      digest = Samagotchi::PromptPart.digest_of(head, 16)
+      items_and_parts(built).each do |item, part|
+        expect([part.kind, part.label]).to eq([item.kind.to_s, item.label])
+        expect(part.lead).to eq(item.lead.length)
+        expect(part.head).to eq(digest)
+        sent = item.sent
+        sent = sent[0, part.len] if cut && part.at + sent.length > cut
+        expect(head[part.at, part.len]).to eq(sent), "#{part.kind} #{part.label}"
+        expect(head[part.at + part.lead, part.len - part.lead]).to eq(sent[item.lead.length..]) unless item.kind == :base
+      end
+    end
+
+    it "chat: every item, 1, 2 and 3+ of a kind and two note scopes; the tools are not in the prompt" do
+      built = built_with(Samagotchi::ModelProfile.gemma4, chat: true)
+      expect_slices(built)
+      kinds = built.prompt_parts.map(&:kind).tally
+      expect(kinds).to include("identity" => 1, "notes" => 3, "preloads" => 5, "agents" => 3, "appended" => 1, "plugins" => 3, "indexes" => 2)
+      tools = built.prompt_parts.first
+      expect([tools.at, tools.len, tools.head]).to eq([nil, nil, nil])
+      expect(tools.params["tools"]).to eq([{ "name" => "probe_tool", "chars" => JSON.generate(built.surface.schemas.first).length }])
+      items_and_parts(built).each { |item, part| expect(part.digest).to eq(Samagotchi::PromptPart.digest_of(item.text)) }
+      # A note's heading is the first note of its scope's lead; a join between items is in no span.
+      notes = built.prompt_parts.select { |part| part.kind == "notes" }
+      expect(built.prompt[notes[0].at, notes[0].lead]).to eq("Model notes (for box:m, scope=system):\n\n## model_notes_a\n")
+      expect(built.prompt[(notes[0].at + notes[0].len), 2]).to eq("\n\n")
+      expect(notes[1].at).to eq(notes[0].at + notes[0].len + 2)
+      # chars is not the slice length: a section's first part is charged its joins.
+      expect(notes[0].chars).not_to eq(notes[0].len)
+    end
+
+    it "native qwen36: the tools sit inside base's span, and base's slice without them is base's own text" do
+      built = built_with(Samagotchi::ModelProfile.qwen36, chat: false)
+      expect_slices(built)
+      tools, base = built.prompt_parts.first(2)
+      expect(built.prompt[tools.at, tools.len]).to eq("<QWEN-DECL>")
+      expect(tools.at).to be_between(base.at, base.at + base.len)
+      base_text = built.parts.first.text
+      expect(base.digest).to eq(Samagotchi::PromptPart.digest_of(base_text.sub("<QWEN-DECL>", "")))
+      expect(tools.params["tools"]).to eq([{ "name" => "probe_tool" }])
+    end
+
+    it "Gemma: the tools at the tail, after the rstrip; the last item is cut at the strip" do
+      built = built_with(Samagotchi::ModelProfile.gemma4, chat: false, volatile: false)
+      tools = built.prompt_parts.first
+      cut = built.prompt.length - "<GEMMA-DECL>".length
+      expect([tools.at, tools.len]).to eq([cut, "<GEMMA-DECL>".length])
+      expect(built.prompt[tools.at, tools.len]).to eq("<GEMMA-DECL>")
+      expect_slices(built, cut: cut)
+      last_item, last = items_and_parts(built).last
+      # The system index ends in a newline the rstrip took.
+      expect(last_item.sent).to end_with("\n")
+      expect(last.len).to eq(last_item.sent.rstrip.length)
+      expect(tools.params["tools"].map(&:keys)).to eq([%w[name chars]])
+    end
+  end
 
   it "is [] before a build and after a reset" do
     prompt = builder

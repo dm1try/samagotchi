@@ -49,12 +49,13 @@ module Samagotchi
 
       # The stage over the kernel and the Engine's PromptWarmup (built in
       # #initialize, once the kernel and the reminder queue are). Its one
-      # callable is the system prompt, built late (side effects); the
-      # host's probe goes with each call (#next_turn_waiting, set after).
+      # callable is the system prompt, built late and not recorded (the
+      # session keeps the parts its turn sent); the host's probe goes with
+      # each call (#next_turn_waiting, set after).
       def build_turn_warmup
         TurnStages::Warmup.new(prompt_warmup: @prompt_warmup, kernel: @kernel, turn_state: @turn_state,
                                model_settings: @model_settings, reminder_queue: @reminder_queue,
-                               system_prompt: ->(model) { system_prompt(model) })
+                               system_prompt: ->(model) { system_prompt(model, record: false) })
       end
       private :build_turn_warmup
 

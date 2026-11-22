@@ -3,6 +3,9 @@
 require "samagotchi/system_prompt"
 require "samagotchi/model_profile"
 require "samagotchi/tools/registry"
+require "samagotchi/engine"
+require "samagotchi/session"
+require "tmpdir"
 
 # SystemPrompt#reset! runs off the turn thread (a plugin's tools_changed! /
 # prompt_changed!, a /stats on a Bridge thread re-resolving the profile) and,
@@ -73,5 +76,39 @@ RSpec.describe Samagotchi::SystemPrompt, "#reset! during #build" do
     builder.build
     builder.build
     expect(section_calls.size).to eq(1)
+  end
+end
+
+# Engine#system_prompt reads the prompt, its parts, notes and index from the
+# one Built the build returned: a #reset! landing between the build and the
+# recording (another thread) used to record no parts and no notes.
+RSpec.describe Samagotchi::Engine, "#system_prompt with a reset between build and record" do
+  let(:tmp) { Dir.mktmpdir("prompt-reset-record") }
+  let(:registry) { Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8080 } }) }
+
+  around { |example| with_config_home(tmp) { example.run } }
+  after { FileUtils.remove_entry(tmp) }
+
+  before do
+    allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
+    dir = Samagotchi::MemoryPaths.system_dir
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "model_notes_gemma.md"), "models: gemma-*\nGEMMA NOTE\n")
+  end
+
+  it "records the build's parts and notes" do
+    engine = described_class.new(host_registry: registry, model_name: "box:gemma-small", profile: "gemma4")
+    engine.session = Samagotchi::Session.new_session(mode: "assist", model_name: "box:gemma-small", working_directory: tmp)
+    builder = engine.instance_variable_get(:@prompt_builder)
+    allow(builder).to receive(:built_for).and_wrap_original do |original, **kwargs|
+      original.call(**kwargs).tap { builder.reset! }
+    end
+
+    prompt = engine.system_prompt
+
+    expect(builder.prompt_parts).to eq([])
+    expect(engine.session.prompt_parts.map(&:kind)).to include("tools", "base", "notes", "session")
+    expect(engine.session.prompt_notes.map(&:name)).to eq(%w[model_notes_gemma])
+    expect(prompt).to include("GEMMA NOTE")
   end
 end

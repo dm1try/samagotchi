@@ -77,18 +77,25 @@ module Samagotchi
       # a level change builds it again. A build that
       # misses the cache names the model and the level through its own
       # lambdas (#model_identity, #turn_thinking), which resolve again.
-      def system_prompt(model = nil)
+      # +record+: false builds without recording (the turn-end warm-up's
+      # prompt, which nothing sends as the session's: the session keeps the
+      # parts, notes and memory index of the prompt its turn sent).
+      def system_prompt(model = nil, record: true)
         model ||= effective_model
         chat = model.chat?
         level = chat ? nil : @model_settings.thinking_level(model)
-        prompt = @prompt_builder.build(chat: chat, thinking: level, layers: model.llm_context_layers(@model_settings.llm_context_session_args))
+        # One Built: a #reset! on another thread right after the build leaves it whole.
+        built = @prompt_builder.built_for(chat: chat, thinking: level,
+                                          layers: model.llm_context_layers(@model_settings.llm_context_session_args))
+        return built.prompt unless record
+
         # The memory indexes this prompt holds: /stats, the snapshot, analytics.json.
-        @metrics.memory_index = @prompt_builder.memory_index
+        @metrics.memory_index = built.memory_index
         # The model notes it carries: the session records them (/stats, /model, the web).
-        record_prompt_notes(@prompt_builder.prompt_notes)
+        record_prompt_notes(built.notes)
         # And the sizes of its parts (PromptPart), for the web's head view.
-        record_prompt_parts(@prompt_builder.prompt_parts)
-        prompt
+        record_prompt_parts(built.prompt_parts)
+        built.prompt
       end
 
       # The base prompt (specs, plugins' declarations).

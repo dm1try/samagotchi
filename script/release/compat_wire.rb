@@ -38,9 +38,17 @@ module CompatWire
   # The last turn's measured duration (last_turn.seconds, rounded to 0.1).
   # Only under last_turn: another `seconds` key is not a measurement.
   TIMING_PATH = { "last_turn" => "seconds" }.freeze
-  # A prompt part's sizes (prompt_parts' chars and tokens): the prompt's text
-  # changes with every release, the date, the folder and the tools.
-  SIZE_PATH = { "prompt_parts" => %w[chars tokens] }.freeze
+  # A prompt part's sizes and place (prompt_parts' chars, tokens, at, len,
+  # lead; a tool's chars in its params): the prompt's text changes with
+  # every release, the date, the folder and the tools.
+  SIZE_PATH = { "prompt_parts" => %w[chars tokens at len lead], "tools" => %w[chars] }.freeze
+  # A prompt part's digests (its text's, the whole head's), pinned: the head
+  # is SYSTEM_PROMPT in the samples, so a wire reader never finds it
+  # matching (the part route's fallback, case C).
+  DIGEST_PATH = { "prompt_parts" => { "digest" => "0" * 12, "head" => "0" * 16 } }.freeze
+  # A project memory folder's key (its name and hash of the recording's
+  # temp folder), as a prompt part's params name it.
+  PROJECT_KEY = %r{/projects/[^/]+\z}
   # The system prompt's text (the tools' descriptions, the date: it changes
   # with every release and every day), as a recording keeps it.
   SYSTEM_PROMPT = "<system prompt>"
@@ -78,7 +86,8 @@ module CompatWire
   end
 
   # +value+ made deterministic: an ISO time is STAMP, an event id's epoch
-  # EPOCH, a timing key's number (and last_turn.seconds, a prompt part's chars and tokens) FIXED_NUMBER, the recording's temp folder
+  # EPOCH, a timing key's number (and last_turn.seconds, a prompt part's sizes and place) FIXED_NUMBER, its digests
+  # pinned (DIGEST_PATH), the recording's temp folder
   # (+roots+) CWD, chi's version +version+ (chi_version, written_by), a
   # message list's system prompt SYSTEM_PROMPT; hashes' keys sorted (as
   # strings). Idempotent.
@@ -87,7 +96,8 @@ module CompatWire
     when Hash
       value.keys.map(&:to_s).sort.to_h do |name|
         raw = value.key?(name) ? value[name] : value[name.to_sym]
-        [name, normalise(raw, version: version, roots: roots, key: name, parent: key)]
+        pinned = DIGEST_PATH.dig(key, name)
+        [name, pinned && raw.is_a?(String) ? pinned : normalise(raw, version: version, roots: roots, key: name, parent: key)]
       end
     when Array
       if key == "messages" && system_head?(value.first)
@@ -120,7 +130,8 @@ module CompatWire
     event_id = %w[event_id last_event_id].include?(key) && EVENT_ID.match(text)
     return "#{event_id[1]}-#{EPOCH}" if event_id
 
-    roots.reduce(text) { |shown, root| shown.gsub(root, CWD) }
+    shown = roots.reduce(text) { |done, root| done.gsub(root, CWD) }
+    key == "project_dir" ? shown.sub(PROJECT_KEY, "/projects/compat") : shown
   end
 
   # The first JSON path at which +a+ and +b+ differ ("$.body.snapshot…"),

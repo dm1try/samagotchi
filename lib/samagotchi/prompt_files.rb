@@ -117,11 +117,18 @@ module Samagotchi
     # the file is empty or can't be read.
     # @return [String, nil]
     def section(path, header)
-      content = File.read(path, encoding: "UTF-8").strip
-      return nil if content.empty?
+      content = content(path)
+      content && "#{header}\n#{content}"
+    end
 
-      "#{header}\n#{content}"
-    rescue StandardError
+    # +path+'s text as the prompt carries it under its header: stripped;
+    # nil when empty or unreadable. The prompt's build (#section) and the
+    # working set's re-fetch of an AGENTS.md part.
+    # @return [String, nil]
+    def content(path)
+      content = File.read(path, encoding: "UTF-8").strip
+      content.empty? ? nil : content
+    rescue StandardError # degrade-ok: an unreadable file is left out of the prompt, as before
       nil
     end
   end

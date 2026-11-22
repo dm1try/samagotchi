@@ -2,6 +2,7 @@
 
 require "uri"
 require_relative "../working_set"
+require_relative "../working_set_part"
 require_relative "../llm_context_view"
 require_relative "../session_setting"
 require_relative "../memory_paths"
@@ -17,6 +18,14 @@ module Samagotchi
       # keys at the top, as paired_runs reads them), the +strategy+ its
       # llm_context summary names, its folder (+cwd+) and its +pins+.
       Source = Data.define(:messages, :strategy, :cwd, :pins)
+
+      # The routes (App::ROUTES takes them whole): the set, an item's
+      # timeline, a prompt part as sent. Before /api/sessions/:id.
+      ROUTES = [
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set\z}, :handle_working_set, :participant, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set/item\z}, :handle_working_set_item, :owner, :session],
+        ["GET", %r{\A/api/sessions/([^/]+)/working_set/part\z}, :handle_working_set_part, :owner, :session]
+      ].freeze
 
       private
 
@@ -88,6 +97,34 @@ module Samagotchi
           body[:now] = WorkingSet.memory_now(source.messages, key: key, strategy: source.strategy, cwd: source.cwd,
                                              root: MemoryPaths.system_dir)&.to_h
         end
+        json_response(200, body)
+      end
+
+      # GET /api/sessions/:id/working_set/part?key=: one "From the start" part
+      # as chi sent it (WorkingSetPart.answer: the slice of the saved head,
+      # or the line that says why not and, under a changed head, the source
+      # now). Owner only: participants see no prompt text. The parts and
+      # messages[0] come from one source: a live worker's snapshot frame
+      # (session_state_snapshot's prompt_parts, the snapshot's messages),
+      # else the session file. One session-file parse, no Bridge route.
+      def handle_working_set_part(req, id)
+        key = req.GET["key"].to_s
+        return error_response(400, "invalid_part", WorkingSetPart::INVALID) if key.strip.empty?
+
+        session = @session_class.load(id, state_dir: default_state_dir)
+        live = bridge_get_json(id, "snapshot")
+        state = live.is_a?(Hash) ? live["session_state_snapshot"] : nil
+        parts, messages = if state.is_a?(Hash) && state["prompt_parts"].is_a?(Array)
+                            [state["prompt_parts"], Array(live.dig("snapshot", "messages"))]
+                          else
+                            [session.prompt_parts, session.messages]
+                          end
+        body = WorkingSetPart.answer(parts: parts, messages: messages, key: key,
+                                     older_worker: !live.nil? && WorkingSetPart.older_worker?(live.dig("snapshot", "chi_version")),
+                                     running: !live&.dig("snapshot", "current_turn").nil?, root: MemoryPaths.system_dir,
+                                     cwd: session.working_directory)
+        return error_response(404, "unknown_part", WorkingSetPart::UNKNOWN) unless body
+
         json_response(200, body)
       end
 

@@ -19,8 +19,8 @@ module Samagotchi
       # @param turn_state [TurnState] whether steers are carried to the next turn
       # @param model_settings [SessionModelSettings] the effective model now, the next turn's LLM context strategy
       # @param reminder_queue [ReminderQueue] whether a reminder is due
-      # @param system_prompt [#call] (model) the system prompt (Engine#system_prompt): called last, only
-      #   once every check passed, as building it has side effects (the memory index metric, the prompt notes)
+      # @param system_prompt [#call] (model) the system prompt (Engine#system_prompt with record: false: a
+      #   warm-up records no parts, notes or memory index): called last, only once every check passed
       def initialize(prompt_warmup:, kernel:, turn_state:, model_settings:, reminder_queue:, system_prompt:)
         @prompt_warmup = prompt_warmup
         @kernel = kernel
