@@ -578,7 +578,11 @@ module Samagotchi
       raw.each_with_object({}) do |(name, sha), parts|
         name = name.to_s.strip
         unless name.match?(PLUGIN_FILE)
-          raise ValidationError, "plugin parts: #{name.inspect} isn't a .rb file name in the bundle's top directory"
+          message = "plugin parts: #{name.inspect} isn't a .rb file name in the bundle's top directory"
+          if name.include?("/") && name.end_with?(".rb")
+            message = "#{message}: parts sit next to #{plugin_file} (move #{name} up and list it as #{File.basename(name)})"
+          end
+          raise ValidationError, message
         end
         raise ValidationError, "plugin parts: #{name} is the plugin file itself" if name == plugin_file
 

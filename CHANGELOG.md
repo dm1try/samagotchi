@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted
+  `.rb` under a subdirectory won't be installed (but not under `spec/` or `test/`).
+
 ## [0.183.0] - 2026-11-22
 
 ### Added

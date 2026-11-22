@@ -108,7 +108,7 @@ plugin:
 - A part is a `.rb` name in the bundle's top directory, not the plugin file's own nor another part's, in any case
   (`Plugin.rb` beside `plugin.rb` is one file on a case-insensitive disk), listed once; at most 16. It is installed
   beside the plugin file in `plugin/`, checked like it at every load, and listed by `chi bundle status`, `diff`,
-  `build` and `uninstall`.
+  `build` and `uninstall`. `chi bundle check` warns when a `.rb` in a subdirectory would be left out of the install.
 - chi evaluates the parts **in the listed order**, then the plugin file, all into the same fresh module, so they
   share one namespace. Only the plugin file names the class chi builds; a part usually reopens it
   (`class Plugin; class HttpClient …`).
