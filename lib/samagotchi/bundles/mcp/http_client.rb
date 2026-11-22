@@ -136,6 +136,7 @@ class Plugin
     def handshake(timeout:, cancelled:)
       # Nothing else runs on a client before its first handshake returns.
       publish(State.new(:discover, nil, nil))
+      discover_error = nil
       begin
         result = post("server/discover", {}, Budget.for(timeout), cancelled, state: state)
         offered = Array(result["supportedVersions"])
@@ -144,10 +145,12 @@ class Plugin
         raise
       rescue RpcError => e
         offered = Array(e.data.is_a?(Hash) ? e.data["supported"] : nil) if e.code == -32_022
-      rescue Client::Error
+        discover_error = e if offered.nil? || offered.empty?
+      rescue Client::Error => e
         offered = nil
+        discover_error = e
       end
-      legacy(Budget.for(timeout), cancelled, offered, initial: true)
+      legacy(Budget.for(timeout), cancelled, offered, initial: true, discover_error: discover_error)
     end
 
     # @param timeout [Numeric] the whole call's, a re-handshake included
@@ -197,7 +200,7 @@ class Plugin
     # the era :expired, so the next request tries again; its error is the
     # server's state, never the tool's (Unavailable, no schema note).
     def renew(budget, cancelled)
-      legacy(budget, cancelled, nil, initial: false)
+      legacy(budget, cancelled, nil, initial: false, discover_error: nil)
     rescue Client::Timeout, Client::Cancelled, Client::Dead, Client::Unavailable
       raise
     rescue Client::Error => e
@@ -207,7 +210,7 @@ class Plugin
     end
 
     # initialize, then notifications/initialized, in one +budget+.
-    def legacy(budget, cancelled, offered, initial:)
+    def legacy(budget, cancelled, offered, initial:, discover_error:)
       in_flight = State.new(:initialize, nil, nil)
       publish(in_flight) if initial
       initialized = false
@@ -224,9 +227,15 @@ class Plugin
       raise
     rescue Client::Error => e
       publish(State.new(:expired, nil, nil)) unless initial || initialized
-      raise if offered.nil? || offered.empty?
+      if offered && !offered.empty?
+        raise Client::Unavailable, "speaks MCP #{offered.join(", ")}, not #{MODERN} or #{LEGACY} (#{e.message})"
+      end
+      raise if discover_error.nil? || discover_error.message == e.message
 
-      raise Client::Unavailable, "speaks MCP #{offered.join(", ")}, not #{MODERN} or #{LEGACY} (#{e.message})"
+      message = "#{e.message} (server/discover: #{discover_error.message})"
+      raise e.class, message if [Client::Error, Client::Unavailable].include?(e.class)
+
+      raise Client::Unavailable, message
     end
 
     # One message on the wire, and its answer, in what is left of +budget+.

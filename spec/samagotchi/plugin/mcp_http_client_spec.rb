@@ -122,6 +122,30 @@ RSpec.describe "The mcp bundle's HTTP client" do
         .to raise_error(errors::Unavailable, "speaks MCP 2099-01-01, not 2026-07-28 or 2025-11-25 (HTTP 400)")
     end
 
+    it "includes server/discover's 503 when legacy fails" do
+      server.enqueue("/mcp", status: 503, body: "")
+      server.enqueue("/mcp", status: 400, body: "")
+
+      expect { client.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "HTTP 400 (server/discover: HTTP 503)")
+    end
+
+    it "includes server/discover's 405 when legacy fails" do
+      server.enqueue("/mcp", status: 405, body: "")
+      server.enqueue("/mcp", status: 400, body: "")
+
+      expect { client.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "HTTP 400 (server/discover: HTTP 405)")
+    end
+
+    it "includes a JSON-RPC server/discover error when legacy fails" do
+      server.enqueue("/mcp", json: rpc_error(1, -32_601, "not found"))
+      server.enqueue("/mcp", json: rpc_error(2, -32_602, "bad initialize"))
+
+      expect { client.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "bad initialize (-32602) (server/discover: not found (-32601))")
+    end
+
     it "speaks stateless legacy: no session id, the negotiated version, no _meta" do
       server.enqueue("/mcp", status: 404, body: "")
       legacy_answers(2)

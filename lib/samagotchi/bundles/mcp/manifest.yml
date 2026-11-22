@@ -11,7 +11,7 @@ plugin:
   # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's, OAuth's HttpClient's).
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf
-    http_client.rb: sha256:1bf378d9fcc468f429d0f38a90ba50b81a978fe46a37efffc030355b4ebfab88
+    http_client.rb: sha256:f6a1f423dfdeb436c396b8d88bbafe57a32a549e9d342e3b9a17fc8776cb0991
     oauth.rb: sha256:c779e8e7971715c15494b8e755f4a1cff1b4358b96a3ef8db6b330f066c0f152
     tools.rb: sha256:607743a06f191dc24b6aa032e67ed6c95a75cb27310361f6572ca15d5dc50635
     content.rb: sha256:28461822ea1181c3abe790d3f01391babe6b1d974d4606117c42ba1da209b132
