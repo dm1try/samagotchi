@@ -165,8 +165,8 @@ module Samagotchi
     # What one entry did in a tick: "fired", "skipped", "missed", "failed" or
     # "dry" (a --dry-run's "would fire"). +detail+ is the reason. +disabled+:
     # this skip or failure used up a recurring entry's budget (#mark_disabled).
-    Outcome = Data.define(:id, :title, :status, :detail, :entry, :disabled) do
-      def initialize(id:, status:, title: nil, detail: nil, entry: nil, disabled: false) = super
+    Outcome = Data.define(:id, :title, :status, :detail, :entry, :disabled, :session_id) do
+      def initialize(id:, status:, title: nil, detail: nil, entry: nil, disabled: false, session_id: nil) = super
     end
 
     # A whole tick.
@@ -467,7 +467,7 @@ module Samagotchi
       end
       links ||= links_now unless prune_after.empty?
       prune_after.each { |entry| prune(entry, links) }
-      Tick.new(locked: false, outcomes: dry_run ? outcomes : mark_disabled(outcomes, started))
+      Tick.new(locked: false, outcomes: dry_run ? outcomes : mark_disabled(outcomes, started, links: links))
     end
 
     # Fire one entry now, whatever its next_due says (`chi schedule run-now`).
@@ -517,15 +517,11 @@ module Samagotchi
         file.entries[position] = reserved
       end
 
-      return mark_disabled([outcome], [entry]).first if outcome
+      return mark_disabled([outcome], [entry], links: links).first if outcome
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no such schedule") unless reserved
 
-      mark_disabled([fire_and_record(reserved, links)], [entry]).first
+      mark_disabled([fire_and_record(reserved, links)], [entry], links: links).first
     end
-
-    # The session a schedule acts on now (#target_of), else its head (gone or
-    # archived): where chi web's phone notification about it opens.
-    def session_of(entry) = target_of(entry, links_now).first || entry.head
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
     def self.tick_interval_minutes
@@ -804,7 +800,7 @@ module Samagotchi
     # the pass began (+before+), as the file has it now: one diff covers every
     # path that records one. A `date` one-off is spent, not disabled; an entry
     # off within budget is an owner's `chi schedule disable`.
-    def mark_disabled(outcomes, before)
+    def mark_disabled(outcomes, before, links: nil)
       ended = outcomes.select { |outcome| %w[skipped failed].include?(outcome.status) }.map(&:id)
       on = before.select { |entry| entry.enabled && entry.recurrence[:kind] != "date" && ended.include?(entry.id) }.map(&:id)
       return outcomes if on.empty?
@@ -812,9 +808,11 @@ module Samagotchi
       off = read.entries.grep(Entry).select do |entry|
         on.include?(entry.id) && !entry.enabled && (entry.skips >= entry.max_skips || entry.failures >= entry.max_failures)
       end
+      links ||= links_now unless off.empty?
       off.each do |entry|
         index = outcomes.rindex { |outcome| outcome.id == entry.id && %w[skipped failed].include?(outcome.status) }
-        outcomes[index] = outcomes[index].with(disabled: true, entry: entry)
+        session_id = target_of(entry, links).first || entry.head
+        outcomes[index] = outcomes[index].with(disabled: true, entry: entry, session_id: session_id)
       end
       outcomes
     end

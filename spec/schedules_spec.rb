@@ -851,6 +851,7 @@ RSpec.describe Samagotchi::Schedules do
         last = schedules.tick(now: Time.now + 120).outcomes.first
         expect(last).to have_attributes(status: "skipped", disabled: true)
         expect(last.entry).to have_attributes(id: entry.id, skips: 2, enabled: false)
+        expect(last.session_id).to eq(anchor)
         expect(schedules.lookup(entry.id).enabled).to be(false)
       end
     end
