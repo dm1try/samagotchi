@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../agent_caller"
 require_relative "../client_id"
 require_relative "../session_inbox"
 require_relative "../turn_flow"
@@ -169,7 +170,7 @@ module Samagotchi
       # parent_answers of the session asked and its chain's newest link; on
       # a remote chi web's turn route gates the same ids itself.
       def sender(asker, given, prompt)
-        return TurnFlow.continue_yes?(prompt) ? ClientId::CLI_ANSWER : ClientId::CLI_SEND if @access.remote?
+        return TurnFlow.continue_yes?(prompt) ? ClientId::CLI_ANSWER : AgentCaller.send_id if @access.remote?
 
         asker.agent_line(prompt, session: targets(given))
       end

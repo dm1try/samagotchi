@@ -178,6 +178,11 @@ module Samagotchi
     # @return [Symbol]
     def wake_kind(client_id) = sender(client_id).wake
 
+    # Whether +client_id+ is a parent agent's line (chi send's, chi answer's):
+    # the ids chi web's parent gates hold to guardrails.parent_answers
+    # (Web::SessionCreate#parent_gate and its callers).
+    def parent_line?(client_id) = [CLI_SEND, CLI_ANSWER].include?(client_id.to_s)
+
     # The client id a participant's turn carries (chi web's, from their
     # grant): participant:<participant id>.
     def participant(participant_id) = "#{PARTICIPANT_PREFIX}#{participant_id}"

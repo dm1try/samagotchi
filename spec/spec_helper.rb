@@ -46,7 +46,15 @@ require_relative "support/integration_server"
 # (WorkerBoot.run_session_loop deletes them as it reads them; this is the second guard):
 # with them set, an in-process WorkerBoot.run_session_loop would trap signals and fork.
 SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
-SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
+# Nor an agent's markers (Guardrails::ParentApprovals::AGENT_MARKERS beside
+# chi's own): a suite run from Claude Code or Codex would read as a parent
+# agent's process and send as that agent, which CI never does.
+SPEC_AGENT_MARKERS = %w[CLAUDECODE AI_AGENT CODEX_THREAD_ID].freeze
+SPEC_ENV_CLEAR = lambda {
+  ENV.keys.each do |key|
+    ENV.delete(key) if (key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key)) || SPEC_AGENT_MARKERS.include?(key)
+  end
+}
 SPEC_ENV_CLEAR.call
 
 # A temp dir of the run's own as TMPDIR, for this process and all it starts,

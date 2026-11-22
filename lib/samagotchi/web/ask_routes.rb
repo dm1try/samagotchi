@@ -186,7 +186,7 @@ module Samagotchi
       # session asked and of its chain's newest link (where it goes).
       # @return [Array, nil] the response, or nil to go on
       def ask_gate(id, prompt, client_id)
-        return nil unless App::CLI_SEND_IDS.include?(client_id)
+        return nil unless ClientId.parent_line?(client_id)
 
         asked = session_access.resolve(id)
         ids = [asked, session_access.head(asked).id].uniq

@@ -4,6 +4,7 @@ require_relative "exchange"
 require_relative "exchange/token"
 require_relative "../bridge_client"
 require_relative "../bridge_secret"
+require_relative "../agent_caller"
 require_relative "../client_id"
 require_relative "../parent_answers_command"
 require_relative "../reply_wait/target"
@@ -172,7 +173,7 @@ module Samagotchi
         refusal ||= ParentAnswersCommand::REFUSED if SendCommand::ParentGate.loosens_any?(prompt, values)
         return Refused.new(kind: :parent_refused, session_id: sessions.first&.id, message: refusal) if refusal
 
-        continue ? ClientId::CLI_ANSWER : ClientId::CLI_SEND
+        continue ? ClientId::CLI_ANSWER : AgentCaller.send_id
       end
 
       # The answer to the question session +id+ waits on, then one slice of

@@ -33,8 +33,10 @@ module Samagotchi
 
     # @param access [SessionAccess::Local, SessionAccess::Remote, nil]
     #   where the sessions are; default this machine's, in +state_dir+
-    def initialize(argv, access: nil, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil)
+    # @param env [Hash] where the agent markers are read (ENV; specs pass their own)
+    def initialize(argv, access: nil, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, env: ENV)
       @argv = argv.dup
+      @env = env
       @access = access
       @stdin = stdin
       @stdout = stdout

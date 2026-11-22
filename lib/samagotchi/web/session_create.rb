@@ -34,10 +34,6 @@ module Samagotchi
       # What a continue takes from the previous link: refused beside it.
       CONTINUE_TAKES = %w[dir llm_context thinking settings toolkit tools no_tools parent_answers].freeze
 
-      # chi send's client ids: its lines are checked as chi send checks them
-      # (#parent_gate).
-      CLI_SEND_IDS = [ClientId::CLI_SEND, ClientId::CLI_ANSWER].freeze
-
       private
 
       def handle_create(req)
@@ -178,7 +174,7 @@ module Samagotchi
       # for #create_refusal; nil when the previous link isn't there
       # (continue_from says so).
       def continue_refusal(given, body, line, model:)
-        return nil unless body["check_vision"] == true || CLI_SEND_IDS.include?(body["client_id"])
+        return nil unless body["check_vision"] == true || ClientId.parent_line?(body["client_id"])
 
         previous = Session.load(SessionChain.resolve(given, state_dir: default_state_dir), state_dir: default_state_dir)
         create_refusal(body, line, values: [previous.parent_answers], model: model, previous: previous)
@@ -220,7 +216,7 @@ module Samagotchi
       # @return [Array, nil] the response, or nil to go on
       def parent_gate(line, client_id:, values:)
         line = line.to_s
-        return nil unless CLI_SEND_IDS.include?(client_id)
+        return nil unless ClientId.parent_line?(client_id)
 
         if client_id == ClientId::CLI_ANSWER && TurnFlow.continue_yes?(line) &&
            (refusal = SendCommand::ParentGate.continue_refusal_for(values))

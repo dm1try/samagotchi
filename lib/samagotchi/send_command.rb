@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "agent_caller"
 require_relative "client_id"
 require_relative "delivery"
 require_relative "terminal_ui/formatting"
@@ -42,7 +43,6 @@ module Samagotchi
     include CLI::Command
     include CLI::ParentWait
 
-    CLIENT_ID = ClientId::CLI_SEND
     # The cap on one turn's images the Bridge checks.
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
     # A cut's outcomes in the Bridge's ack (SteerCut#cut_for_steer).
@@ -258,8 +258,10 @@ module Samagotchi
     # @param argv [Array<String>] the arguments after "send"
     # @param access [SessionAccess::Local, nil] where the sessions are;
     #   default this machine's, in +state_dir+
-    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil)
+    # @param env [Hash] where the agent markers are read (ENV; specs pass their own)
+    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, access: nil, env: ENV)
       @argv = argv.dup
+      @env = env
       @stdin = stdin
       @stdout = stdout
       @stderr = stderr
@@ -729,7 +731,7 @@ module Samagotchi
 
     # chi send's client id, or chi answer's for a parent agent's /continue
     # yes (the worker holds that to its guardrails.parent_answers).
-    def client_id_for(prompt) = ParentGate.parent_continue?(prompt) ? ClientId::CLI_ANSWER : CLIENT_ID
+    def client_id_for(prompt) = ParentGate.parent_continue?(prompt, env: @env) ? ClientId::CLI_ANSWER : AgentCaller.send_id
 
     # Whether +text+ may be a session command, which only its worker knows
     # (a bundle's too).
