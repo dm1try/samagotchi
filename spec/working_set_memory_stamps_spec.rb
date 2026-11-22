@@ -128,6 +128,71 @@ RSpec.describe "a memory's stamp in the working set" do
     expect(state(conversation(run))).to eq("notes" => "stale")
   end
 
+  # D1: chi's own change of a memory it read keeps it current; someone else's after chi's write makes it stale.
+  describe "chi's own changes after the read" do
+    def file_stamp(path)
+      stat = File.stat(path)
+      { path: path, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size }
+    end
+
+    # chi's edit of the memory's file: the file changed, the call stamped after it.
+    def chi_edits(messages, text, id: "e1")
+      File.write(memory_file, text)
+      messages + [{ role: "model", content: "", tool_calls: [{ id: id, name: "edit", arguments: { "path" => memory_file, "old_text" => "a", "new_text" => "b" } }] },
+                  { role: "tool_response", content: "[edit]\nEdited #{memory_file}", tool_call_id: id, tool_ids: ["t#{id}"], tool_stamps: [file_stamp(memory_file)] }]
+    end
+
+    def chi_writes(messages, text, id: "w1")
+      File.write(memory_file, text)
+      messages + [{ role: "model", content: "", tool_calls: [{ id: id, name: "memory_write", arguments: { "name" => "notes", "content" => text, "scope" => "system" } }] },
+                  { role: "tool_response", content: "[memory_write]\nMemory 'notes' saved to system scope (#{text.bytesize} bytes). File written: #{memory_file}",
+                    tool_call_id: id, tool_ids: ["t#{id}"] }]
+    end
+
+    # Someone else's change: a new size and an mtime a second on (coarse timestamps can't hide it).
+    def outside_write(text)
+      File.write(memory_file, text)
+      later = File.mtime(memory_file) + 1
+      File.utime(later, later, memory_file)
+    end
+
+    it "keeps a memory read then edited by chi current (the heartbeat case); someone's change after makes it stale" do
+      messages = chi_edits(conversation(read("notes")), "the text chi edited, longer")
+      expect(state(messages)).to eq("notes" => "live", memory_file => "live")
+
+      outside_write("the text someone else changed, longer still")
+      expect(state(messages)).to include("notes" => "stale")
+    end
+
+    it "is stale when the memory chi wrote changed after its memory_write" do
+      messages = chi_writes(conversation(read("notes")), "chi's own text")
+      expect(state(messages)).to eq("notes" => "live")
+
+      outside_write("someone else's text, longer")
+      expect(state(messages)).to eq("notes" => "stale")
+    end
+
+    it "stays stale when chi's write made another file answer the name (a project x shadowing the read's system x)" do
+      run = read("notes", scope: nil)
+      project_dir = File.join(memories, "project")
+      FileUtils.mkdir_p(project_dir)
+      project_file = File.join(project_dir, "notes.md")
+      File.write(project_file, "chi's project memory")
+      messages = conversation(run) + [{ role: "model", content: "", tool_calls: [{ id: "e1", name: "write", arguments: { "path" => project_file, "content" => "x" } }] },
+                                      { role: "tool_response", content: "[write]\nWrote #{project_file}", tool_call_id: "e1", tool_ids: ["te1"],
+                                        tool_stamps: [file_stamp(project_file)] }]
+      expect(state(messages)).to include("notes" => "stale")
+    end
+
+    it "refuses /working-set add of a memory chi read then edited: already sent, as a file chi edited" do
+      require "samagotchi/working_set_steer"
+      messages = chi_edits(conversation(read("notes")), "the text chi edited, longer")
+      target = Samagotchi::WorkingSetSteer.target("memory:notes", cwd: memories)
+      expect { Samagotchi::WorkingSetSteer.add(messages, target, strategy: :none, cwd: memories) }
+        .to raise_error(Samagotchi::WorkingSetSteer::Refused) { |error| expect(error.reason).to eq(:already_sent) }
+    end
+  end
+
   it "is never stale for a session saved without memory stamps (compat N-1)" do
     conversation = [
       { role: "system", content: "You are chi." },

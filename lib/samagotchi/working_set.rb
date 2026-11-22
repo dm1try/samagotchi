@@ -143,8 +143,16 @@ module Samagotchi
       conversation = Array(conversation)
       view = LLMContextView.new(strategy: strategy)
       pinned = pins.to_set { |pin| [pin.kind, pin.key] }
-      items = all_touches(conversation, cwd, view).group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
-        item(kind, key, group, conversation, view, stat, pinned.include?([kind, key]), root)
+      runs = LLMContextStale.paired_runs(conversation)
+      # chi's own changes, built from the same runs only when a memory item needs them (no second walk).
+      own = nil
+      # Required here, not at load: it requires this file (and the testing kit keeps a file budget, sandbox_spec).
+      own_of = lambda do
+        require_relative "working_set_own_changes"
+        own ||= OwnChanges.from_runs(runs, conversation, cwd: cwd)
+      end
+      items = all_touches(conversation, cwd, view, runs: runs).group_by { |touch| [touch.kind, touch.key] }.map do |(kind, key), group|
+        item(kind, key, group, conversation, view, stat, pinned.include?([kind, key]), root, own_of)
       end
       Snapshot.new(items: items, at: conversation.size, adds: pending_adds(conversation))
     end
@@ -342,7 +350,7 @@ module Samagotchi
     end
 
     # The guard every read of a path a session file names goes through
-    # (Locator's fetches, #memory_changed?'s re-resolve): the paths must be
+    # (Locator's fetches, #memory_differs' re-resolve): the paths must be
     # .md files inside chi web's memories folder. Here, not in Locator's
     # file: #build's stale check needs it at load.
     module MemoryGuard
@@ -482,8 +490,8 @@ module Samagotchi
     def memory_scope(path) = File.basename(File.dirname(path, 2)) == "projects" ? "project" : "system"
 
     # Every paired run's touches, with what +view+ sends of its output.
-    def all_touches(conversation, cwd, view)
-      stored = LLMContextStale.paired_runs(conversation)
+    def all_touches(conversation, cwd, view, runs: nil)
+      stored = runs || LLMContextStale.paired_runs(conversation)
       # Under none with no drop the view sends the conversation as it is.
       messages = view.messages(conversation)
       sent = if messages.equal?(conversation)
@@ -537,7 +545,7 @@ module Samagotchi
       names - missing
     end
 
-    def item(kind, key, group, conversation, view, stat, pinned, root)
+    def item(kind, key, group, conversation, view, stat, pinned, root, own_of)
       first = group.first
       contents = group.select(&:content)
       tokens = contents.sum { |touch| touch.sent.length / TokenUsage::CHARS_PER_TOKEN / touch.share }.ceil
@@ -545,7 +553,7 @@ module Samagotchi
                 contents.all? { |touch| dropped?(touch, conversation) } ? DROPPED : FORGOTTEN
               elsif kind == FILE && changed?(key, group.last.run, conversation, stat)
                 STALE
-              elsif kind == MEMORY && memory_changed?(key, group.last.run, conversation, stat, root)
+              elsif kind == MEMORY && memory_stale?(key, group, conversation, stat, root, own_of)
                 STALE
               else
                 LIVE
@@ -601,35 +609,97 @@ module Samagotchi
       differs?(path, stamp, stat)
     end
 
-    # Whether the memory +key+ has changed since +run+'s stamp (the item's
-    # latest run): re-resolve stamps with request metadata, then compare the
-    # answering files. Older path-only stamps compare their stamped files.
-    # No stamp means not changed; a missing entry or overlay is changed.
-    def memory_changed?(key, run, conversation, stat, root)
+    # Whether the memory item +key+ is stale (+group+: its touches; the
+    # latest decides). A memory_read's: its stamp's files changed
+    # (#memory_differs), unless each changed one holds chi's own later
+    # change (OwnChanges: an edit or write of the file, a memory_write;
+    # the heartbeat case, a memory read once then edited) - never when the
+    # name now answers from another file or overlay (resolved again: stale,
+    # as before). A memory_write's: the file it wrote no longer holds its
+    # content (someone changed it after chi's write).
+    def memory_stale?(key, group, conversation, stat, root, own_of)
+      last = group.last
+      return written_differs?(key, group, conversation, root, own_of) if last.op == "write"
+
+      changed = memory_differs(key, last.run, conversation, stat, root)
+      return changed == :moved unless changed.is_a?(Array)
+      return false if changed.empty?
+
+      read_at = [last.run.index, last.run.ref.run]
+      !changed.all? do |file|
+        change = own_of.call.for_file(file[:path], role: file[:role], key: file[:key], dirs: file[:dirs])
+        change && (change.order <=> read_at) == 1 && own_of.call.current?(change, file[:path], stat: stat)
+      end
+    end
+
+    # Whether the memory chi's latest memory_write (+group+'s last run)
+    # wrote no longer holds its content: <scope dir>/<name>.md, system
+    # from +root+, project from the item's latest read stamp's folder
+    # (none: a project memory only written stays live). A remove, an
+    # overlay or a description-only write: as before, live. Reads only a
+    # path the guard lets through.
+    def written_differs?(key, group, conversation, root, own_of)
+      run = group.last.run
+      scope = %w[system project].find do |candidate|
+        change = own_of.call.memory(candidate, key)
+        change&.tool_id == run.ref.id && change.op == OwnChanges::MEMORY_WRITE
+      end
+      return false unless scope
+
+      dir = scope == "system" ? root : read_project_dir(key, group, conversation)
+      return false unless dir
+
+      path = File.join(dir.to_s, "#{key}.md")
+      return false unless MemoryGuard.memory_paths?({ path: path }, root)
+
+      !own_of.call.current?(own_of.call.memory(scope, key), path)
+    end
+
+    # The project memories folder the item's latest memory_read stamped.
+    def read_project_dir(key, group, conversation)
+      touch = group.reverse_each.find { |each| each.op == "read" }
+      entries = touch && memory_entries(touch.run, conversation)
+      entry = entries && entries[key]
+      entry.is_a?(Hash) ? field(entry, :project_dir) : nil
+    end
+
+    # What changed of the memory +key+ since +run+'s stamp (the item's
+    # latest run): nil without a stamp (an older session: never stale);
+    # :moved when the name now resolves to another file or overlay, or is
+    # gone (stamps with request metadata are resolved again); else the
+    # stamped files that differ ([{path:, role:, key:, dirs:}], empty when
+    # none). Older path-only stamps compare their stamped files.
+    def memory_differs(key, run, conversation, stat, root)
       stamp = stamp_hash(conversation[run.index], run.ref.run)
-      return false unless stamp
+      return nil unless stamp
 
       entries = field(stamp, :memories)
       entry = entries.is_a?(Hash) ? field(entries, key) : nil
-      return false unless entry.is_a?(Hash)
+      return nil unless entry.is_a?(Hash)
 
       if MemoryGuard.resolution_metadata?(entry)
         resolved = MemoryGuard.resolve_memory(key, entry, system_dir: root)
         unless resolved == :stamped_paths
-          return true unless resolved
+          return :moved unless resolved
 
-          return true unless MemoryGuard.memory_paths?(MemoryGuard.resolved_memory_entry(resolved), root)
+          return :moved unless MemoryGuard.memory_paths?(MemoryGuard.resolved_memory_entry(resolved), root)
 
           stamped_overlay = field(entry, :overlay)
           stamped_overlay_path = stamped_overlay.is_a?(Hash) ? field(stamped_overlay, :path) : nil
-          return true unless same_path?(resolved.path, field(entry, :path))
-          return true unless same_path?(resolved.overlay_path, stamped_overlay_path)
+          return :moved unless same_path?(resolved.path, field(entry, :path))
+          return :moved unless same_path?(resolved.overlay_path, stamped_overlay_path)
         end
       end
 
+      dirs = { "project" => field(entry, :project_dir), "system" => root }
       overlay = field(entry, :overlay)
-      differs?(field(entry, :path), entry, stat) ||
-        (overlay.is_a?(Hash) && differs?(field(overlay, :path), overlay, stat))
+      changed = []
+      changed << { path: field(entry, :path).to_s, role: :base, key: nil, dirs: dirs } if differs?(field(entry, :path), entry, stat)
+      if overlay.is_a?(Hash) && differs?(field(overlay, :path), overlay, stat)
+        overlay_path = field(overlay, :path).to_s
+        changed << { path: overlay_path, role: :overlay, key: Tools::MemoryRead.overlay_key(key, overlay_path), dirs: dirs }
+      end
+      changed
     end
 
     def same_path?(left, right)
@@ -670,7 +740,7 @@ module Samagotchi
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
     private_class_method :all_touches, :touches, :shared_with, :item, :still_sent?, :dropped?, :with_id,
-                         :changed?, :memory_changed?, :same_path?, :stamp_hash, :stamp_of, :field, :event, :body_of,
+                         :changed?, :memory_stale?, :written_differs?, :read_project_dir, :memory_differs, :same_path?, :stamp_hash, :stamp_of, :field, :event, :body_of,
                          :lines_of, :saved_diff, :memory_entries, :memory_part, :overlay_tail, :memory_scope, :memory_item_scope
   end
 end

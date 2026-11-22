@@ -23,7 +23,8 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - Working set: a "From the start" row whose memory or AGENTS.md chi changed itself says `✎ edited` and links its
-  call, not `stale`; a stale row's now tab says when chi gets the new text.
+  call, not `stale`; a stale row's now tab says when chi gets the new text; a memory chi read and then changed
+  itself stays current, and one changed after chi's `memory_write` shows stale.
 - For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted
   `.rb` under a subdirectory won't be installed (but not under `spec/` or `test/`).
 - An ask of `/continue yes` (a thin client's `POST …/ask`, an MCP host's `chi_ask`) now waits for the continued turn

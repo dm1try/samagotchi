@@ -43,6 +43,19 @@ else that changes it does: a later `execute` (`sed`, `git checkout`), the user's
 edit that changed the file anyway leaves the earlier stamp, so the file shows stale. On a filesystem with 1 s mtimes a
 same-size edit in the same second goes unseen (APFS keeps nanoseconds).
 
+A memory item follows chi's own changes too (`WorkingSet.build` passes the runs it already walked to
+`WorkingSet::OwnChanges.from_runs`: no second walk; built only when a memory item needs it). A memory whose latest run
+is a `memory_read` and whose stamped files differ stays `live` when every file that differs (the entry, its overlay)
+holds chi's own later change: an `edit` or `write` of the file (its stamp), or a `memory_write` (by content, since
+`memory_write` leaves no stamp). That is the heartbeat case, a memory read once and then edited all session. It runs
+only after `memory_differs`' early answers: a name that now resolves to another file or overlay (a project `x` chi
+wrote now shadowing the read's system `x`) or is gone stays `stale`, conservative. A memory whose latest run is a
+`memory_write` is `stale` when the file it wrote (`<scope dir>/<name>.md`: system from `root`, project from the item's
+read stamp's `project_dir`; a project memory only written has none and stays `live`) no longer holds its content: one
+you edit after chi's write. A remove, an overlay write or a description-only write keeps today's `live`. Only a path
+`MemoryGuard.memory_paths?` lets through is read. Cost in the worker: one pass over the runs already in memory, a stat
+per memory item already found stale, a `File.binread` per memory item whose latest run is a `memory_write`.
+
 ## The projection: `WorkingSet.build`
 
 `Samagotchi::WorkingSet.build(conversation, cwd:, strategy:, stat: File.method(:stat), pins: [])` (`lib/samagotchi/working_set.rb`)
@@ -246,7 +259,8 @@ projection), on both loops. It costs one model step; a model may skip it (the no
   directory; a memory name `memory_read` rejects or that neither scope holds), an item holding the user's drop
   (`undrop_first`: undrop brings it back without a step), one already in the system prompt and with no working-set
   output (`in_prompt`: nothing to add; matched by name and scope, `Tools::MemoryRead.prompt_memory?` over
-  `Engine#prompt_memories`, a bare name or an unscoped prompt entry by name only), and one the model has whole (`already_sent`: live, a read of it sent). The
+  `Engine#prompt_memories`, a bare name or an unscoped prompt entry by name only), and one the model has whole (`already_sent`: live, a read of it sent; a memory chi read and then changed itself
+is live, so its add is refused as a file chi edited is). The
   prompt-only refusal doesn't apply when the set holds a read of that memory: a stale or forgotten item may still be
   added as the web row's `refresh`. **`unadd`** takes a pending add back (free); without one it is refused
   (`not_added`).
