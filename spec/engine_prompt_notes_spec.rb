@@ -49,6 +49,30 @@ RSpec.describe Samagotchi::Engine, "prompt notes" do
     expect(e.stats_snapshot[:prompt_notes]).to eq([gemma])
   end
 
+  it "keeps the turn's prompt record when a reset warm-up builds with new preload and agent files" do
+    e = engine("box:gemma-small", memories: ["system/style"])
+    e.session = new_session("box:gemma-small")
+    Dir.chdir(tmp) { e.system_prompt }
+
+    names = e.prompt_memory_names
+    memories = e.prompt_memories
+    files = e.stats_snapshot[:prompt_files]
+    index = e.stats_snapshot[:memory_index]
+    expect(names).not_to include("style")
+    expect(files).to eq([])
+
+    File.write(File.join(dir, "style.md"), "WARM-UP STYLE")
+    File.write(File.join(tmp, "AGENTS.md"), "WARM-UP RULES")
+    e.instance_variable_get(:@prompt_builder).reset!
+    warmed = Dir.chdir(tmp) { e.system_prompt(record: false) }
+
+    expect(warmed).to include("WARM-UP STYLE", "WARM-UP RULES")
+    expect(e.prompt_memory_names).to eq(names)
+    expect(e.prompt_memories).to eq(memories)
+    expect(e.stats_snapshot[:prompt_files]).to eq(files)
+    expect(e.stats_snapshot[:memory_index]).to eq(index)
+  end
+
   it "names the notes the effective model's prompt will load on a fresh session, before any build" do
     e = engine("box:gemma-small")
     e.session = new_session("box:gemma-small")

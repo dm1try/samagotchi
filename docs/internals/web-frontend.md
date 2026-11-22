@@ -32,11 +32,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. An export a new version stops importing stays until
 the next release (its baseline refresh) for the same reason, marked as kept for an older cached module (the delete
-sheet kept `isChained`, `format.js deleteConfirmText` and `running_tasks.js tasksConfirmText` that way; and, for the
-same release, the hooks 0.182.0's modules still call: `session_actions.js` passes `plain` and a `failed` that toasts
-when the sheet is gone, and gives archive's ask a `deletePlan` that rejects with the refusal, and `delete_sheet.js`'s
-`deleteToast` leaves out the stopped tasks the old `session_actions.js` adds itself; `delete_mixed_cache.test.js` loads
-each pair, the old file from `spec/web/public/fixtures/v0.182.0/`; and `ws_peek.js`'s `PEEK_WIDTH`, which 0.183.0's
+sheet still keeps `isChained` and `format.js deleteConfirmText` that way; and `ws_peek.js`'s `PEEK_WIDTH`, which 0.183.0's
 `working_set_view.js` imports though the view is 520 wide always now: `ws_part_peek_mixed_cache.test.js` loads this view
 with 0.183.0's `ws_reader.js` and `ws_peek.js`, and 0.183.0's view with this `ws_reader.js`, from
 `spec/web/public/fixtures/v0.183.0/`). `answer_fold.js`, `details_motion.js`,

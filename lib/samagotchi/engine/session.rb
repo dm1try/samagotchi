@@ -86,7 +86,8 @@ module Samagotchi
         level = chat ? nil : @model_settings.thinking_level(model)
         # One Built: a #reset! on another thread right after the build leaves it whole.
         built = @prompt_builder.built_for(chat: chat, thinking: level,
-                                          layers: model.llm_context_layers(@model_settings.llm_context_session_args))
+                                          layers: model.llm_context_layers(@model_settings.llm_context_session_args),
+                                          record: record)
         return built.prompt unless record
 
         # The memory indexes this prompt holds: /stats, the snapshot, analytics.json.
