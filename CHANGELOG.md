@@ -21,6 +21,11 @@ and commands may change between minor versions. How releases are made:
 - For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted
   `.rb` under a subdirectory won't be installed (but not under `spec/` or `test/`).
 
+### Fixed
+
+- The mcp bundle: concurrent tool calls whose remote session expired now wait for one new session instead of failing
+  with "the session expired (404)" or sending a half-initialized request.
+
 ## [0.183.0] - 2026-11-22
 
 ### Added
