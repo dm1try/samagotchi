@@ -697,7 +697,7 @@ module Samagotchi
           file.entries[position] = nil
           file.entries.compact!
         else
-          changed = entry.with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
+          changed = file.entries[position].with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
           # Enabled again with a fresh budget: its next skip must not end it at once.
           file.entries[position] = enabled ? changed.with(skips: 0, failures: 0) : changed
         end

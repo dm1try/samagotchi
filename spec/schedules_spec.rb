@@ -141,6 +141,33 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "disables the current schedule entry without losing a tick update made after lookup" do
+    Dir.mktmpdir("schedules-change-current") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      newer_head = SecureRandom.uuid
+      newer_due = (Time.now + 600).utc.iso8601
+      looked_up = false
+      allow(schedules).to receive(:lookup).and_wrap_original do |original, *args|
+        stale = original.call(*args)
+        unless looked_up
+          looked_up = true
+          schedules.send(:write_under_lock) do |file|
+            position = file.entries.index { |candidate| candidate.is_a?(described_class::Entry) && candidate.id == entry.id }
+            file.entries[position] = file.entries[position].with(skips: 4, head: newer_head, next_due: newer_due)
+          end
+        end
+        stale
+      end
+
+      schedules.disable(entry.id)
+
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, skips: 4, head: newer_head, next_due: newer_due)
+    end
+  end
+
   it "keeps schedules.json beside the sessions dir, not inside it" do
     Dir.mktmpdir("schedules-location") do |root|
       dir = File.join(root, "sessions")
