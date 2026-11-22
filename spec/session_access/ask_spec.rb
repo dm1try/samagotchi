@@ -185,6 +185,55 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
     expect(call(session.id, prompt: "/model x")).to eq(described_class::Ran.new(session_id: session.id))
   end
 
+  describe "/continue yes with a continue offer standing" do
+    def start(own_turn:, live: true, running: false)
+      Samagotchi::SessionAccess::WaitStart.new(cursor: nil, baseline: nil, own_turn: own_turn, known_turn: nil,
+                                               running: running, live: live, settled: false, last_turn_id: nil)
+    end
+
+    def offer(own_turn:, live: true)
+      allow(access).to receive(:prepare_wait).and_return(start(own_turn: own_turn, live: live))
+      waits = []
+      allow(access).to receive(:wait_reply) do |_id, **options|
+        waits << options
+        Samagotchi::ReplyWait::Result.new(status: :timeout)
+      end
+      worker(accepted(nil, "command_id" => "c1"))
+      waits
+    end
+
+    it "waits on the continued turn (the offer's own_turn), not Ran, and its token binds that turn" do
+      session = make
+      waits = offer(own_turn: "t1")
+
+      reply = call(session.id, prompt: "/continue yes", timeout: 0.2)
+      expect(reply).to be_a(described_class::Reply)
+      expect(reply.result.status).to eq(:timeout)
+      expect(waits).to contain_exactly(include(turn: "t1"))
+      token_session, target = Samagotchi::SessionAccess::Exchange::Token.load(reply.token)
+      expect(token_session).to eq(session.id)
+      expect(target).to have_attributes(turn: "t1")
+    end
+
+    it "is still Ran with no offer standing (no own_turn)" do
+      session = make
+      offer(own_turn: nil)
+      expect(call(session.id, prompt: "/continue yes")).to eq(described_class::Ran.new(session_id: session.id))
+    end
+
+    it "is still Ran when no worker ran the session at the wait's start (the offer is the worker's memory)" do
+      session = make
+      offer(own_turn: "t1", live: false)
+      expect(call(session.id, prompt: "/continue yes")).to eq(described_class::Ran.new(session_id: session.id))
+    end
+
+    it "is still Ran for another command" do
+      session = make
+      offer(own_turn: "t1")
+      expect(call(session.id, prompt: "/model x")).to eq(described_class::Ran.new(session_id: session.id))
+    end
+  end
+
   it "answers a still-running turn with status timeout and a token for the next wait" do
     session = make(status: "running")
     own(session)

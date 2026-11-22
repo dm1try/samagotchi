@@ -33,12 +33,12 @@ another link ran it. Body fields:
 
 - `prompt` (required): the message, at most 16 KiB. A terminal-only command such
   as `/stats` is refused (400 `local_command`); a session command such as
-  `/model x` runs and answers `{"status": "command"}`, with no token. That
-  holds for `/continue yes` too, although it starts a turn: the worker's answer
-  to a command doesn't name that turn, so there is nothing to wait on. A
-  continue offered as a question (an answer's `waiting_for_answer`, or 409
-  `waiting`) is better answered through `/answer` with `wait` (below), which
-  follows the turn.
+  `/model x` runs and answers `{"status": "command"}`, with no token.
+  `/continue yes` on a session whose turn ran out of steps, while its worker
+  runs, continues that turn and answers as a message does (its reply, or a
+  `token`); if the offer was answered elsewhere first you get what came of it.
+  A continue offer still shown as a question (409 `waiting`) is answered
+  through `/answer`.
 - `timeout`: seconds to wait for the answer, at most 30 (the default).
 - `queue`: `true` (the default) means a session running a turn queues your
   message as its own turn, and you get that turn's answer. `false` refuses a

@@ -39,7 +39,10 @@ module Samagotchi
         def initialize(session_id:, asked:, result:, token:, answered_here: true) = super
       end
 
-      # The line ran as a session command (/model x): no reply comes.
+      # The line ran as a session command (/model x): no reply comes. A
+      # /continue yes with an offer standing (an idle session's continue
+      # question, its worker running) is a Reply instead: it waits on the
+      # continued turn (#continue_follows?).
       Ran = Data.define(:session_id)
 
       # Nothing went in. +kind+ :unknown (+error+ the resolve's
@@ -114,9 +117,17 @@ module Samagotchi
             next
           end
           return Refused.new(kind: :undelivered, session_id: at.id, result: result) unless result.accepted?
-          return Ran.new(session_id: at.id) if result.command?
 
-          return wait(at, start, result, queue: queue, slice: slice(timeout, deadline), cancelled: cancelled)
+          if result.command?
+            return Ran.new(session_id: at.id) unless continue_follows?(prompt, start)
+
+            # The continue turn runs under the offered turn's id (own_turn),
+            # as chi answer follows it: the worker's ack is not read.
+            return wait(at, ReplyWait::Target.answer(start), slice: slice(timeout, deadline), cancelled: cancelled)
+          end
+
+          target = @exchange.bind(start, result, queue: queue)
+          return wait(at, target, slice: slice(timeout, deadline), cancelled: cancelled)
         end
       end
 
@@ -220,8 +231,16 @@ module Samagotchi
 
       def answer_refused(kind, id, message) = Refused.new(kind: kind, session_id: id, message: message)
 
-      def wait(at, start, delivered, queue:, slice:, cancelled:)
-        target = @exchange.bind(start, delivered, queue: queue)
+      # A /continue yes the worker ran as a command, on a session idle with
+      # its continue offer standing (start's own_turn, ReplyWait.own_turn)
+      # and a worker running it: the offer lives only in that worker's
+      # memory, so with none (a new one says nothing to continue) a wait
+      # would hand out tokens with no end.
+      def continue_follows?(prompt, start)
+        TurnFlow.continue_yes?(prompt) && !start.running && start.live && !start.own_turn.to_s.empty?
+      end
+
+      def wait(at, target, slice:, cancelled:)
         more = cancelled ? { cancelled: cancelled } : {}
         result = @exchange.wait(at.id, target, timeout: slice, **more)
         token = Exchange::Token.dump(at.id, target) if result.status == :timeout

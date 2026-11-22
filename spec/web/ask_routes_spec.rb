@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "fileutils"
 require "rack/mock"
+require_relative "../support/worker_fixtures"
 
 require "samagotchi/web/app"
 require "samagotchi/session"
@@ -17,6 +18,8 @@ require "samagotchi/bridge_client"
 # POST …/answer and a create's token. The worker is a double of
 # SessionManager.deliver_turn that writes the turn's reply when asked to.
 RSpec.describe Samagotchi::Web::App, "ask routes" do
+  include WorkerFixtures
+
   around do |example|
     Dir.mktmpdir("web-ask") do |tmp|
       @tmp = File.realpath(tmp)
@@ -148,6 +151,29 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       worker(accepted(nil, "command_id" => "c1"))
 
       expect(ask(session, { prompt: "/model x" })).to eq([200, { "status" => "command", "session_id" => session.id }])
+    end
+
+    it "follows a /continue yes on a session with its continue offer standing to the continued turn (a token)" do
+      session = make(pending_question: { id: "cont", kind: "continue", question: "Continue?" })
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: "t1",
+                                                   exhausted: true, limit: 30)
+      session.save(state_dir: state_dir)
+      # A live worker that ties a continue turn to its offer (turn_ids),
+      # holding the session (live).
+      live_sidecar_fixture(dir_of(session), port: 1, features: [Samagotchi::ReplyWait::TURN_IDS_FEATURE])
+      worker(accepted(nil, "command_id" => "c1"))
+
+      status, body = ask(session, { prompt: "/continue yes", timeout: 0.2 })
+      expect([status, body["status"]]).to eq([200, "timeout"])
+      expect(token_module.load(body["token"]).last.turn).to eq("t1")
+
+      # The worker continues: the offer goes, and the continued turn (t1) answers.
+      Samagotchi::Session.load(session.id, state_dir: state_dir).tap do |s|
+        s.pending_question = nil
+        s.save(state_dir: state_dir)
+      end
+      Samagotchi::SessionInbox.write_output(dir_of(session), "continued", enqueued_id: "t1")
+      expect(wait(session.id, { token: body["token"] })).to match([200, include("status" => "done", "text" => "continued")])
     end
 
     it "answers 404 not_found, and 400 ambiguous_id with the ids" do

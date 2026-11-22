@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 - For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted
   `.rb` under a subdirectory won't be installed (but not under `spec/` or `test/`).
+- An ask of `/continue yes` (a thin client's `POST …/ask`, an MCP host's `chi_ask`) now waits for the continued turn
+  and answers its reply, or a wait token while it runs, instead of `status: command`.
 
 ### Fixed
 

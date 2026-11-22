@@ -95,6 +95,23 @@ RSpec.describe Samagotchi::McpServer::Tools do
       expect(deliveries.first.last).to include(client_id: "cli:send", delivery: Samagotchi::Delivery::QUEUE)
     end
 
+    it "follows a /continue yes under --remote to the continued turn: a chi_wait token, not ran as a command" do
+      session = make
+      allow(access).to receive(:remote?).and_return(true)
+      start = Samagotchi::SessionAccess::WaitStart.new(cursor: nil, baseline: nil, own_turn: "t1", known_turn: nil,
+                                                       running: false, live: true, settled: false, last_turn_id: nil)
+      allow(access).to receive(:prepare_wait).and_return(start)
+      allow(access).to receive(:wait_reply).and_return(Samagotchi::ReplyWait::Result.new(status: :timeout))
+      allow(access).to receive(:deliver_turn).and_return(
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "command_id" => "c1" })
+      )
+
+      result = call("chi_ask", session: session.id, prompt: "/continue yes")
+      expect(result["structuredContent"]).to include("status" => "running", "session_id" => session.id)
+      _id, target = Samagotchi::SessionAccess::Exchange::Token.load(result["structuredContent"]["token"])
+      expect(target.turn).to eq("t1")
+    end
+
     it "answers still running with a token that chi_wait takes to the answer" do
       session = make(status: "running")
       own(session)

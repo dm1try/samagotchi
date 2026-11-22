@@ -97,7 +97,9 @@ is a `DEADLINE_SHARE` of that read and at least `POST_MARGIN` (2.5 s) short of i
 so a worker that took the turn just in time still answers its 202 before the client gives up), so a worker that reads the turn late drops it (408 `deadline_passed`, the route's
 504 `worker_timeout`) rather than run it after the call gave up: about 44 s at worst; chi web stopping cuts the continue waits at the next look, `Refused :canceled`,
 503 `server_stopping`; a client that goes away is not seen (WEBrick), so its handler runs on to that deadline),
-answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
+answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused` (a `/continue yes` the worker ran as a
+command, on an idle session with its offer standing and a live worker, is bound with `ReplyWait::Target.answer(start)`
+instead, the offer's turn id from `ReplyWait.own_turn`, as chi answer follows it; the worker's ack is not read): chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and `McpServer::Tools` reuses `SessionAccess::Ask` / `Exchange` through the MCP server without chi web.
 The routes: [thin-clients.md](../thin-clients.md); the MCP protocol: [mcp-server.md](../mcp-server.md).

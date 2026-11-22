@@ -47,6 +47,8 @@ host isn't left waiting on that call.
 | `chi_wait` | `token` | keeps waiting for a turn that was still running |
 | `chi_answer` | `session`, `question_id`, `option?` / `options?` / `text?` | answers the question a session waits on, then waits |
 
+`chi_ask` with `/continue yes` follows the continued turn: its answer, or a `chi_wait` token while it runs.
+
 A call waits at most 25 seconds (a `chi_ask` or `chi_answer` 35 in all, under Claude Code HTTP's 60 s). Then:
 
 - the turn still runs: `Still running. Call chi_wait with this token to keep waiting.` with a `token`;
