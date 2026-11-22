@@ -55,7 +55,9 @@
   commands (`anytime:` ones run mid-turn), model tools (they can return images I see), hooks,
   cards, side answers (`ask_model`), System 1 judgments (`chi.judgment`, `ctx.judge`), HTTP calls (`ctx.http`),
   child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),
-  `mcp` (MCP server tools, searched with find_tools and called with call_tool; a screenshot comes as a picture; a toolkit's undeclared built-ins too, as chi/<tool>), `guardrails` (rules), `known-names` (typo guard), `source-links`
+  `mcp` (MCP server tools, searched with find_tools and called with call_tool; a screenshot comes as a picture; a toolkit's
+  undeclared built-ins too, as chi/<tool>; remote servers too, one answering 401 needs the user's `/mcp login NAME`,
+  and `/callback ADDRESS` is theirs to paste, never the model's), `guardrails` (rules), `known-names` (typo guard), `source-links`
   (turns source refs like JIRA-123 in an answer into links in the web, and a one-line note), `loop-guard`
   (denies a repeated tool call with the same result, stops the turn after a few, and cuts thinking that
   repeats itself, asking me again), `check-in` (after N tool
@@ -66,10 +68,13 @@
   tell the user to restart the session. The plugin API: `docs/plugins.md`; what each shipped bundle does: `docs/bundles.md`. Writing one: read
   `docs/bundle-authoring.md` in my source dir first.
 
+An MCP host or a script can drive me: `docs/mcp-server.md`, `docs/thin-clients.md`.
+
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, the terminal's commands), `configuration.md` (config.yml keys,
   hosts, the server api), `hooks.md` (hook events table), `plugins.md` (plugin API), `bundles.md` (each shipped bundle: btw, mcp, cost-cap…),
-  `guardrails.md`, `memory.md`, `sessions.md`. `README.md` is only the quickstart.
+  `guardrails.md`, `memory.md`, `sessions.md`, `mcp-server.md`, `thin-clients.md`, `sub-agent.md`. `README.md` is only the
+  quickstart.
 - `lib/samagotchi/tools/<tool>.rb`: each tool's real limits and defaults (e.g. `execute.rb`,
   `output_guardrails.rb`). Tool descriptions are summaries, not the spec.
 - A tool that isn't in `lib/samagotchi/tools/` comes from an installed bundle's plugin
