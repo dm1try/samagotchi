@@ -119,8 +119,8 @@ plugin:
 - Not `require_relative`: a file pulled in that way skips the sha256 check, is cached by Ruby across reloads (a
   reload would keep the old classes) and defines its constants outside the bundle's namespace.
 - A bundle that uses `parts:` should require a chi that reads them (`requires_chi`): an older chi would install the
-  plugin file alone. `chi bundle check` warns of a lower `requires_chi` from the chi release that brings parts on
-  (`0.183.0`). A record written that way is refused at load with `bundle NAME's
+  plugin file alone. `chi bundle check` warns of a `requires_chi` below 0.183.0, the
+  release that brings parts. A record written that way is refused at load with `bundle NAME's
   plugin parts aren't installed (reinstall the bundle)`.
 
 ## The API: `register(chi)`
