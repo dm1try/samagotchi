@@ -172,6 +172,42 @@ RSpec.describe "a memory's stamp in the working set" do
       expect(state(messages)).to eq("notes" => "stale")
     end
 
+    it "keeps a memory chi wrote and then edited itself current (the edit is the later own change)" do
+      messages = chi_edits(chi_writes(conversation(read("notes")), "chi's own text"), "chi's own text, edited after", id: "e2")
+      expect(state(messages)).to include("notes" => "live")
+
+      outside_write("someone else's text, longer than both")
+      expect(state(messages)).to include("notes" => "stale")
+    end
+
+    it "reads no file outside the memories root for a crafted path-only stamp; one inside it is read (M1)" do
+      outside = File.join(Dir.mktmpdir("ws-outside"), "secret.md")
+      File.write(outside, "secret bytes")
+      # A path-only stamp of notes that names a file outside the root, and chi's write of that name "in project scope".
+      crafted = lambda do |path, dir|
+        stat = File.stat(path)
+        [{ role: "system", content: "You are chi." },
+         { role: "model", content: "", tool_calls: [{ id: "c1", name: "memory_read", arguments: { "name" => "notes" } }] },
+         { role: "tool_response", content: "[memory_read]\nold", tool_call_id: "c1", tool_ids: ["t1"],
+           tool_stamps: [{ memories: { "notes" => { path: path, mtime_ns: 1, size: stat.size, project_dir: dir } } }] },
+         { role: "model", content: "", tool_calls: [{ id: "w1", name: "memory_write", arguments: { "name" => "secret", "content" => File.read(path), "scope" => "project" } }] },
+         { role: "tool_response", content: "[memory_write]\nMemory 'secret' saved to project scope (12 bytes). File written: #{path}",
+           tool_call_id: "w1", tool_ids: ["tw1"] }]
+      end
+      read = []
+      allow(File).to(receive(:binread).and_wrap_original { |original, path, *rest| (read << path) && original.call(path, *rest) })
+
+      expect(state(crafted.call(outside, File.dirname(outside)))).to include("notes" => "stale")
+      expect(read).to be_empty
+
+      project = File.join(memories, "projects", "app").tap { |d| FileUtils.mkdir_p(d) }
+      inside = File.join(project, "secret.md").tap { |p| File.write(p, "secret bytes") }
+      expect(state(crafted.call(inside, project))).to include("notes" => "live")
+      expect(read).to eq([inside])
+    ensure
+      FileUtils.rm_rf(File.dirname(outside))
+    end
+
     it "stays stale when chi's write made another file answer the name (a project x shadowing the read's system x)" do
       run = read("notes", scope: nil)
       project_dir = File.join(memories, "project")

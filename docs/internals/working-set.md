@@ -51,10 +51,14 @@ holds chi's own later change: an `edit` or `write` of the file (its stamp), or a
 only after `memory_differs`' early answers: a name that now resolves to another file or overlay (a project `x` chi
 wrote now shadowing the read's system `x`) or is gone stays `stale`, conservative. A memory whose latest run is a
 `memory_write` is `stale` when the file it wrote (`<scope dir>/<name>.md`: system from `root`, project from the item's
-read stamp's `project_dir`; a project memory only written has none and stays `live`) no longer holds its content: one
-you edit after chi's write. A remove, an overlay write or a description-only write keeps today's `live`. Only a path
-`MemoryGuard.memory_paths?` lets through is read. Cost in the worker: one pass over the runs already in memory, a stat
-per memory item already found stale, a `File.binread` per memory item whose latest run is a `memory_write`.
+read stamp's `project_dir`; a project memory only written has none and stays `live`) no longer holds chi's latest own
+change of it (the write's content, or a later `edit`/`write` of the file by its stamp): one you edit after chi's write. A remove, an overlay write or a description-only write keeps today's `live`. Only a path
+`MemoryGuard.memory_paths?` lets through is read: a stamp's file outside the memories folder counts as no own change
+(stale, as before), never read. Cost in the worker: once any memory item's latest run is a `memory_write` (so every step
+after a session's first one) or a memory item is found stale, one pass over the runs already in memory, testing the tool
+name before anything else (about 0.1 ms at 350 runs on the Studio; testing `failed?` first, which copies each output,
+cost about 1.5 ms); a stat per memory item already found stale, a `File.binread` per memory item whose latest run is a
+`memory_write`.
 
 ## The projection: `WorkingSet.build`
 
@@ -611,10 +615,27 @@ files, `current: false` (it changed again after chi's change; or the head is not
 nothing proves the other file unchanged). Rolled back (the call's entries gone, the file still chi's text), interrupted,
 or someone else's change: no `by_chi`. A merged row (a note also preloaded) gets an answer per part.
 
-While a turn runs (`running`), only a `current: true` goes out: the GET's messages lag the turn, so chi's newest write
-is not in them, and "changed again" could name chi's own change. A row chi changes in the running turn stays `stale`
-until the hand-off's GET (D5). Guard: only the Locator's files are read (`binread`, `stat`); no path a call or an
-output names is read, and an overlay key is `[a-z0-9-]+`. Cost: nothing new for a GET with no stale part; with one,
+An `edit` is checked harder than its stamp (a stricter reading of D2, the code review's M2): `edit` replaces its
+`old_text` wherever it still matches, so it can land over a change chi never saw, and the stamp then holds. A part
+whose current change of a file is an `edit` is current only when undoing chi's edits of that file, newest first
+(`OwnChanges.undoes_to?`: each `new_text` found exactly once and put back to its `old_text`), reaches the sent side
+exactly (stripped, as a prompt file is), or chi's own `memory_write` of it before those edits. Otherwise there is no
+`by_chi`, so the row stays plain `stale` and the now tab shows the diff. A range edit (`start_line`), an empty
+`new_text` or a `write` among them can't be undone: plain `stale` too. An `edit` or `write` with no stamp (an older
+session's) gives no `by_chi`, never `current: false`. Read rows and file rows keep the stamp rule (D1, as file rows
+always had).
+
+Known limit: own changes have no build point. A write from before the prompt's build counts when the file comes back to
+its text (chi writes A; someone writes B; a restart builds the prompt with B; someone writes A back): the row reads
+`✎ edited` though the newer prompt says B. Rare; a session that recorded the message index of the head's build could
+ignore earlier changes.
+
+While a turn runs (`running`), only a `current: true` goes out: the GET's messages may lag the turn, so chi's newest
+write may not be in them, and "changed again" could name chi's own change. A row chi changes in the running turn reads
+`stale` until a GET's messages hold the write (D5); in the browser check (2026-11-22, the fake model) the row already
+read `✎ edited` in a later step of the same turn, so the lag seems to be the writing step only (inferred, not traced in
+the worker), and the hand-off's GET settles it either way. Guard: only the Locator's files are read (`binread`, `stat`); no path a call
+or an output names is read, and an overlay key is `[a-z0-9-]+`. Cost: nothing new for a GET with no stale part; with one,
 one `paired_runs` walk (about 3 ms at 600–750 messages on the Studio, about twice on the laptop), the messages'
 top-level keys symbolized (`WorkingSetPart.symbolized`, shared with `working_set_source`), and at most two reads or
 stats per stale part. A stale part stays stale for the worker's life, so each GET of such a session pays it.
@@ -633,8 +654,8 @@ Stale lasts in a live worker until chi rebuilds its prompt: `SystemPrompt#built_
 `#reset!` (a model switch, a participants change, a plugin's `prompt_changed!`, a toolkit change). An outside edit,
 and chi's own `memory_write` of a preloaded memory, do not reset it, so the worker keeps sending the old text across
 turns until one of those or a restart. Someone else's change reads `stale`; chi's own (a current `by_chi`) reads
-`✎ edited`, since the new text is in chi's conversation, and while the turn that made it still runs it reads `stale`
-until the turn ends (the GET's messages lag it; the hand-off's GET brings the word).
+`✎ edited`, since the new text is in chi's conversation; while the turn that made it still runs it may read `stale`
+until a GET's messages hold the write (see `by_chi` above).
 
 **The source now.** `GET …/working_set/part?key=&now=1` adds, beside the sent slice, `now: {text, diff, gone}`: the
 locator's text (scrubbed to valid UTF-8 before JSON) and `TextDiff.unified` of the sent text against it (nil when
@@ -667,7 +688,11 @@ edited`. Its title: "preloaded · chi edited it at turn 3, step 2: the new text 
 still sends the old text until it is next built" (a remove: "… chi removed it at turn 3, step 2: its prompt still sends
 it until it is next built"). Its tag after the tokens is the call's place, found by `tool_id` over every turn's items
 (`ws_timeline.js placeOf`), drawn as the read rows' jump (`.ws-step.ws-own`, `data-ws="jump"`); without a place, a
-plain `step N` (the server's step). A memory row whose read is stale says the read's `stale` as before. A merged row
+plain `step N` (the server's step). A memory row whose read is stale says the read's `stale` as before; the
+both-causes words ("read changed · prompt text changed") need a read op, so a memory chi only wrote and someone changed
+after reads "changed after chi's prompt was built" (its item is stale by D1, faded). A row whose part carries `by_chi`
+and whose item has no read gets no `read` tab (the item peek of chi's write): its edited tab, or its now tab with the
+"chi edited it at …" line, opens first. In a turn lens the call's tag replaces the lit row's step tag. A merged row
 (a note also preloaded) stays `stale` while any part is stale without a current change; each part gets its own tab.
 On a phone's sheet the part words go (`.ws-popover.sheet .ws-pwords{display:none}`, D7): `✎ edited` alone, the name
 keeps its room; a part row keeps `edited` where it drops its sub text, and the tabs wrap.

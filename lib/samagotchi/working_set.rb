@@ -619,7 +619,7 @@ module Samagotchi
     # content (someone changed it after chi's write).
     def memory_stale?(key, group, conversation, stat, root, own_of)
       last = group.last
-      return written_differs?(key, group, conversation, root, own_of) if last.op == "write"
+      return written_differs?(key, group, conversation, stat, root, own_of) if last.op == "write"
 
       changed = memory_differs(key, last.run, conversation, stat, root)
       return changed == :moved unless changed.is_a?(Array)
@@ -627,6 +627,9 @@ module Samagotchi
 
       read_at = [last.run.index, last.run.ref.run]
       !changed.all? do |file|
+        # A path the stamp names outside the memories folder is never read: no own change, stale (as before).
+        next false unless MemoryGuard.memory_paths?({ path: file[:path] }, root)
+
         change = own_of.call.for_file(file[:path], role: file[:role], key: file[:key], dirs: file[:dirs])
         change && (change.order <=> read_at) == 1 && own_of.call.current?(change, file[:path], stat: stat)
       end
@@ -635,10 +638,11 @@ module Samagotchi
     # Whether the memory chi's latest memory_write (+group+'s last run)
     # wrote no longer holds its content: <scope dir>/<name>.md, system
     # from +root+, project from the item's latest read stamp's folder
-    # (none: a project memory only written stays live). A remove, an
-    # overlay or a description-only write: as before, live. Reads only a
-    # path the guard lets through.
-    def written_differs?(key, group, conversation, root, own_of)
+    # (none: a project memory only written stays live), held to chi's
+    # latest own change of that file (the write, or a later edit or write
+    # of the file itself). A remove, an overlay or a description-only
+    # write: as before, live. Reads only a path the guard lets through.
+    def written_differs?(key, group, conversation, stat, root, own_of)
       run = group.last.run
       scope = %w[system project].find do |candidate|
         change = own_of.call.memory(candidate, key)
@@ -652,7 +656,8 @@ module Samagotchi
       path = File.join(dir.to_s, "#{key}.md")
       return false unless MemoryGuard.memory_paths?({ path: path }, root)
 
-      !own_of.call.current?(own_of.call.memory(scope, key), path)
+      change = own_of.call.for_file(path, role: :base, dirs: { scope => dir })
+      !own_of.call.current?(change, path, stat: stat)
     end
 
     # The project memories folder the item's latest memory_read stamped.
