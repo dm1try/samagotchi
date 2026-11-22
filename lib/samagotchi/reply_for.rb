@@ -55,9 +55,15 @@ module Samagotchi
     SHORT_WORDS = 60
     ONE_LINE_CHARS = 80
 
-    # Where chi's line opens (#line): one lead, so a copy of it inside
-    # someone else's text is quoted on the wire (Steer::FORGED_OPENINGS).
+    # Where both of chi's lines open (#line, RETURN_LINE): one lead, so a
+    # copy of it inside someone else's text is quoted on the wire
+    # (Steer::FORGED_OPENINGS).
     LEAD = Steer::REPLY_LEAD
+    # The line the first undeclared opener after a declared one gets
+    # (.opener_fields): the style set for a small surface sticks to the next
+    # reply otherwise.
+    RETURN_LINE = "[#{LEAD}: the user is back on a full screen, where markdown, lists, code and long replies " \
+                  "show again. Reply as usual from here.]".freeze
 
     # The opening user message's saved keys (ChatLoop#plain keeps both).
     MESSAGE_KEY = :reply_for
@@ -106,14 +112,36 @@ module Samagotchi
 
       # The fields a turn's opening user message is saved with
       # (Engine#turn_messages, and the worker's checkpoint copy of it):
-      # +declared+'s values and line; none without one, so a session that
-      # never declares keeps its bytes.
+      # +declared+'s values and line; else, when the latest opener in
+      # +history+ declared one (.latest_opener), the return line alone; else
+      # none, so a session that never declares keeps its bytes. The return
+      # line ends the run: the opener carrying it declares nothing. Read
+      # from the history alone (no session state), so a one-shot --resume,
+      # a schedule's or an agent's opener get it too.
       # @param history [Array<Hash>] the session's messages before this one
       # @param declared [ReplyFor, Hash, nil]
       # @return [Hash{Symbol => Object}]
-      def opener_fields(_history, declared)
+      def opener_fields(history, declared)
         declared = from(declared)
-        declared ? { MESSAGE_KEY => declared.to_file, LINE_KEY => declared.line } : {}
+        return { MESSAGE_KEY => declared.to_file, LINE_KEY => declared.line } if declared
+
+        last = latest_opener(history)
+        last && from(last[MESSAGE_KEY] || last[MESSAGE_KEY.to_s]) ? { LINE_KEY => RETURN_LINE } : {}
+      end
+
+      # The latest message in +history+ that opened a turn from a sender
+      # (Engine#turn_messages' user message): a user message with no kind
+      # that is not a !shell line. A wake's note or report, a steer and
+      # merged input have a kind (or are a system message), so they never
+      # hide the turn before them.
+      # @return [Hash, nil]
+      def latest_opener(history)
+        Array(history).reverse_each.find do |message|
+          next false unless message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user"
+          next false unless (message[:kind] || message["kind"]).to_s.empty?
+
+          !Steer.shell_line?(message)
+        end
       end
 
       private

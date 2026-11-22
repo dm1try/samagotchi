@@ -159,6 +159,32 @@ RSpec.describe "reply_for in the history (prompt-cache bytes)" do
       expect(users.map { |m| m[:content] }).to eq((0..4).map { |i| "prompt #{i}" })
       expect(users.values_at(0, 2, 3).map { |m| m[:reply_line] }).to all(eq(line))
       expect(users.values_at(0, 2, 3).map { |m| m[:reply_for] }).to all(eq(voice))
+      # Each web message after a voice one has the return line, and declares nothing.
+      expect(users.values_at(1, 4).map { |m| m[:reply_line] }).to all(eq(Samagotchi::ReplyFor::RETURN_LINE))
+      expect(users.values_at(1, 4).map { |m| m[:reply_for] }).to all(be_nil)
+    end
+
+    it "gives the return line once, across a restart and past a wake's report, the prefix held (#{wire})" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: spec[:model], working_directory: project)
+      engine = engine_on(spec[:model], session)
+      server.enqueue(spec[:path], sse: reply_events(wire, "spoken"))
+      engine.run_turn(session, "voice", reply_for: voice)
+      # A task wake's report in between: a kind, so it hides no opener.
+      session.messages << { role: "user", kind: "input", source: "task", content: "[TASK FINISHED] done", turn_start: true }
+      session, engine = restarted(session, spec[:model])
+      %w[web again].each do |prompt|
+        server.enqueue(spec[:path], sse: reply_events(wire, "## formatted"))
+        engine.run_turn(session, prompt)
+      end
+
+      sent = histories(wire, spec[:path])
+      sent.each_cons(2).with_index do |(before, after), index|
+        expect(extends?(wire, before, after)).to be(true), "request #{index + 1} → #{index + 2} broke the prefix on #{wire}"
+      end
+      web, again = session.messages.select { |m| m[:role].to_s == "user" && m[:kind].nil? }.last(2)
+      expect(web[:reply_line]).to eq(Samagotchi::ReplyFor::RETURN_LINE)
+      expect(again).not_to have_key(:reply_line)
+      expect(JSON.generate(sent.last).scan(Samagotchi::ReplyFor::RETURN_LINE).size).to eq(1)
     end
 
     it "sends a session with no reply_for as before: no line, no new key (#{wire})" do
@@ -203,6 +229,16 @@ RSpec.describe "reply_for in the history (prompt-cache bytes)" do
     opener = session.messages.find { |m| m[:turn_id] == "t-2" && m[:role].to_s == "user" }
 
     expect(copy.slice(:reply_for, :reply_line)).to eq(opener.slice(:reply_for, :reply_line))
+    expect(Samagotchi::Steer.wire_text(copy)).to eq(Samagotchi::Steer.wire_text(opener))
+
+    # The web message after it: the checkpoint's return line is the Engine's.
+    history = session.messages.dup
+    checkpoint.begin_turn(prompt: "third", turn_id: "t-3", reply: Samagotchi::ReplyFor.opener_fields(history, nil))
+    copy = session.turn_checkpoint[:messages].last
+    server.enqueue("/v1/chat/completions", sse: reply_events("openai", "ok"))
+    engine.run_turn(session, "third", id: "t-3")
+    opener = session.messages.find { |m| m[:turn_id] == "t-3" && m[:role].to_s == "user" }
+    expect(copy[:reply_line]).to eq(Samagotchi::ReplyFor::RETURN_LINE)
     expect(Samagotchi::Steer.wire_text(copy)).to eq(Samagotchi::Steer.wire_text(opener))
   end
 end

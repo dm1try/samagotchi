@@ -100,9 +100,38 @@ RSpec.describe Samagotchi::ReplyFor do
   describe ".opener_fields (the opening user message's saved fields)" do
     let(:declared) { described_class.from(voice) }
     let(:web_opener) { { role: "user", content: "hi", turn_id: "t2" } }
+    let(:voice_opener) { { role: "user", content: "hi", turn_id: "t1", reply_for: voice, reply_line: declared.line } }
 
     it "saves a declared value's values and line" do
       expect(described_class.opener_fields([], declared)).to eq(reply_for: voice, reply_line: declared.line)
+    end
+
+    it "gives the first undeclared opener after a declared one the return line, once" do
+      expect(described_class.opener_fields([voice_opener], nil)).to eq(reply_line: described_class::RETURN_LINE)
+      returned = web_opener.merge(reply_line: described_class::RETURN_LINE)
+      expect(described_class.opener_fields([voice_opener, { role: "model", content: "ok" }, returned], nil)).to eq({})
+      expect(described_class::RETURN_LINE).to start_with("[#{described_class::LEAD}: ")
+    end
+
+    it "gives a declared opener after a declared one its own line, never the return line" do
+      expect(described_class.opener_fields([voice_opener], declared)).to eq(reply_for: voice, reply_line: declared.line)
+    end
+
+    it "looks past a wake's note, a report, a steer, merged input and a !shell line to the turn before them" do
+      between = [
+        { role: "system", content: "[CONTEXT NOTE]", turn_start: true, turn_id: "w1" },
+        { role: "user", kind: "input", content: "[Delegate report] done", turn_start: true },
+        { role: "user", kind: "steer", source: "user", content: "and also" },
+        { role: "user", content: "!(ls)\na.rb" }
+      ]
+      history = [voice_opener, { role: "model", content: "ok" }, *between]
+
+      expect(described_class.opener_fields(history, nil)).to eq(reply_line: described_class::RETURN_LINE)
+    end
+
+    it "reads a reloaded session's string-keyed opener the same" do
+      expect(described_class.opener_fields([JSON.parse(JSON.generate(voice_opener))], nil))
+        .to eq(reply_line: described_class::RETURN_LINE)
     end
 
     it "is nothing in a session that never declared one (its bytes as they were)" do
