@@ -20,7 +20,7 @@ module Samagotchi
     # Bearer, so a host says it needs a token rather than look for OAuth.
     # GET 405 (no stream), DELETE 200 (a legacy host closing its session).
     # Included in App through SessionAccessRoutes; its helpers
-    # (request_body, session_access, live_bridge_client, error_response)
+    # (request_body, session_access, ask_bridge, ask_clock, error_response)
     # and ivars (@manager, @hub, @wait_poll_interval, @server_running)
     # answer. See docs/mcp-server.md.
     module McpRoute
@@ -55,8 +55,11 @@ module Samagotchi
       private
 
       def handle_mcp(req)
+        # One deadline per POST (one call), as the ask's: the post to a
+        # live worker draws on it (AskRoutes#ask_bridge).
+        deadline = ask_clock + McpServer::Tools::CAP
         body = request_body(req, BODY_LIMIT, what: "an MCP request")
-        McpServer::Http.new(mcp_protocol).call(req.env, body)
+        McpServer::Http.new(mcp_protocol(deadline)).call(req.env, body)
       end
 
       def handle_mcp_get(_req)
@@ -67,8 +70,8 @@ module Samagotchi
       # Nothing is kept for a legacy session id: nothing to end.
       def handle_mcp_delete(_req) = [200, { "Content-Length" => "0" }, []]
 
-      def mcp_protocol
-        bridge = ->(sid) { live_bridge_client(sid, within: McpServer::Tools::CAP) }
+      def mcp_protocol(deadline)
+        bridge = ->(sid) { ask_bridge(sid, deadline) }
         access = McpAccess.new(session_access, hub: @hub, manager: @manager, bridge: bridge, poll_interval: @wait_poll_interval)
         stopping = -> { !@server_running.call }
         exchange = ->(backend) { SessionAccess::Exchange.new(backend, cancelled: stopping) }

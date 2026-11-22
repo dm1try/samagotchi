@@ -33,12 +33,12 @@ another link ran it. Body fields:
 
 - `prompt` (required): the message, at most 16 KiB. A terminal-only command such
   as `/stats` is refused (400 `local_command`); a session command such as
-  `/model x` runs and answers `{"status": "command"}`, with no token. That
-  holds for `/continue yes` too, although it starts a turn: the worker's answer
-  to a command doesn't name that turn, so there is nothing to wait on. A
-  continue offered as a question (an answer's `waiting_for_answer`, or 409
-  `waiting`) is better answered through `/answer` with `wait` (below), which
-  follows the turn.
+  `/model x` runs and answers `{"status": "command"}`, with no token.
+  `/continue yes` on a session whose turn ran out of steps, while its worker
+  runs, continues that turn and answers as a message does (its reply, or a
+  `token`); if the offer was answered elsewhere first you get what came of it.
+  A continue offer still shown as a question (409 `waiting`) is answered
+  through `/answer`.
 - `timeout`: seconds to wait for the answer, at most 30 (the default).
 - `queue`: `true` (the default) means a session running a turn queues your
   message as its own turn, and you get that turn's answer. `false` refuses a
@@ -46,6 +46,19 @@ another link ran it. Body fields:
 - `client_id`: who is asking. Leave it out for yourself (the line is the
   owner's, as from the web composer). An agent sends `"cli:send"`: see
   [An agent over HTTP](#an-agent-over-http).
+- `request_id`: your own key for this ask, 1 to 128 printable ASCII
+  characters. Send the same ask again with the same `request_id` (a retry
+  after a dropped connection) and you get the first one's turn instead of
+  sending it again. It is for messages only: a session command with one (a
+  line starting `!`, or `/name` then a space or nothing) is 400
+  `invalid_ask`; a path such as `/Users/me/a.rb fails` is a message. It holds
+  while that turn is running, queued, or has replied or ended, and otherwise
+  while the session's worker remembers the key; it does not hold across a
+  continue to a new link. Use a new key for a new message: while the first
+  turn is running, queued, or has replied or ended, the same key with another
+  prompt gets that turn's answer and nothing is sent; otherwise a worker that
+  remembers the key answers 409 `enqueued_id_conflict`. An answer that echoes
+  `request_id` means chi web used it (an older chi web ignores the field).
 
 A question that is waiting for an answer refuses the ask with 409 `waiting` and
 the `question`. Answer it first (below).
@@ -54,9 +67,9 @@ the `question`. Answer it first (below).
 
 Each call answers within **35 seconds** of its request, whatever it waits for
 (a continue in flight, a worker starting, the answer), so a proxy or a Shortcut
-with a 60 s limit is safe. The one exception is a worker that hangs while it
-takes the message in: chi web gives it up to 25 s more, then answers 504
-`worker_timeout`. A turn still running then answers
+with a 60 s limit is safe. A worker that hangs while it takes the message in
+is given at most 8 s past that, then the call answers 504 `worker_timeout`; the
+message was not taken. A turn still running then answers
 `"status": "timeout"` with a `"token": "w1.…"`. Send that token back until the
 status is something else:
 
@@ -137,7 +150,10 @@ answers the first turn.
 1. **Dictate Text** (or **Ask for Input**).
 2. **Get Contents of URL**: `https://<your chi web>/api/sessions/<id>/ask`,
    method POST, header `Authorization: Bearer <token>`, JSON body `prompt` =
-   the dictated text.
+   the dictated text. To survive a dropped connection, first **Set Variable**
+   `key` to **Current Date** formatted with seconds, send `request_id` = `key`,
+   and if the step fails (no `status` in the answer) run it again with the same
+   `key`: the retry answers the first one's turn instead of sending it twice.
 3. **Repeat** while the answer's `status` is `timeout`: **Get Contents of URL**
    for `…/api/sessions/<session_id>/wait` with the JSON body `token` = the
    answer's `token`.

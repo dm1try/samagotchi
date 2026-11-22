@@ -8,6 +8,7 @@ require_relative "../client_id"
 require_relative "../parent_answers_command"
 require_relative "../reply_wait/target"
 require_relative "../session"
+require_relative "../session_inbox"
 require_relative "../turn_flow"
 require_relative "../send_command/parent_gate"
 
@@ -34,12 +35,17 @@ module Samagotchi
       # ReplyWait::Result, +token+ for a :timeout (the next wait's).
       # #answer's: +answered_here+ false when the question was no longer
       # open (answered elsewhere first, or a newer one waits): what came
-      # next is still waited for, as chi answer does.
-      Reply = Data.define(:session_id, :asked, :result, :token, :answered_here) do
-        def initialize(session_id:, asked:, result:, token:, answered_here: true) = super
+      # next is still waited for, as chi answer does. +rebound+: a request_id
+      # whose turn was already known, so nothing was sent this time (the
+      # first ask's turn waited on again).
+      Reply = Data.define(:session_id, :asked, :result, :token, :answered_here, :rebound) do
+        def initialize(session_id:, asked:, result:, token:, answered_here: true, rebound: false) = super
       end
 
-      # The line ran as a session command (/model x): no reply comes.
+      # The line ran as a session command (/model x): no reply comes. A
+      # /continue yes with an offer standing (an idle session's continue
+      # question, its worker running) is a Reply instead: it waits on the
+      # continued turn (#continue_follows?).
       Ran = Data.define(:session_id)
 
       # Nothing went in. +kind+ :unknown (+error+ the resolve's
@@ -82,9 +88,17 @@ module Samagotchi
       # @param cancelled [#call, nil] true stops the wait (status :canceled);
       #   before the delivery, the call (Refused :canceled). The exchange's
       #   own cancelled: (the same) cuts its waits for a continue
+      # @param request_id [String, nil] the client's key for this ask (a
+      #   message, never a command): its turn's enqueued id is
+      #   SessionInbox.enqueued_id_for("ask:" + it). A turn of that id the
+      #   session knows (running, queued, ended: ReplyWait.known_turn?) is
+      #   waited on again, nothing sent (Reply rebound), unless it only waits
+      #   as an input file with no worker running (#waiting_turn?); else the
+      #   delivery carries the id, which the Bridge dedupes
       # @return [Reply, Ran, Refused]
       def call(given, prompt:, client_id:, queue:, timeout:, cap:, continuing_wait: Exchange::CONTINUING_WAIT,
-               cancelled: nil)
+               cancelled: nil, request_id: nil)
+        enqueued_id = SessionInbox.enqueued_id_for("ask:#{request_id}") if request_id
         deadline = @clock.call + cap
         # Everything before the wait ends by here, so its MIN_SLICE fits.
         ready_by = deadline - MIN_SLICE
@@ -98,11 +112,22 @@ module Samagotchi
           return Refused.new(kind: :canceled, session_id: at.id) if cancelled&.call
 
           session = @access.show(at.id)
+          start = (@access.prepare_wait(at.id, session: session, turn: enqueued_id) if enqueued_id)
+          # A turn known only as an input file no worker reads is sent again
+          # (with E: the worker runs it once), so the delivery wakes one.
+          if start&.known_turn && (start.live || !@access.waiting_turn?(at.id, enqueued_id))
+            # chi send --wait --turn E's binding, queued as the first copy was
+            # sent (a queue never merges: no merge fallback onto another turn).
+            target = ReplyWait::Target.wait_only(start, requested: enqueued_id).with(queued: queue)
+            return wait(at, target, slice: slice(timeout, deadline), cancelled: cancelled, rebound: true)
+          end
+
           busy = @access.busy(at.id, queue: queue, session: session)
           return Refused.new(kind: :busy, session_id: at.id, busy: busy) if busy
 
-          start = @access.prepare_wait(at.id, session: session)
-          result = @exchange.attempt(at, prompt, client_id: client_id, queue: queue).result
+          start ||= @access.prepare_wait(at.id, session: session)
+          more = enqueued_id ? { enqueued_id: enqueued_id } : {}
+          result = @exchange.attempt(at, prompt, client_id: client_id, queue: queue, **more).result
           if result.continued?
             follow_until ||= [@clock.call + continuing_wait, ready_by].min
             again = @exchange.relocate(at, follow_until, bounded: true)
@@ -114,9 +139,17 @@ module Samagotchi
             next
           end
           return Refused.new(kind: :undelivered, session_id: at.id, result: result) unless result.accepted?
-          return Ran.new(session_id: at.id) if result.command?
 
-          return wait(at, start, result, queue: queue, slice: slice(timeout, deadline), cancelled: cancelled)
+          if result.command?
+            return Ran.new(session_id: at.id) unless continue_follows?(prompt, start)
+
+            # The continue turn runs under the offered turn's id (own_turn),
+            # as chi answer follows it: the worker's ack is not read.
+            return wait(at, ReplyWait::Target.answer(start), slice: slice(timeout, deadline), cancelled: cancelled)
+          end
+
+          target = @exchange.bind(start, result, queue: queue)
+          return wait(at, target, slice: slice(timeout, deadline), cancelled: cancelled)
         end
       end
 
@@ -220,12 +253,20 @@ module Samagotchi
 
       def answer_refused(kind, id, message) = Refused.new(kind: kind, session_id: id, message: message)
 
-      def wait(at, start, delivered, queue:, slice:, cancelled:)
-        target = @exchange.bind(start, delivered, queue: queue)
+      # A /continue yes the worker ran as a command, on a session idle with
+      # its continue offer standing (start's own_turn, ReplyWait.own_turn)
+      # and a worker running it: the offer lives only in that worker's
+      # memory, so with none (a new one says nothing to continue) a wait
+      # would hand out tokens with no end.
+      def continue_follows?(prompt, start)
+        TurnFlow.continue_yes?(prompt) && !start.running && start.live && !start.own_turn.to_s.empty?
+      end
+
+      def wait(at, target, slice:, cancelled:, rebound: false)
         more = cancelled ? { cancelled: cancelled } : {}
         result = @exchange.wait(at.id, target, timeout: slice, **more)
         token = Exchange::Token.dump(at.id, target) if result.status == :timeout
-        Reply.new(session_id: at.id, asked: at.asked, result: result, token: token)
+        Reply.new(session_id: at.id, asked: at.asked, result: result, token: token, rebound: rebound)
       end
 
       # The wait's slice: +timeout+, cut to the time the cap leaves, never

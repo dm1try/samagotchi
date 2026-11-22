@@ -89,11 +89,11 @@ module Samagotchi
     # new secret) is reached by a client made after it, never by hand.
     # @param sidecar [WorkerSidecar, nil]
     # @return [BridgeClient, nil] nil without a sidecar
-    def self.for_sidecar(session_id, sidecar, host: HOST, read_timeout: READ_TIMEOUT)
+    def self.for_sidecar(session_id, sidecar, host: HOST, read_timeout: READ_TIMEOUT, deadline_margin: nil)
       return nil unless sidecar
 
       new(session_id: session_id, port: sidecar.port, secret: sidecar.secret, host: host, read_timeout: read_timeout,
-          features: sidecar.features)
+          features: sidecar.features, deadline_margin: deadline_margin)
     end
 
     # How often a wait for a new worker's Bridge looks: a missing sidecar is
@@ -131,7 +131,11 @@ module Samagotchi
     #   none); from the worker's sidecar (.for_sidecar), never typed
     # @param read_timeout [Numeric] see READ_TIMEOUT
     # @param features [Array<String>] the sidecar's (#features)
-    def initialize(session_id:, port:, secret:, host: HOST, read_timeout: READ_TIMEOUT, features: [])
+    # @param deadline_margin [Numeric, nil] the fewest seconds the deadline
+    #   leaves before the read timeout for the write and the reply (a short
+    #   read's DEADLINE_SHARE leaves under a second); nil: the share alone
+    def initialize(session_id:, port:, secret:, host: HOST, read_timeout: READ_TIMEOUT, features: [], deadline_margin: nil)
+      @deadline_margin = deadline_margin
       @features = Array(features).freeze
       @session_id = session_id
       @port = port
@@ -442,7 +446,11 @@ module Samagotchi
     # When this client stops waiting for a reply, as epoch seconds (see
     # DEADLINE_SHARE). Wall clock: the worker runs on this machine and reads
     # the same one.
-    def deadline = (Time.now.to_f + (@read_timeout * DEADLINE_SHARE)).round(3)
+    def deadline
+      allowed = @read_timeout * DEADLINE_SHARE
+      allowed = [allowed, @read_timeout - @deadline_margin].min if @deadline_margin
+      (Time.now.to_f + allowed).round(3)
+    end
 
     def post(path, payload, read_body:, read_timeout: @read_timeout)
       sock = TCPSocket.new(@host, @port)

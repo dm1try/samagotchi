@@ -176,6 +176,9 @@ module Samagotchi
       #   stand-in (the web's specs); #session_owner is optional
       # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
       #   the session's sidecar, waiting TURN_BRIDGE_WAIT for a new worker's
+      # @param enqueued_id [String, nil] the turn's id, the caller's (an ask's
+      #   request_id: SessionInbox.enqueued_id_for), so a retry with the same
+      #   one is the Bridge's duplicate and the file's one claim; nil mints one
       # @return [DeliverResult] :accepted (via the Bridge or a file),
       #   :refused when the Bridge refused the request (any 4xx with an
       #   error: bad images, a delivery it doesn't run) or a queue would reach
@@ -186,13 +189,14 @@ module Samagotchi
       # @raise [ArgumentError] no such session, or no client_id
       def deliver_turn(session_id, prompt:, client_id:, images: [], delivery: nil, no_interrupt: false,
                        author: nil, pending_limit: nil, anchors: nil, follow: false, state_dir: nil, manager: self,
-                       bridge: nil)
+                       bridge: nil, enqueued_id: nil)
         raise ArgumentError, "deliver_turn needs the sender's client_id" if client_id.to_s.empty?
 
         follow_guard(session_id, state_dir, follow) do
           deliver_turn_now(session_id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
                                        no_interrupt: no_interrupt, author: author, pending_limit: pending_limit,
-                                       anchors: anchors, state_dir: state_dir, manager: manager, bridge: bridge)
+                                       anchors: anchors, state_dir: state_dir, manager: manager, bridge: bridge,
+                                       enqueued_id: enqueued_id)
         end
       end
 
@@ -222,7 +226,7 @@ module Samagotchi
       end
 
       private def deliver_turn_now(session_id, prompt:, client_id:, images:, delivery:, no_interrupt:, author:,
-                                   pending_limit:, anchors:, state_dir:, manager:, bridge:)
+                                   pending_limit:, anchors:, state_dir:, manager:, bridge:, enqueued_id: nil)
         anchors = TurnAnchors.from(anchors)
         session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
         bridge ||= lambda do
@@ -234,7 +238,7 @@ module Samagotchi
         refused = start_for_send(manager, session_id, state_dir, client_id, before: true)
         return refused if refused
 
-        enqueued_id = SessionInbox.new_enqueued_id
+        enqueued_id ||= SessionInbox.new_enqueued_id
         if (client = bridge.call)
           if (missing = anchors.present.find { |anchor| !worker_has?(client, anchor.class::FEATURE) })
             return DeliverResult.new(status: :refused, code: 409, ack: missing.class::UNAVAILABLE)

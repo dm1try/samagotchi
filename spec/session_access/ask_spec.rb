@@ -140,6 +140,81 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
     expect(clock[0]).to be >= 102.0
   end
 
+  describe "with a request_id" do
+    let(:key) { Samagotchi::SessionInbox.enqueued_id_for("ask:r1") }
+
+    def known(known_turn, last_turn_id: nil)
+      Samagotchi::SessionAccess::WaitStart.new(cursor: nil, baseline: nil, own_turn: nil, known_turn: known_turn,
+                                               running: false, live: true, settled: false, last_turn_id: last_turn_id)
+    end
+
+    it "delivers with the key's enqueued id when the session doesn't know that turn" do
+      session = make
+      allow(access).to receive(:prepare_wait).and_return(known(false))
+      worker(accepted(key), reply: "first")
+
+      reply = call(session.id, request_id: "r1")
+      expect(access).to have_received(:prepare_wait).with(session.id, session: anything, turn: key)
+      expect(deliveries.map(&:last)).to contain_exactly(include(enqueued_id: key))
+      expect(reply).to have_attributes(rebound: false)
+      expect(reply.result.text).to eq("first")
+    end
+
+    it "sends nothing and waits on that turn, queued as the first copy was, when the session knows it (rebound)" do
+      session = make
+      allow(access).to receive(:prepare_wait).and_return(known(true, last_turn_id: key))
+      waits = []
+      allow(access).to receive(:wait_reply) do |_id, **options|
+        waits << options
+        Samagotchi::ReplyWait::Result.new(status: :done, text: "first")
+      end
+      worker(accepted("t9"))
+
+      reply = call(session.id, request_id: "r1")
+      expect(deliveries).to be_empty
+      expect(reply).to have_attributes(rebound: true)
+      expect(reply.result.text).to eq("first")
+      expect(waits).to contain_exactly(include(turn: key, queued: true, ended_before: true))
+    end
+
+    it "keeps queued false on a rebind of a plain (queue: false) ask" do
+      session = make
+      allow(access).to receive(:prepare_wait).and_return(known(true))
+      waits = []
+      allow(access).to receive(:wait_reply) do |_id, **options|
+        waits << options
+        Samagotchi::ReplyWait::Result.new(status: :timeout)
+      end
+
+      worker(accepted("t9"))
+
+      call(session.id, request_id: "r1", queue: false)
+      expect(deliveries).to be_empty
+      expect(waits).to contain_exactly(include(turn: key, queued: false, ended_before: false))
+    end
+
+    it "resends with the same enqueued id after a continue took the link" do
+      old = make
+      newer = make
+      heads = [old.id, old.id, newer.id].map { |id| Samagotchi::SessionInbox::Resolved.new(id: id, asked: old.id, via: :same) }
+      allow(access).to receive(:head) { heads.size > 1 ? heads.shift : heads.first }
+      continued = Samagotchi::SessionManager::DeliverResult.new(
+        status: :refused, code: 409, ack: { "error" => Samagotchi::SessionManager::DeliverResult::CONTINUED, "detail" => "c" }
+      )
+      worker(continued, accepted(key), reply: "there")
+
+      expect(call(old.id, request_id: "r1").result.text).to eq("there")
+      expect(deliveries.map { |id, options| [id, options[:enqueued_id]] }).to eq([[old.id, key], [newer.id, key]])
+    end
+
+    it "sends no enqueued_id without one" do
+      session = make
+      worker(accepted("t1"), reply: "ok")
+      call(session.id)
+      expect(deliveries.first.last).not_to have_key(:enqueued_id)
+    end
+  end
+
   describe "when a continue takes the link after it was located" do
     let(:continued) do
       Samagotchi::SessionManager::DeliverResult.new(
@@ -183,6 +258,55 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
     worker(accepted(nil, "command_id" => "c1"))
 
     expect(call(session.id, prompt: "/model x")).to eq(described_class::Ran.new(session_id: session.id))
+  end
+
+  describe "/continue yes with a continue offer standing" do
+    def start(own_turn:, live: true, running: false)
+      Samagotchi::SessionAccess::WaitStart.new(cursor: nil, baseline: nil, own_turn: own_turn, known_turn: nil,
+                                               running: running, live: live, settled: false, last_turn_id: nil)
+    end
+
+    def offer(own_turn:, live: true)
+      allow(access).to receive(:prepare_wait).and_return(start(own_turn: own_turn, live: live))
+      waits = []
+      allow(access).to receive(:wait_reply) do |_id, **options|
+        waits << options
+        Samagotchi::ReplyWait::Result.new(status: :timeout)
+      end
+      worker(accepted(nil, "command_id" => "c1"))
+      waits
+    end
+
+    it "waits on the continued turn (the offer's own_turn), not Ran, and its token binds that turn" do
+      session = make
+      waits = offer(own_turn: "t1")
+
+      reply = call(session.id, prompt: "/continue yes", timeout: 0.2)
+      expect(reply).to be_a(described_class::Reply)
+      expect(reply.result.status).to eq(:timeout)
+      expect(waits).to contain_exactly(include(turn: "t1"))
+      token_session, target = Samagotchi::SessionAccess::Exchange::Token.load(reply.token)
+      expect(token_session).to eq(session.id)
+      expect(target).to have_attributes(turn: "t1")
+    end
+
+    it "is still Ran with no offer standing (no own_turn)" do
+      session = make
+      offer(own_turn: nil)
+      expect(call(session.id, prompt: "/continue yes")).to eq(described_class::Ran.new(session_id: session.id))
+    end
+
+    it "is still Ran when no worker ran the session at the wait's start (the offer is the worker's memory)" do
+      session = make
+      offer(own_turn: "t1", live: false)
+      expect(call(session.id, prompt: "/continue yes")).to eq(described_class::Ran.new(session_id: session.id))
+    end
+
+    it "is still Ran for another command" do
+      session = make
+      offer(own_turn: "t1")
+      expect(call(session.id, prompt: "/model x")).to eq(described_class::Ran.new(session_id: session.id))
+    end
   end
 
   it "answers a still-running turn with status timeout and a token for the next wait" do

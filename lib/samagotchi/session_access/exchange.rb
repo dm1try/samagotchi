@@ -120,8 +120,10 @@ module Samagotchi
       #   takes (nil: none)
       # @param check [#call, nil] called with the session read: a refusal
       #   String, or nil to go on
+      # @param enqueued_id [String, nil] the turn's id, the caller's (an
+      #   ask's request_id): passed to deliver_turn only when given
       # @return [Attempted, Stopped]
-      def attempt(target, prompt, client_id:, queue: false, cut: false, images: nil, check: nil)
+      def attempt(target, prompt, client_id:, queue: false, cut: false, images: nil, check: nil, enqueued_id: nil)
         id = target.id
         session = @access.show(id)
         if check && (refusal = check.call(session))
@@ -134,8 +136,9 @@ module Samagotchi
         delivery = if queue then Delivery::QUEUE
                    elsif cut && running then Delivery::CUT
                    end
+        more = enqueued_id ? { enqueued_id: enqueued_id } : {}
         result = @access.deliver_turn(id, prompt: prompt, client_id: client_id, images: refs, delivery: delivery,
-                                          follow: target.via != :pinned)
+                                          follow: target.via != :pinned, **more)
         Attempted.new(target: target, session: session, owner: owner, running: running, delivery: delivery, refs: refs,
                       result: result)
       end

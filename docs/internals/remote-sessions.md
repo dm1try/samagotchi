@@ -90,11 +90,26 @@ specs' stubs); `CLI::ParentWait` (chi send's and chi answer's wait) calls `wait`
 (`session_access/ask.rb`) is its own short loop over the same pieces for one message and one wait slice on one
 deadline (chi web's starts with the request: `locate`'s `deadline:` and `relocate`'s `bounded: true` end the continue
 waits `Ask::MIN_SLICE` before it, a continue that takes the link after it gets no second delivery, and the Bridge wait
-of a worker starting draws on it too; chi web stopping cuts the continue waits at the next look, `Refused :canceled`,
+of a worker starting draws on it too, as does the post to a live worker: `AskRoutes#ask_bridge`, used by `POST …/ask`
+and `POST /api/mcp` (one deadline per POST, `Tools::CAP`), gives the BridgeClient a read of what is left but
+`MIN_SLICE`, within `POST_FLOOR` (8 s, so a loaded worker still reads it) and `READ_TIMEOUT`; the body's `deadline`
+is a `DEADLINE_SHARE` of that read and at least `POST_MARGIN` (2.5 s) short of it (BridgeClient's `deadline_margin`,
+so a worker that took the turn just in time still answers its 202 before the client gives up), so a worker that reads the turn late drops it (408 `deadline_passed`, the route's
+504 `worker_timeout`) rather than run it after the call gave up: about 44 s at worst; chi web stopping cuts the continue waits at the next look, `Refused :canceled`,
 503 `server_stopping`; a client that goes away is not seen (WEBrick), so its handler runs on to that deadline),
-answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
+answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused` (a `/continue yes` the worker ran as a
+command, on an idle session with its offer standing and a live worker, is bound with `ReplyWait::Target.answer(start)`
+instead, the offer's turn id from `ReplyWait.own_turn`, as chi answer follows it; the worker's ack is not read): chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and `McpServer::Tools` reuses `SessionAccess::Ask` / `Exchange` through the MCP server without chi web.
+An ask's `request_id` becomes its turn's enqueued id (`SessionInbox.enqueued_id_for("ask:" + it)`, a UUID v5 shape a
+Bridge keeps): `Ask#call` first reads `prepare_wait(turn: E)`, and a `known_turn` (running, a queued input file, the
+last to end, a reply file, settled, merged) is waited on again with `Target.wait_only(start, requested: E).with(queued:)`, nothing
+sent (`Reply#rebound`, so the route skips the history line), unless E only waits as an input file and no worker runs
+(`Local#waiting_turn?`): then it is sent again with E, which wakes one (the worker runs an id once: `input_taken?`,
+`TurnState#claim_enqueued_id`); else `Exchange#attempt(enqueued_id: E)` carries it to
+`deliver_turn`, and the Bridge's H6 dedupe answers a copy it still remembers with the original ack (409
+`enqueued_id_conflict` for another prompt; a known turn is rebound without a prompt check). A retry on a newer link (a continue) is not deduped.
 The routes: [thin-clients.md](../thin-clients.md); the MCP protocol: [mcp-server.md](../mcp-server.md).
 
 ## One request, end to end

@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "fileutils"
 require "rack/mock"
+require_relative "../support/worker_fixtures"
 
 require "samagotchi/web/app"
 require "samagotchi/session"
@@ -17,6 +18,8 @@ require "samagotchi/bridge_client"
 # POST …/answer and a create's token. The worker is a double of
 # SessionManager.deliver_turn that writes the turn's reply when asked to.
 RSpec.describe Samagotchi::Web::App, "ask routes" do
+  include WorkerFixtures
+
   around do |example|
     Dir.mktmpdir("web-ask") do |tmp|
       @tmp = File.realpath(tmp)
@@ -150,6 +153,184 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(ask(session, { prompt: "/model x" })).to eq([200, { "status" => "command", "session_id" => session.id }])
     end
 
+    it "follows a /continue yes on a session with its continue offer standing to the continued turn (a token)" do
+      session = make(pending_question: { id: "cont", kind: "continue", question: "Continue?" })
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: "t1",
+                                                   exhausted: true, limit: 30)
+      session.save(state_dir: state_dir)
+      # A live worker that ties a continue turn to its offer (turn_ids),
+      # holding the session (live).
+      live_sidecar_fixture(dir_of(session), port: 1, features: [Samagotchi::ReplyWait::TURN_IDS_FEATURE])
+      worker(accepted(nil, "command_id" => "c1"))
+
+      status, body = ask(session, { prompt: "/continue yes", timeout: 0.2 })
+      expect([status, body["status"]]).to eq([200, "timeout"])
+      expect(token_module.load(body["token"]).last.turn).to eq("t1")
+
+      # The worker continues: the offer goes, and the continued turn (t1) answers.
+      Samagotchi::Session.load(session.id, state_dir: state_dir).tap do |s|
+        s.pending_question = nil
+        s.save(state_dir: state_dir)
+      end
+      Samagotchi::SessionInbox.write_output(dir_of(session), "continued", enqueued_id: "t1")
+      expect(wait(session.id, { token: body["token"] })).to match([200, include("status" => "done", "text" => "continued")])
+    end
+
+    describe "with a request_id" do
+      let(:key) { Samagotchi::SessionInbox.enqueued_id_for("ask:r1") }
+      let(:history) { [] }
+
+      before { allow(Samagotchi::PromptHistory).to receive(:append) { |line| history << line } }
+
+      # The worker ended turn +id+ (its last_turn) with +text+.
+      def ended(session, id, text)
+        Samagotchi::Session.load(session.id, state_dir: state_dir).tap do |s|
+          s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: id)
+          s.save(state_dir: state_dir)
+        end
+        Samagotchi::SessionInbox.write_output(dir_of(session), text, enqueued_id: id) if text
+      end
+
+      it "answers a retry with the first ask's turn: one delivery, one history line, the request_id echoed" do
+        session = make
+        worker(accepted(key))
+
+        first = ask(session, { prompt: "hi", request_id: "r1", timeout: 0.2 })
+        expect(first).to match([200, include("status" => "timeout", "request_id" => "r1")])
+        ended(session, key, "the first answer")
+
+        second = ask(session, { prompt: "hi", request_id: "r1", timeout: 0.2 })
+        expect(second).to match([200, include("status" => "done", "text" => "the first answer", "request_id" => "r1")])
+        expect(deliveries.size).to eq(1)
+        expect(deliveries.first.last).to include(enqueued_id: key)
+        expect(history).to eq(["hi"])
+      end
+
+      it "answers a retry of a queued ask with its own turn's reply, not the running one's" do
+        session = make(status: "running")
+        own(session)
+        Samagotchi::Session.load(session.id, state_dir: state_dir).tap do |s|
+          s.interrupted_turn = { "started_at" => Time.now.iso8601(3), "iteration" => 1, "enqueued_id" => "T" }
+          s.save(state_dir: state_dir)
+        end
+        # The first ask's copy waits as a queued input file of id E.
+        Samagotchi::SessionInbox.write_input(dir_of(session), prompt: "hi", client_id: "web:unnamed", enqueued_id: key,
+                                                              delivery: "queue")
+        worker(accepted("other"))
+        Samagotchi::SessionInbox.write_output(dir_of(session), "the running turn's", enqueued_id: "T")
+        Samagotchi::SessionInbox.write_output(dir_of(session), "its own", enqueued_id: key)
+
+        expect(ask(session, { prompt: "hi", request_id: "r1", timeout: 0.5 }))
+          .to match([200, include("status" => "done", "text" => "its own")])
+        expect(deliveries).to be_empty
+      end
+
+      it "answers a retry of a turn that ended before another one with its reply: rebound, nothing sent, one history line" do
+        session = make
+        # E ended with its reply and another turn ran since: E's reply file
+        # still names it (the worker's input_taken? reads the same).
+        Samagotchi::SessionInbox.write_output(dir_of(session), "E's answer", enqueued_id: key)
+        ended(session, "later", "a later one")
+        worker(accepted(key, "duplicate" => true))
+
+        expect(ask(session, { prompt: "hi", request_id: "r1", timeout: 0.5 }))
+          .to match([200, include("status" => "done", "text" => "E's answer")])
+        expect(deliveries).to be_empty
+        expect(history).to be_empty
+      end
+
+      it "answers the same request_id with another prompt the known turn's reply while that turn is the last (no 409)" do
+        session = make
+        ended(session, key, "the first answer")
+        worker(accepted("x"))
+
+        expect(ask(session, { prompt: "another", request_id: "r1", timeout: 0.2 }))
+          .to match([200, include("status" => "done", "text" => "the first answer")])
+        expect(deliveries).to be_empty
+      end
+
+      it "answers a retry of a turn settled with no reply (a worker died in it) no_reply, sending nothing (no tokens)" do
+        session = make
+        ended(session, "later", "a later one")
+        settled = File.join(dir_of(session), Samagotchi::SessionInbox::INPUT_DIR, Samagotchi::TurnCheckpoint::SETTLED_DIR)
+        FileUtils.mkdir_p(settled)
+        record = Samagotchi::LastTurn.new(outcome: "canceled", cancel_reason: "worker_stopped", ended_at: Time.now.iso8601(3),
+                                          enqueued_id: key)
+        File.write(File.join(settled, key), JSON.generate(record.to_file))
+        worker(accepted("x"))
+
+        expect(ask(session, { prompt: "hi", request_id: "r1", timeout: 0.5 }))
+          .to match([200, include("status" => "no_reply", "outcome" => "canceled")])
+        expect(deliveries).to be_empty
+      end
+
+      it "delivers a retry again, with its id, when its first copy waits as an input file and no worker runs" do
+        session = make
+        Samagotchi::SessionInbox.write_input(dir_of(session), prompt: "hi", client_id: "web:unnamed", enqueued_id: key,
+                                                              delivery: "queue")
+        worker(accepted(key))
+
+        expect(ask(session, { prompt: "hi", request_id: "r1", timeout: 0.2 }).first).to eq(200)
+        expect(deliveries.size).to eq(1)
+        expect(deliveries.first.last).to include(enqueued_id: key)
+      end
+
+      # An owner's ask un-stops it (a person's send wakes a stopped session);
+      # an unattended sender's is refused before anything is written.
+      it "answers such a retry from an unattended sender to a stopped session with the delivery's 409, not a token" do
+        session = make
+        Samagotchi::SessionInbox.write_input(dir_of(session), prompt: "hi", client_id: "system:schedule:nightly", enqueued_id: key,
+                                                              delivery: "queue")
+        Samagotchi::Session.mark_stopped(session.id, state_dir: state_dir)
+
+        expect(ask(session, { prompt: "hi", request_id: "r1", client_id: "system:schedule:nightly", timeout: 0.2 }))
+          .to match([409, include("error" => "session_stopped")])
+      end
+
+      it "refuses a bad request_id, and one on a session command (/model x, !ls, /continue yes); nothing sent" do
+        session = make
+        worker(accepted("t1"))
+
+        ["", "x" * 129, "a b", "é", 3].each do |bad|
+          expect(ask(session, { prompt: "hi", request_id: bad }))
+            .to match([400, include("error" => "invalid_ask", "detail" => "request_id is 1 to 128 printable ASCII characters")])
+        end
+        ["/model x", "!ls", "/continue yes", "  /model x"].each do |line|
+          expect(ask(session, { prompt: line, request_id: "r1" }))
+            .to match([400, include("error" => "invalid_ask", "detail" => "request_id is for messages, not session commands")])
+        end
+        expect(deliveries).to be_empty
+      end
+
+      it "takes a request_id on a message that starts with a path (not a command's shape)" do
+        session = make
+        worker(accepted(key))
+
+        expect(ask(session, { prompt: "/Users/x/file.rb fails", request_id: "r1", timeout: 0.2 }).first).to eq(200)
+        expect(deliveries.first.last).to include(prompt: "/Users/x/file.rb fails", enqueued_id: key)
+      end
+
+      it "answers the same request_id with another prompt as the Bridge refuses it (409 enqueued_id_conflict)" do
+        session = make
+        conflict = Samagotchi::SessionManager::DeliverResult.new(
+          status: :refused, via: :bridge, code: 409, ack: { "error" => "enqueued_id_conflict", "detail" => "another prompt" }
+        )
+        worker(conflict)
+        expect(ask(session, { prompt: "other", request_id: "r1" })).to match([409, include("error" => "enqueued_id_conflict")])
+        expect(deliveries.first.last).to include(enqueued_id: key)
+      end
+    end
+
+    it "answers without request_id exactly as before (the keys pinned)" do
+      session = make
+      worker(accepted("t1"), reply: "ok")
+      status, body = ask(session, { prompt: "hi" })
+      expect(status).to eq(200)
+      expect(body.keys).to match_array(%w[status text session_id turn_id file question outcome limit error_kind retryable
+                                          cancel_reason stopped_by kept_steps origin parent_strategy])
+      expect(deliveries.first.last).not_to have_key(:enqueued_id)
+    end
+
     it "answers 404 not_found, and 400 ambiguous_id with the ids" do
       a = make
       b = make
@@ -243,15 +424,60 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
         bridge.call
         accepted("t1")
       end
+      app.instance_variable_set(:@bridge_wait_timeout, 30)
+      allow(app).to receive(:worker_link).and_return(Samagotchi::WorkerLink::None.new)
       lefts = []
-      allow(app).to receive(:live_bridge_client) do |_id, within: 5.0|
-        lefts << within
-        nil
+      allow(app).to receive(:await_worker_link) do |_id, timeout:|
+        lefts << timeout
+        Samagotchi::WorkerLink::None.new
       end
 
       ask(session, { prompt: "hi", timeout: 0.1 })
       expect(lefts.size).to eq(1)
       expect(lefts.first).to be_between(0, 1.2)
+    end
+
+    describe "the post to a live worker" do
+      # A live link whose client records the read it was given.
+      def live_link(reads)
+        link = Object.new
+        link.define_singleton_method(:live?) { true }
+        link.define_singleton_method(:client) do |_sid, host:, read_timeout:, deadline_margin:|
+          reads << [host, read_timeout, deadline_margin]
+          nil
+        end
+        link
+      end
+
+      def read_for(max)
+        stub_const("Samagotchi::Web::AskRoutes::ASK_MAX_SECONDS", max) if max
+        session = make
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, bridge:, **|
+          bridge.call
+          accepted("t1")
+        end
+        reads = []
+        allow(app).to receive(:worker_link).and_return(live_link(reads))
+        ask(session, { prompt: "hi", timeout: 0.1 })
+        expect(reads.size).to eq(1)
+        expect(reads.first.first).to eq(described_class::DEFAULT_HOST)
+        # The body deadline leaves the worker time to answer 202.
+        expect(reads.first.last).to eq(Samagotchi::Web::AskRoutes::POST_MARGIN)
+        reads.first[1]
+      end
+
+      it "reads for what is left of the deadline but the slice, under the old 30 s" do
+        floor = Samagotchi::Web::AskRoutes::POST_FLOOR
+        expect(read_for(20.0)).to be_between(floor, 20.0 - Samagotchi::SessionAccess::Ask::MIN_SLICE)
+      end
+
+      it "never reads for less than POST_FLOOR" do
+        expect(read_for(1.2)).to eq(Samagotchi::Web::AskRoutes::POST_FLOOR)
+      end
+
+      it "reads for at most READ_TIMEOUT on the default deadline" do
+        expect(read_for(nil)).to eq(Samagotchi::BridgeClient::READ_TIMEOUT)
+      end
     end
 
     it "refuses a bad body: no prompt, an empty or too long one, a UI-only command, a bad timeout, queue or client_id" do

@@ -15,11 +15,15 @@ and commands may change between minor versions. How releases are made:
   in the prompt twice or was also read. The list is 520 wide always, so opening a row no longer moves the others.
 - The web's working set: a "From the start" row whose memory or AGENTS.md changed since chi was sent it says `stale`,
   and its peek gets a "now" tab with the difference (a stopped session too).
+- A thin client's ask takes an optional `request_id`: the same ask sent again (a retry after a dropped connection)
+  answers the first one's turn instead of queuing it twice.
 
 ### Changed
 
 - For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted
   `.rb` under a subdirectory won't be installed (but not under `spec/` or `test/`).
+- An ask of `/continue yes` (a thin client's `POST …/ask`, an MCP host's `chi_ask`) now waits for the continued turn
+  and answers its reply, or a wait token while it runs, instead of `status: command`.
 
 ### Fixed
 
@@ -31,6 +35,8 @@ and commands may change between minor versions. How releases are made:
   id) instead of echoing it back.
 - chi as an MCP server answers a message that has an id but no method with JSON-RPC -32600, so the host isn't left
   waiting on it.
+- A thin client's ask and an MCP host's `chi_ask` over `POST /api/mcp` answer within about 45 s even when the
+  session's worker hangs taking the message in (it could take more than a minute, past Claude Code's 60 s HTTP limit).
 
 ## [0.183.0] - 2026-11-22
 

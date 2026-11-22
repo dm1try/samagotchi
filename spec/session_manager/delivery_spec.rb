@@ -188,6 +188,24 @@ RSpec.describe Samagotchi::SessionManager do
         .to eq([{ "prompt" => "hi", "client_id" => "cli:send", "enqueued_id" => result.enqueued_id }])
     end
 
+    it "posts and writes the caller's enqueued_id when given" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
+      posted = []
+      allow(bridge).to receive(:post_turn) do |**args|
+        posted << args.fetch(:enqueued_id)
+        raise Errno::ECONNREFUSED
+      end
+      id = "0b6c1e9a-1111-5222-8333-444455556666"
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir,
+                                                        bridge: -> { bridge }, enqueued_id: id)
+
+      expect(posted).to eq([id])
+      expect(result.enqueued_id).to eq(id)
+      expect(input_files.map { |path| JSON.parse(File.read(path))["enqueued_id"] }).to eq([id])
+    end
+
     it "queues the input file when nothing listens on the Bridge's port" do
       own("worker")
       server = TCPServer.new("127.0.0.1", 0)

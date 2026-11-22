@@ -219,6 +219,26 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(deadline).to be_within(1).of(sent_at + 25)
   end
 
+  it "leaves at least deadline_margin before a short read's timeout (the share alone would leave under a second)" do
+    port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1"}'))
+    sent_at = Time.now.to_f
+
+    described_class.new(session_id: "s1", port: port, secret: nil, read_timeout: 8, deadline_margin: 2.5).post_turn(prompt: "hi")
+
+    deadline = JSON.parse(finish.call.split("\r\n\r\n", 2)[1])["deadline"]
+    expect(deadline).to be_within(0.5).of(sent_at + 5.5)
+  end
+
+  it "keeps the share when it leaves more than deadline_margin" do
+    port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1"}'))
+    sent_at = Time.now.to_f
+
+    described_class.new(session_id: "s1", port: port, secret: nil, read_timeout: 30, deadline_margin: 2.5).post_turn(prompt: "hi")
+
+    deadline = JSON.parse(finish.call.split("\r\n\r\n", 2)[1])["deadline"]
+    expect(deadline).to be_within(0.5).of(sent_at + 25)
+  end
+
   # A command (a shell line), an answer or a dismissal the client gave up
   # on must not run when a frozen worker wakes, as a turn doesn't.
   {
