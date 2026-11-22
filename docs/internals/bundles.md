@@ -142,7 +142,7 @@ one ordered list (parts as listed, then the file; nothing sorts it: not the pars
 builder). The record keeps them under its plugin, `{"file": …, "sha256": …, "parts": {"client.rb": "sha256:…"}}`
 (`PluginRef#parts`, `{}` without; `Record#plugin_shas` has every file, so `AssetInstaller`, the `Uninstaller` and
 `ShippedUpdate#trash_bound` treat parts as recorded files), each with a base at `bases/plugin/<part>`.
-`BundleManifest::SINCE` has `"plugin.parts"` (the Unreleased comment until `release:bump`). What other chis do:
+`BundleManifest::SINCE` has `"plugin.parts"` (0.183.0). What other chis do:
 - The previous release ignores `parts:` in a manifest and in a record. It installs a too-new plugin with only a
   warning, copying the plugin file alone; after `chi update` this chi refuses that record: `Dir#plugin_refusal`'s
   `:parts_missing` (`bundle X's plugin parts aren't installed (reinstall the bundle)`, status `[parts missing]`), read
@@ -251,7 +251,11 @@ summarised by `#summary` by word: a file that already holds the bundle's bytes (
 rule/plugin/script, in a dry run as in the real run) is listed as `Up to date:`, and only the files really left
 out (`:kept_own`, a memory's dry-run `:would_skip`) as `Skipped:`. A memory's dry-run word is its action's through
 `Installer::DRY_WORDS`. A dry run's `would_update` (a plugin or script an upgrade would change) is `Would update:`; an asset
-row is never `would_skip`. A plain install over a bundle already installed from the same source ends with `NAME was already
+row is never `would_skip`.
+`BundleCommand#version_line` heads the summary. It reads the old version from the installed record before the run and
+the new one from the manifest: `NAME OLD → NEW` for a change, `NAME VER` otherwise, or `NAME VER (already current)` when
+nothing changed and `Installer#current?` is true. In that case `Installer#summary(current: true)` leaves out `Up to date:`.
+A plain install over a bundle already installed from the same source ends with `NAME was already
 installed from SOURCE: its rules, plugin and scripts now match it and its record was rewritten`, plus
 `; your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)` when
 a memory was left out as the user's (`:kept_own`: an edited one, or one the bundle doesn't own; a never-edited one takes the new text and isn't named there). An upgrade with conflicts keeps an

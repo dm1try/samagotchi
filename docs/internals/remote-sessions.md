@@ -94,7 +94,8 @@ of a worker starting draws on it too; chi web stopping cuts the continue waits a
 503 `server_stopping`; a client that goes away is not seen (WEBrick), so its handler runs on to that deadline),
 answering `Reply` (with an `Exchange::Token` on timeout), `Ran` or `Refused`: chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
-AskAccess`), and plan 2's MCP server reuses it without chi web. The routes: [thin-clients.md](../thin-clients.md).
+AskAccess`), and `McpServer::Tools` reuses `SessionAccess::Ask` / `Exchange` through the MCP server without chi web.
+The routes: [thin-clients.md](../thin-clients.md); the MCP protocol: [mcp-server.md](../mcp-server.md).
 
 ## One request, end to end
 

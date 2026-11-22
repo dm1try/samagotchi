@@ -27,7 +27,7 @@ rescues its own errors: an observer must never break the running turn.
 | `CardStore` | `card_store.rb` | The last cards and notices, saved in `cards.json`, each anchored to its turn. |
 | `TurnDrawings` | `turn_drawings.rb` | Each finished turn as live drew it (`turn_drawings.jsonl`): written by the accumulator's `on_turn_end` hook, read by chi web's show. |
 | `CardPlaces` | `card_places.rb` | Pure: where `CardStore`'s entries sit in the messages the page draws (`turns_since`, and the `opening_id` stamp). |
-| `PendingCard` | `pending_card.rb` | `pending_card.json` `{id:, bundle:}`: the running turn's open card with actions (check-in's Nudge), written and removed with that card, so chi web's hub, which watches files and not workers, can notify. |
+| `PendingCard` | `pending_card.rb` | `pending_card.json` `{id:, bundle:}`: the running turn's open card with command actions (check-in's Nudge); a URL-only card does not ask (`CardWait`), so it writes no pending card, and it is removed with the card, for chi web's file-watching hub. |
 
 Per connection there is an `SSEWriter` (with a `BoundedQueue`); `ClientEvent` and `EventId` are pure helpers. The
 Bridge also owns its **epoch** (`SecureRandom.hex(4)`: `event_seq` starts over in each worker, so the epoch says
