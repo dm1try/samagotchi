@@ -58,5 +58,23 @@ RSpec.describe Samagotchi::WorkingSet::Locator do
       File.write(File.join(outside, "style.md"), "secret\n")
       expect(described_class.of_part(part("preloads", "style", params.merge("system_dir" => outside))).fetch(root: root)).to be_nil
     end
+
+    it "refuses a note whose saved model key leads outside the root before it looks at any file" do
+      File.write(File.join(root, "model_notes_tips.md"), "models: *\nNote body\n")
+      outside = File.join(dir, "etc").tap { |d| FileUtils.mkdir_p(d) }
+      crafted = "x/../../etc/foo"
+      params = { "requested_scope" => nil, "model_key" => crafted, "fallback_model_key" => nil, "project_dir" => nil,
+                 "system_dir" => root }
+      locator = described_class.of_part(part("notes", "model_notes_tips", params))
+      looked = []
+      allow(File).to(receive(:file?).and_wrap_original { |original, path| (looked << path) && original.call(path) })
+
+      expect(locator.fetch(root: root)).to be_nil
+      File.write(File.join(outside, "foo.md"), "secret\n")
+      expect(locator.fetch(root: root)).to be_nil
+      expect(looked).to be_empty
+      expect(described_class.of_part(part("notes", "model_notes_tips", params.merge("model_key" => "m"))).fetch(root: root).text)
+        .to eq("Note body")
+    end
   end
 end

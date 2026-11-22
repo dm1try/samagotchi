@@ -132,7 +132,10 @@ module Samagotchi
         Now.new(text: Tools::MemoryRead.compose(resolved, read: read), diff: nil, gone: false)
       end
 
-      # A model note's text: its scope's file, its overlay beside it.
+      # A model note's text: its scope's file, its overlay beside it. Every
+      # path it may look at (the note, each saved key's overlay) passes the
+      # guard before any is looked at: a crafted key refuses whether or not
+      # a file is there.
       def note_fetch(system_dir, project_dir, root)
         require_relative "model_notes"
         name = ref.to_s
@@ -141,9 +144,8 @@ module Samagotchi
 
         keys = [MemoryGuard.field(params, :model_key), MemoryGuard.field(params, :fallback_model_key)]
         path = File.join(dir, "#{name}.md")
-        overlay = keys.compact.map { |key| key.to_s.strip }.reject(&:empty?).map { |key| File.join(dir, "#{name}.#{key}.md") }
-                      .find { |candidate| File.file?(candidate) }
-        return nil unless MemoryGuard.memory_paths?({ path: path, overlay: overlay && { path: overlay } }, root)
+        overlays = keys.compact.map { |key| key.to_s.strip }.reject(&:empty?).map { |key| File.join(dir, "#{name}.#{key}.md") }
+        return nil unless [path, *overlays].all? { |candidate| MemoryGuard.memory_paths?({ path: candidate }, root) }
         return GONE unless File.file?(path)
 
         text = ModelNotes.body_at(path, keys, dir: dir)
