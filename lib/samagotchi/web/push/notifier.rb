@@ -47,8 +47,13 @@ module Samagotchi
         SHOW_TTL = 12 * 3600
         # A failed, done or verdict turn: stale soon, no need to wake the phone.
         EVENT_TTL = 600
-        # A newly available chi is useful for a day while the phone is away.
+        # A newly available chi is useful for a day while the phone is away; so
+        # is a schedule chi web's tick turned off.
         UPDATE_TTL = 24 * 3600
+        # Shown even with a chi web page in front: the page has no word for it.
+        UNSEEN_ON_PAGE = %w[schedule].freeze
+        # A disabled schedule's body: its last reason, clipped.
+        REASON_MAX = 120
         # The kinds of AutoUpdate's notices: [key kind, title, body] from the version and the notice's notes.
         AUTO_NOTICES = {
           "installed" => lambda do |version, notes|
@@ -231,6 +236,8 @@ module Samagotchi
             notice_update(event)
           when "chi_notice"
             notice_auto_update(event)
+          when "schedule_disabled"
+            notice_schedule_disabled(event)
           end
         end
 
@@ -256,13 +263,33 @@ module Samagotchi
           enqueue_update("chi:#{kind}:#{version}", title, body) if kind
         end
 
+        # A recurring schedule chi web's tick turned off (SessionHub#publish_disabled).
+        # The key's +at+ (the tick's time) lets a later disable of the same
+        # schedule notify again; its chi: prefix keeps it out of WAITING_TAG.
+        def notice_schedule_disabled(event)
+          data = event.data
+          id = data[:id]
+          return unless id.is_a?(String) && !id.empty?
+
+          short = id[0, 8]
+          name = data[:title].to_s.strip
+          title = Attention.clip("Schedule disabled: #{name.empty? ? short : name}", Attention::TITLE_MAX)
+          count = data[:count].to_i
+          reason = Attention.clip(data[:reason].to_s.strip, REASON_MAX)
+          body = "#{data[:kind]} #{count} #{count == 1 ? "time" : "times"}#{": #{reason}" unless reason.empty?}\n" \
+                 "chi schedule enable #{short}"
+          summary = @by_id[data[:session_id]]
+          enqueue_update("chi:schedule_disabled:#{id}:#{data[:at]}", title, body,
+                         reason: "schedule", url: summary ? Notifier.session_url(summary) : "/")
+        end
+
         # Once per key in this process (AutoUpdate keeps its own record across restarts).
-        def enqueue_update(key, title, body)
+        def enqueue_update(key, title, body, reason: "update", url: "/")
           return if @updates_seen[key]
 
           @updates_seen[key] = true
-          attention = Attention::Event.new(reason: "update", session_id: nil, key: key, hold: nil)
-          @queue << Show.new(attention: attention, title: title, body: body, at: @now.call, url: "/")
+          attention = Attention::Event.new(reason: reason, session_id: nil, key: key, hold: nil)
+          @queue << Show.new(attention: attention, title: title, body: body, at: @now.call, url: url)
         end
 
         # A blocked install (a checkout, Bundler, an unwritable gem dir) names its own command on the page.
@@ -354,7 +381,7 @@ module Samagotchi
           return if subs.empty?
 
           key = show.attention.key
-          if @presence&.present?
+          if @presence&.present? && !UNSEEN_ON_PAGE.include?(show.attention.reason)
             Log.info(:web, "push_skipped", reason: "present", kind: show.attention.reason)
             return handled(key)
           end
@@ -410,7 +437,7 @@ module Samagotchi
         def deliver(subs, payload, show, final: false)
           reason = show.attention.reason
           waiting = Attention.waiting?(reason)
-          ttl = if reason == "update"
+          ttl = if %w[update schedule].include?(reason)
                   UPDATE_TTL
                 else
                   waiting ? SHOW_TTL : EVENT_TTL
