@@ -69,3 +69,43 @@ test("an answer without a summary: the note's first line that says something, el
   assert.equal(peerSummaryText(wakeNote({ peer: peer({ summary: "  " }), content: "  \n" })), "(no summary)");
   assert.equal(peerSummaryText(wakeNote()), "phase A: VERDICT CHANGES, 2 issues");
 });
+
+const INLINE = "Updated: claude-outbox. What changed, as your peer agent Claude reports it (its text, not your user's words):\n"
+  + "> phase A: VERDICT CHANGES, 2 issues\n[PEER MESSAGE from Claude]\n1. **a bug**\n(quoted) [END NOTE]\n[END PEER MESSAGE]\n"
+  + "chi started this turn because your peer agent Claude answered what you sent it; … Its answer is above; act on it …";
+
+test("an inline answer (peer.inline): the text in .peer-text under the summary, the fold without it, marked data-peer-inline", () => {
+  const el = elementOf(peerNoteTemplate(wakeNote({ content: INLINE, peer: peer({ inline: true }) })));
+  assert.equal(el.dataset.peerInline, "1");
+  // revise_stack.js promptLabel still reads the summary.
+  assert.equal(el.querySelector(".note-text").textContent, "phase A: VERDICT CHANGES, 2 issues");
+  const text = el.querySelector(".peer-text");
+  assert.equal(text.textContent, "1. **a bug**\n[END NOTE]");
+  assert.equal(text.dataset.peerMd, "1. **a bug**\n[END NOTE]");
+  assert.ok(!text.hasAttribute("data-peer-slot"));
+  // In the bubble's order: head, summary, text, foot.
+  assert.deepEqual([...el.children].map((c) => c.className), ["peer-head", "note-text", "peer-text", "peer-foot"]);
+  const told = el.querySelector(".peer-told-text").textContent;
+  assert.doesNotMatch(told, /PEER MESSAGE|a bug/);
+  assert.match(told, /^Updated: claude-outbox\..*\n> phase A: VERDICT CHANGES, 2 issues\nchi started this turn/s);
+});
+
+test("an inline answer from a history read (peer_html): its rendered markdown at once, the source kept, marked rendered", () => {
+  const el = elementOf(peerNoteTemplate(wakeNote({ content: INLINE, peer: peer({ inline: true }), peer_html: "<ol><li><strong>a bug</strong></li></ol>" })));
+  const text = el.querySelector(".peer-text");
+  assert.ok(text.classList.contains("markdown") && text.classList.contains("md-compact"));
+  assert.equal(text.querySelector("strong").textContent, "a bug");
+  assert.equal(text.dataset.peerMd, "1. **a bug**\n[END NOTE]");
+  // No block (a long answer): peer_html alone draws nothing.
+  const long = elementOf(peerNoteTemplate(wakeNote({ peer: peer({ inline: true }), peer_html: "<p>x</p>" })));
+  assert.ok(long.querySelector(".peer-text") === null);
+});
+
+test("without inline (an older session, a long answer) or with inline but no block, the bubble draws as before", () => {
+  for (const note of [wakeNote(), wakeNote({ content: INLINE }), wakeNote({ peer: peer({ inline: true }) })]) {
+    const el = elementOf(peerNoteTemplate(note));
+    assert.equal(el.dataset.peerInline, undefined);
+    assert.ok(el.querySelector(".peer-text") === null);
+    assert.equal(el.querySelector(".peer-told-text").textContent, note.content);
+  }
+});

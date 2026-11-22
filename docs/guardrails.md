@@ -1496,7 +1496,9 @@ what the history holds: a participant's turn sees the whole conversation, earlie
 them to a fresh session (or a continue) when the history holds what they shouldn't read. A
 line of a participant's text that looks like one of chi's own headers goes
 out quoted (`(quoted) [Steer from the user, …]`), under the real one, in any
-case and after any spaces (chi's context-note and task frames too). The owner's
+case and after any spaces, format characters (a zero-width space) or markdown leads (`>`, `**`, a backtick), at
+the start of any line (after `\n`, `\r`, U+2028, U+2029, U+0085, `\v` or `\f`); chi's context-note and task
+frames too. The owner's
 due reminders wait for the owner's next turn: they never go into a
 participant's.
 

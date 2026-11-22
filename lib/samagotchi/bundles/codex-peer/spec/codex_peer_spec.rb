@@ -94,7 +94,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
 
     result = send_part(kind: "validate", title: "Step 2: the cache key", text: "Is the key stable?\nsee lib/a.rb")
 
-    expect(result).to start_with("sent to Codex: validate · Step 2: the cache key. Codex's answer comes as an update")
+    expect(result).to start_with("sent to Codex: validate · Step 2: the cache key. Codex's answer comes as a note with its text")
     expect(queued).to eq(["queue", "--thread", thread_id, "--message",
                           "chi #{short} · validate · Step 2: the cache key\n" \
                           "#{ref("validate", "Step 2: the cache key", "Is the key stable?\nsee lib/a.rb")}\nIs the key stable?\nsee lib/a.rb"])
@@ -287,7 +287,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
         card = cards.last
         expect(card[:title]).to eq("codex-peer: paired")
         expect(card[:body]).to include("thread: `#{thread_id}` (a closed Codex session still takes sends", "last send: just now · validate · step 2 (8 chars, inline)",
-                                       "last answer (codex-outbox): validate step 2: VERDICT OK · just now")
+                                       "last message from Codex (codex-outbox, its text in the conversation): validate step 2: VERDICT OK · just now")
       end
     end
 
@@ -295,7 +295,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       pair
 
       result = run("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
-      expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as the codex-outbox context")
+      expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as a note with its text (codex-outbox)")
       text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
       expect(queued_message).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{command_ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 

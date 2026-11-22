@@ -177,3 +177,19 @@ test("a peer's answer is a note, live and on reload: the slots peer_links.js fil
   assert.doesNotMatch(shape[0].text, /↑|Read the full answer/);
   assert.equal(compareShapes(shape, historyShape(reload)).same, true);
 });
+
+test("a peer's inline text reads as its source, live (its markdown swapped in) and on an offscreen reload (plain)", () => {
+  const note = { content: "Updated: claude-outbox …\n> A\n[PEER MESSAGE from Claude]\n1. **a bug**\n[END PEER MESSAGE]\nIts answer is above;",
+                 context_source: "claude-outbox", peer: { peer: "claude", label: "Claude", summary: "A", serial: 2, inline: true } };
+  const reload = document.createElement("div");
+  reload.append(elementOf(noteBubbleTemplate(note)));
+  const live = document.createElement("div");
+  const drawn = elementOf(noteBubbleTemplate(note));
+  const text = drawn.querySelector(".peer-text");
+  text.innerHTML = "<ol><li><strong>a bug</strong></li></ol>";
+  text.classList.add("markdown");
+  live.append(drawn);
+  const shape = historyShape(live);
+  assert.match(shape[0].text, /1\. \*\*a bug\*\*/);
+  assert.equal(compareShapes(shape, historyShape(reload)).same, true);
+});

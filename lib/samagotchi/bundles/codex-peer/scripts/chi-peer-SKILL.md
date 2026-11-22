@@ -116,16 +116,35 @@ EOF
 ```
 
 - The second argument is always `wake` or `nowake`: `wake` for a validate or
-  a question (chi asked and is waiting), `nowake` for a reply to context.
+  a question (chi asked and is waiting), and for a message you start yourself
+  that chi should act on or know now (below); `nowake` for a reply to context
+  and for background chi can pick up at its next turn.
 - The third is the `ref:` value of the message you answer (`s-ab12cd` above),
   so chi ties the answer to its send; leave it out when the message had no
-  `ref:` line.
-- Each answer replaces the last (chi keeps the latest one), so start the
-  summary with the title you are answering, and end it with your verdict
-  (`VERDICT OK`, `VERDICT CHANGES` or `VERDICT UNSURE`): an OK wakes chi once
-  to close the round.
+  `ref:` line, and for a message you start.
+- chi puts your whole text in its conversation (up to its tool output cap,
+  10,000 characters by default, for a message that wakes it; up to 2,000 for
+  one that doesn't; a longer one it reads on demand), and keeps each answer's
+  text there, so don't repeat points from an earlier answer (a chi newer than
+  0.184.0; 0.184.0 or older keeps only the latest text: repeat them there,
+  as before). The outbox itself
+  keeps only the latest push, so start the summary with the title you are
+  answering, and end it with your verdict (`VERDICT OK`, `VERDICT CHANGES` or
+  `VERDICT UNSURE`): an OK wakes chi once to close the round.
 - Never answer a chi message with `chi send`: it counts as the user typing,
   outside the round's limit. Use it only when the user asks you to.
+
+### A message you start
+
+When something here changes what chi is doing (you changed code or a plan it
+depends on, the user took a decision with you that chi should follow), tell
+chi without waiting to be asked: the same push, with no third argument, and
+`wake` when chi should react now, `nowake` when it is only background. Start
+the summary with what it is about (`sync: <what>`). chi reads it as a message
+you sent unasked, takes it into account within its user's task and tells its
+user. A waking message counts toward the same limit as answers
+(`context.peer_turns`, 3 in a row without the user typing); past it the
+message waits in chi as a note. Don't send one only to acknowledge.
 
 ## chi continued the session
 

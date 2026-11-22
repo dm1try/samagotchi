@@ -1,22 +1,29 @@
 ---
 name: claude-peer
-version: 0.5.0
+version: 0.6.0
 scope: system
-description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as the claude-outbox context; /claude install-skill installs Claude's chi-peer skill, which pairs"
+description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as a note with its text (claude-outbox); /claude install-skill installs Claude's chi-peer skill, which pairs"
 trust_level: reviewed
 files:
   skill_claude_peer.md:
-    sha256: sha256:d94a5a3d4961453fcce7733b44163f217636534c5ef31b397785ffc1d07e1366
-    description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Claude's answer comes as the claude-outbox context"
+    sha256: sha256:cd8ba89d5cbe37a90c85ad8eb354dfc3d2651fc6150fe3047fd4b5ed6a73a004
+    description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Claude's answer comes as a note with its text (claude-outbox)"
 plugin:
   file: plugin.rb
-  sha256: sha256:09b7e0c5dd97a5ed24f1dd641967c3dad28a8d7bc86e65a82ea032e62782ed6b
+  sha256: sha256:a1020fd0ce9e8d68918605a23562dc1039f65d6f45b9ceb00e4f011cd000072a
 scripts:
-  pair: sha256:d85023acf109ca61eabbdec2dc3ad452da84493b604643cb1006d9f21958f5bc
-  chi-peer-SKILL.md: sha256:8db54ef42b4b008cab5ff27acf579a6da00b381549feb33c441fa9ebde6d32ad
+  pair-remote: sha256:d7681f87a194e540b629564f84cad9f2d0a763197502c74614276ef88a8920cc
+  pair: sha256:23d79bb8cf37517d20d15b6716f6666038858a4c5c09d3b85085d1e98475d6b3
+  chi-peer-SKILL.md: sha256:fc8c5f1ba9f3ed17f7d4291e3ee417959173089877e69e1cf99afc58fbee9bd6
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
 # The skill's `re` (the answered send) needs nothing newer: an older chi
 # ignores the unknown key, and sends no `ref:` line for the skill to echo.
 requires_chi: ">= 0.70.0"
+# The next chi: the installed skill's __CHI_PEER_PAIR_REMOTE__ placeholder
+# (scripts/pair-remote's path), which only its Plugin::Peer
+# #skill_target_and_text fills; an older chi would install the skill with it
+# left in. Also the memory and the tool's words say a peer's note holds its
+# text (chi's ContextAbsorber peer block), which the next chi adds.
+requires_chi_next: true

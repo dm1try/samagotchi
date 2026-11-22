@@ -75,9 +75,9 @@ class Plugin < Samagotchi::Plugin::Peer
                      "context), for Claude to validate, to take as context, or to answer a " \
                      "question about. Only when the user asks for it, or to reply to its answer " \
                      "in a peer turn. Needs a paired Claude Code session: without one it fails, " \
-                     "and the user pairs from Claude. Claude's answer comes back later as the " \
-                     "claude-outbox context (a validate's wakes you): don't wait or poll. Never " \
-                     "send secrets or the whole conversation."
+                     "and the user pairs from Claude. Claude's answer comes back later as a " \
+                     "claude-outbox note with its text (a validate's wakes you): don't wait or " \
+                     "poll. Never send secrets or the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,
             description: "validate: check this part and answer with a verdict; context: for Claude to know, no " \

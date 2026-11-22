@@ -82,6 +82,54 @@ test("the answers: ↑ names the send it answers, none on an unclaimed one; 'Rea
   assert.deepEqual(shown, ["claude-outbox"]);
 });
 
+test("an inline newest answer gets no 'Read the full answer'; its text is swapped for its markdown once, the source kept", async () => {
+  const history = document.createElement("div");
+  document.body.replaceChildren(history);
+  const content = "Updated: claude-outbox …\n> by the way\n[PEER MESSAGE from Claude]\n**bold**\n[END PEER MESSAGE]\nIts message is above.";
+  const inline = elementOf(noteBubbleTemplate({ content, context_source: "claude-outbox",
+    peer: { peer: "claude", label: "Claude", summary: "by the way", serial: 5, inline: true } }));
+  history.append(answer(3, "s-a"), inline);
+  const asked = [];
+  const peers = createPeers({ sessionId: () => "s1", hasPeer: () => true, onChange: () => {}, list: async () => PEERS, win: { addEventListener() {} } });
+  const links = createPeerLinks({ peers, roots: () => [history], renderMarkdown: async (text) => { asked.push(text); return "<p><strong>bold</strong></p>"; } });
+  await links.drawn();
+  links.draw();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(history.querySelector(".peer-full") === null);
+  const text = inline.querySelector(".peer-text");
+  assert.deepEqual(asked, ["**bold**"]);
+  assert.ok(text.classList.contains("markdown"));
+  assert.equal(text.querySelector("strong").textContent, "bold");
+  assert.equal(text.dataset.peerMd, "**bold**");
+});
+
+test("an inline answer's text stays plain when markdown is off (no renderMarkdown, or a null read)", async () => {
+  const history = document.createElement("div");
+  document.body.replaceChildren(history);
+  const inline = elementOf(noteBubbleTemplate({ content: "x\n[PEER MESSAGE from Claude]\n**b**\n[END PEER MESSAGE]\ny", context_source: "claude-outbox",
+    peer: { peer: "claude", label: "Claude", summary: "s", serial: 5, inline: true } }));
+  history.append(inline);
+  const peers = createPeers({ sessionId: () => "s1", hasPeer: () => true, onChange: () => {}, list: async () => PEERS, win: { addEventListener() {} } });
+  createPeerLinks({ peers, roots: () => [history], renderMarkdown: async () => null }).draw();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(inline.querySelector(".peer-text").textContent, "**b**");
+  assert.ok(!inline.querySelector(".peer-text").classList.contains("markdown"));
+});
+
+test("an inline answer that came rendered (peer_html) asks for no render", async () => {
+  const history = document.createElement("div");
+  document.body.replaceChildren(history);
+  const inline = elementOf(noteBubbleTemplate({ content: "x\n[PEER MESSAGE from Claude]\n**b**\n[END PEER MESSAGE]\ny", context_source: "claude-outbox",
+    peer: { peer: "claude", label: "Claude", summary: "s", serial: 5, inline: true }, peer_html: "<p><strong>b</strong></p>" }));
+  history.append(inline);
+  const peers = createPeers({ sessionId: () => "s1", hasPeer: () => true, onChange: () => {}, list: async () => PEERS, win: { addEventListener() {} } });
+  const asked = [];
+  createPeerLinks({ peers, roots: () => [history], renderMarkdown: async (text) => { asked.push(text); return "<p>again</p>"; } }).draw();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(asked, []);
+  assert.equal(inline.querySelector(".peer-text strong").textContent, "b");
+});
+
 test("↓ on a send goes to its answer: revealed, scrolled to, focused; ↑ goes back to the last send of its id before it", async () => {
   const { history, links } = page();
   await links.drawn();

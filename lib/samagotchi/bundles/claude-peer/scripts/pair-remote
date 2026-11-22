@@ -1,0 +1,123 @@
+#!/bin/sh
+# pair-remote: pair this Claude Code session with a chi session on another
+# machine it reaches with ssh, both ways (chi's claude-peer bundle):
+#
+#   sh <bundle dir>/scripts/pair-remote <ssh host> <chi remote name> <chi session id, prefix or chi web URL>
+#
+# The host and the remote name are two names for one machine: ssh's for the
+# socket forward, chi's (`chi remote add`) for pairing and replies. It
+# resolves the full session id through the remote, ends a forward an earlier
+# run left for that session and removes the stale remote socket, forwards
+# this Claude's inbox socket to /tmp/claude-peer-<first 8 of the id>.sock
+# there (ssh -R, in the background once it is up, keepalives so a dead link
+# ends it, a control socket here to end it by hand: in
+# ${TMPDIR:-/tmp}/claude-peer-<uid>/, yours alone), then runs scripts/pair
+# --inbox-socket through the remote. It
+# never prompts: when ssh needs a password or 2FA (BatchMode), or the server
+# refuses the forward (AllowStreamLocalForwarding no), it prints the
+# commands for the user to run in a terminal and exits 1. CHI names the chi
+# command (default: chi on the PATH), SSH the ssh one (default: ssh).
+set -eu
+
+usage() {
+  echo "usage: pair-remote <ssh host> <chi remote name> <chi session id, prefix or URL (http://127.0.0.1:4567/#/s/<id>)>" >&2
+  exit 2
+}
+
+[ $# -eq 3 ] || usage
+host=$1 remote=$2 target=$3
+[ -n "$host" ] && [ -n "$remote" ] && [ -n "$target" ] || usage
+case "$host" in -*) usage ;; esac
+
+sock=${CLAUDE_CODE_MESSAGING_SOCKET:-}
+if [ -z "$sock" ]; then
+  echo "pair-remote: CLAUDE_CODE_MESSAGING_SOCKET isn't set: run this from a Claude Code session (2.1.224 or later)" >&2
+  exit 2
+fi
+
+chi=${CHI:-chi}
+ssh=${SSH:-ssh}
+here=$(cd "$(dirname "$0")" && pwd)
+
+case "$target" in
+  http://* | https://*)
+    given=$(printf '%s\n' "$target" | sed -n 's|.*/s/\([0-9A-Za-z-][0-9A-Za-z-]*\).*|\1|p')
+    [ -n "$given" ] || { echo "pair-remote: no session id in $target (a chi web URL ends in #/s/<id>)" >&2; exit 2; }
+    ;;
+  *) given=$target ;;
+esac
+
+# The full id, through the remote: the socket is named by its first 8
+# characters, so one session always gets the same socket.
+if ! listed=$(CHI_REMOTE=$remote $chi sessions list --format tsv --archived); then
+  echo "pair-remote: can't list the sessions on chi remote $remote (chi remote add $remote <url>, through an ssh -L tunnel if that is how you reach it)" >&2
+  exit 1
+fi
+ids=$(printf '%s\n' "$listed" | awk -F '\t' -v p="$given" 'index($1, p) == 1 { print $1 }')
+count=$(printf '%s' "$ids" | grep -c . || true)
+if [ "$count" -eq 0 ]; then
+  echo "pair-remote: no session $given on chi remote $remote" >&2
+  exit 1
+fi
+if [ "$count" -gt 1 ]; then
+  echo "pair-remote: $given names several sessions on chi remote $remote: give more of the id" >&2
+  exit 1
+fi
+id=$ids
+# The id goes into a remote command line and local paths: a session id only.
+if ! printf '%s\n' "$id" | grep -Eqx '[0-9a-f-]{36}'; then
+  echo "pair-remote: chi remote $remote listed $id, which isn't a session id" >&2
+  exit 1
+fi
+id8=$(printf '%s' "$id" | cut -c1-8)
+remote_sock=/tmp/claude-peer-$id8.sock
+# The control socket and the log here: in a folder only this user can
+# write (not /tmp itself, where another user could plant either name).
+tmp=${TMPDIR:-/tmp}
+dir=${tmp%/}/claude-peer-$(id -u)
+mkdir -m 700 -p "$dir"
+if [ -L "$dir" ] || [ ! -O "$dir" ]; then
+  echo "pair-remote: $dir isn't a folder of yours: remove it and run this again" >&2
+  exit 1
+fi
+chmod 700 "$dir"
+control=$dir/$id8.ctl
+log=$dir/$id8.log
+
+# What the user runs when ssh can't do it without asking.
+by_hand() {
+  echo "pair-remote: ssh to $host didn't start the forward on its own: it needs a password or 2FA, can't reach the host, or sshd refuses the forward (AllowStreamLocalForwarding no)." >&2
+  [ ! -s "$log" ] || sed 's/^/  ssh: /' "$log" >&2
+  echo "Run these two in a terminal (the second keeps running while chi may send):" >&2
+  echo "  ssh $host rm -f $remote_sock" >&2
+  echo "  ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R \"$remote_sock:$sock\" $host" >&2
+  echo "then pair: CHI_REMOTE=$remote sh \"$here/pair\" --inbox-socket $remote_sock $id" >&2
+  exit 1
+}
+
+# A forward an earlier run left for this session: ended, so the remote
+# socket below isn't removed from under a live one.
+if [ -S "$control" ]; then
+  $ssh -S "$control" -O exit "$host" >/dev/null 2>&1 || true
+fi
+rm -f "$control"
+
+# A stale remote socket isn't replaced unless the server's sshd has
+# StreamLocalBindUnlink yes.
+: > "$log"
+$ssh -o BatchMode=yes "$host" rm -f "$remote_sock" 2>> "$log" || by_hand
+
+# -f: in the background only once the forward is up (ExitOnForwardFailure),
+# so nothing polls, and it outlives the call that started it; -M -S: the
+# control socket that ends it; ServerAlive*: a link dead for 90 s ends it,
+# not a forward that looks alive.
+$ssh -f -N -M -S "$control" -o BatchMode=yes -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -R "$remote_sock:$sock" "$host" 2>> "$log" || by_hand
+
+if ! CHI_REMOTE=$remote sh "$here/pair" --inbox-socket "$remote_sock" "$id"; then
+  $ssh -S "$control" -O exit "$host" >/dev/null 2>&1 || true
+  echo "pair-remote: pairing failed; the forward is ended" >&2
+  exit 1
+fi
+echo "forward: $host:$remote_sock -> $sock; end it with: ssh -S \"$control\" -O exit $host"

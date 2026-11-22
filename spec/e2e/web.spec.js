@@ -6,7 +6,7 @@ import { test, expect } from "./support/fixtures.js";
 import { PROMPT_LINE_PX } from "../../lib/samagotchi/web/public/composer_size.js";
 import { barItemOnRow, clickBarItem, expectNoHorizontalOverflow } from "./support/layout.js";
 import { expectSameAfterReload } from "./support/history_shape.js";
-import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
+import { APPROVAL_COMMAND, EDIT_ASK_FILE, chiCli, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
 import { momentAt, pageNow, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
 
 // The stage: a running turn's rows are in #turnStage until the hand-off
@@ -2387,6 +2387,50 @@ test("a finished task's wake opens a turn: after a reload an earlier card keeps 
   const order = () => page.locator("#history > :is(.bubble.user, .plugin-card.warn, .bubble.note.turn-start)").evaluateAll((els) => els.map((el) => (
     el.matches(".plugin-card") ? "card" : el.matches(".note") ? "note" : el.textContent.trim())));
   await expect.poll(order).toEqual(["Read the flagged file", "card", "Start a task", "note"]);
+});
+
+// A paired peer's answer (claude-peer, attached as its pair script does)
+// wakes a turn with its text in the note: the bubble shows the text under
+// the summary (rendered markdown), the fold holds chi's lines without it,
+// no "Read the full answer", and the peer chip keeps no unread dot (the
+// inlined answer counts as read); live and after a reload.
+test("a peer's answer shows its text in the bubble, not in the fold; no 'Read the full answer', no unread dot; live and after a reload", async ({ page, script, chi }) => {
+  chiCli(chi, ["bundle", "install", "claude-peer"]);
+  try {
+    script("plain");
+    await send(page, "Say pong");
+    await turnEnded(page, 1);
+    const id = decodeURIComponent(new URL(page.url()).hash.replace(/^#\/s\//, ""));
+    chiCli(chi, ["context", "add", "claude-inbox", "--push", "--why", "the Claude Code session paired with you", "--hint", "/tmp/e2e-peer.sock", id]);
+    chiCli(chi, ["context", "push", "claude-inbox", "-m", JSON.stringify({ text: "Claude Code peer inbox", hint: "/tmp/e2e-peer.sock", summary: "paired" }), id]);
+    chiCli(chi, ["context", "add", "claude-outbox", "--push", "--why", "Claude's answers to what you sent it (claude-peer)", "--hint", "latest Claude reply", id]);
+    const text = "1. **The route** misses a 404.\n2. `item_id` isn't checked.";
+    chiCli(chi, ["context", "push", "claude-outbox", "-m", JSON.stringify({ text, summary: "validate phase A: VERDICT CHANGES, 2 issues", wake: true, re: "s-ab12cd" }), id]);
+    const bubble = page.locator("#history .bubble.note.peer-answer");
+    await expect(bubble).toHaveCount(1);
+    await turnEnded(page, 2);
+    const check = async () => {
+      await expect(bubble).toHaveAttribute("data-peer-inline", "1");
+      await expect(bubble.locator(".note-text")).toHaveText("validate phase A: VERDICT CHANGES, 2 issues");
+      await expect(bubble.locator(".peer-text strong")).toHaveText("The route");
+      await expect(bubble.locator(".peer-text")).toContainText("isn't checked.");
+      await expect(bubble.locator(".peer-full")).toHaveCount(0);
+      const told = await bubble.locator(".peer-told-text").textContent();
+      expect(told).toContain("Its answer is above;");
+      expect(told).not.toContain("PEER MESSAGE");
+      expect(told).not.toContain("The route");
+      const chip = page.locator('.ctx-chip.peer[data-name="peer:claude"]');
+      await expect(chip).toHaveCount(1);
+      await expect(chip.locator(".ctx-dot")).toHaveCount(0);
+    };
+    await check();
+    await test.step("the turns read the same after a reload", async () => {
+      await expectSameAfterReload(page, ended(2));
+    });
+    await check();
+  } finally {
+    chiCli(chi, ["bundle", "uninstall", "claude-peer"]);
+  }
 });
 
 // The Stop button asks first what the worker still has that the user can

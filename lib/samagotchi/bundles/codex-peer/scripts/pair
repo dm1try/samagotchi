@@ -136,7 +136,7 @@ text="Codex peer inbox
 thread: $thread
 codex cwd: $PWD
 paired: $(date '+%Y-%m-%d %H:%M')
-Send to it with the codex_send tool (your skill_codex_peer memory); its answers come as the codex-outbox context."
+Send to it with the codex_send tool (your skill_codex_peer memory); its answers come as codex-outbox notes holding their text."
 if ! out=$(printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$thread")" \
   "$(json "Codex paired from $PWD")" | $chi context push codex-inbox "$id" 2>&1 >/dev/null); then
   fail "$out"
