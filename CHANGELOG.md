@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `reply_for` on `POST …/ask`: a thin client says what its surface can show (`"voice"`, a name from config.yml's new
+  `surfaces:`, or the values formatting, room, choices, detail), and the reply fits it: chi tells the model in a line
+  with that message, a plain surface's answer comes back without markdown (the session and the web keep the model's
+  text), and the next message from the web gets full formatting again. A surface without detail is told an approval,
+  a spending question or a user-only option in words (`needs: "detail"`), and `POST …/answer` with its `reply_for`
+  refuses them (403 `needs_detail`). `GET /api/info` lists `reply_for`; a session whose worker is older is refused
+  with 409 `reply_for_unavailable` (update chi if needed, then restart it). The iOS Shortcut recipe sends
+  `"reply_for": "voice"`.
+
 ## [0.185.0] - 2026-11-22
 
 ### Added

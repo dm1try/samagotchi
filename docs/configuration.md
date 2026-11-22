@@ -2188,6 +2188,24 @@ there; the new subscription replaces the dead one.
   (it shows the "needs chi web's access token" page; paste the token there). Pushes keep coming meanwhile.
 - chi web not running: no pushes (Serve answers 502; a tap couldn't open the page anyway).
 
+## Surfaces: names for reply_for
+
+A thin client says what its surface can show with `reply_for` on `POST …/ask`
+([Replies that fit the surface](thin-clients.md#replies-that-fit-the-surface)):
+the values, or a name. `voice` is built in (`formatting: plain`, `room: short`,
+`choices: 3`, `detail: false`). Add names, or replace `voice`, under `surfaces:`:
+
+```yaml
+surfaces:
+  watch: {formatting: plain, room: one_line, choices: 2, detail: false}
+  voice: {formatting: plain, room: short, choices: 0, detail: false}
+```
+
+A value left out is the full one. chi web reads the name when the ask comes in,
+and the session saves the values, so editing a name changes the next asks, not
+old turns. A name whose values are wrong refuses only the asks that use it (400
+`invalid_ask` names the entry).
+
 ## Unattended updates (`update.auto`)
 
 By default chi web only tells you a release is out (`update.notify`, [CLI: Updating](cli.md#updating)). With

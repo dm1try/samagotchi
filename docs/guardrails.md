@@ -310,6 +310,19 @@ by editing the session file, or by running `chi --attach` on a PTY with the
 markers cleared. chi's instructions for parents ([chi as a
 sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
+### Approvals from a surface without detail
+
+A thin client that declares `reply_for` with `detail: false` (a voice Shortcut:
+[thin-clients.md](thin-clients.md#replies-that-fit-the-surface)) is told an
+approval, a spending question (a hook's: cost-cap, work-cap) or a question
+with `user_only` options in words (`needs: "detail"`, no options), and
+`POST …/answer` with that `reply_for` refuses such a question with 403
+`needs_detail` (`ReplyFor#answers?`, told by the question's `kind`, never by
+its `approval:` facts, which a relayed approval may have empty). The model's
+own questions and the step-limit question stay answerable. Like `client_id`,
+this is a convention for an honest client, not a barrier: the token can still
+answer anything, and an answer without the field is the owner's.
+
 ## Who may run a session command
 
 A message that is a session command (`/model x`, `!cmd`, `!rollback`) runs as the command only when a person sends
