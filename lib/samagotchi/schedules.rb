@@ -802,11 +802,18 @@ module Samagotchi
     # off within budget is an owner's `chi schedule disable`.
     def mark_disabled(outcomes, before, links: nil)
       ended = outcomes.select { |outcome| %w[skipped failed].include?(outcome.status) }.map(&:id)
+      status_by_id = outcomes.select { |outcome| %w[skipped failed].include?(outcome.status) }
+                             .to_h { |outcome| [outcome.id, outcome.status] }
       on = before.select { |entry| entry.enabled && entry.recurrence[:kind] != "date" && ended.include?(entry.id) }.map(&:id)
       return outcomes if on.empty?
 
       off = read.entries.grep(Entry).select do |entry|
-        on.include?(entry.id) && !entry.enabled && (entry.skips >= entry.max_skips || entry.failures >= entry.max_failures)
+        budget_reached = case status_by_id[entry.id]
+                         when "skipped" then entry.skips >= entry.max_skips
+                         when "failed" then entry.failures >= entry.max_failures
+                         else false
+                         end
+        on.include?(entry.id) && !entry.enabled && budget_reached
       end
       links ||= links_now unless off.empty?
       off.each do |entry|

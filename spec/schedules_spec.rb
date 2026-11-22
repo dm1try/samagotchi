@@ -940,6 +940,26 @@ RSpec.describe Samagotchi::Schedules do
         expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
       end
     end
+
+    it "does not mark a skip disabled when failures, but not skips, reached their budget" do
+      Dir.mktmpdir("schedules-disabled-other-budget") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 2, max_failures: 1)
+        busy(dir, anchor)
+        allow(schedules).to receive(:read).and_wrap_original do |original, **kw|
+          file = original.call(**kw)
+          next file if kw[:strict]
+
+          file.with(entries: file.entries.map do |stored|
+            stored.is_a?(described_class::Entry) ? stored.with(enabled: false, failures: stored.max_failures) : stored
+          end)
+        end
+
+        expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
+      end
+    end
   end
 
   it "resets skips and failures when a schedule is enabled again" do
