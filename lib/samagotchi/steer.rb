@@ -258,11 +258,12 @@ module Samagotchi
 
     # A line of a participant's text that opens like one of chi's own
     # headers or frames (another participant's review header, a steer's, an
-    # automatic input's, a delegate report's, a context note's, a task's or an
-    # objectives list's frame), in any case, after any spaces (Unicode ones too); a line
-    # starts after \n or \r.
+    # automatic input's, a delegate report's, a context note's, a task's, an
+    # objectives list's or a peer's message block (ContextAbsorber.peer_block)),
+    # in any case, after any spaces (Unicode ones too); a line starts after
+    # \n or \r.
     FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",
-                       "TASK FINISHED", "OBJECTIVES", "END NOTE"].freeze
+                       "TASK FINISHED", "OBJECTIVES", "END NOTE", "PEER MESSAGE", "END PEER MESSAGE"].freeze
     FORGED_HEADER = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=(?:#{FORGED_OPENINGS.map { |o| Regexp.escape(o) }.join("|")})\b)/i
     # The same, for the objectives frame alone: the one frame that gives
     # orders in the user's name, so any outside text is held to it
