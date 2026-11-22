@@ -122,3 +122,37 @@ test("this page's modules: the GET's stale parts show stale; an event through th
     assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 1);
   } finally { v.cleanup(); }
 });
+
+// chi's own change (by_chi beside state "stale", the own-writes build): an older module never sees "edited".
+const OWN = [{ key: "identity:identity@system", state: "stale", by_chi: { tool_id: "t1", step: 1, op: "memory_write", current: true } }];
+
+test("0.183.0's view with a by_chi answer: nothing throws, no stale, no edited row", async () => {
+  const v = open(await mixedPage(["working_set_view.js"]), "m6", { states: OWN });
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    // The start rows were drawn (the absence below is not an empty list's).
+    assert.equal(v.pop.querySelectorAll(".ws-sec.start .ws-row.part").length, 2);
+    assert.match(v.pop.querySelector(".ws-sec.start").textContent, /identity/);
+    assert.equal(v.pop.querySelectorAll(".ws-pstale, .ws-pedited").length, 0);
+  } finally { v.cleanup(); }
+});
+
+test("this view with 0.183.0's ws_sections.js and a by_chi answer: no partKeys, no edited row, nothing throws", async () => {
+  const v = open(await mixedPage(["ws_sections.js"]), "m7", { states: OWN });
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    // The start rows were drawn (the absence below is not an empty list's).
+    assert.equal(v.pop.querySelectorAll(".ws-sec.start .ws-row.part").length, 2);
+    assert.match(v.pop.querySelector(".ws-sec.start").textContent, /identity/);
+    assert.equal(v.pop.querySelectorAll(".ws-pstale, .ws-pedited").length, 0);
+  } finally { v.cleanup(); }
+});
+
+test("this page's modules with a by_chi answer: the row says edited, not stale", async () => {
+  const v = open(await mixedPage([]), "m8", { states: OWN });
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 0);
+    assert.equal(v.pop.querySelector(".ws-pedited")?.textContent, "identity memory · edited");
+  } finally { v.cleanup(); }
+});

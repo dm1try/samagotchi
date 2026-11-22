@@ -617,8 +617,10 @@ hand-off when it holds states or the list is open, so a rebuilt prompt's states 
 
 Stale lasts in a live worker until chi rebuilds its prompt: `SystemPrompt#built_for` caches the build until
 `#reset!` (a model switch, a participants change, a plugin's `prompt_changed!`, a toolkit change). An outside edit,
-and chi's own `memory_write` of a preloaded memory, do not reset it, so the worker keeps sending the old text and the
-row stays `stale` across turns until one of those or a restart. That is true, and the row shows it as is.
+and chi's own `memory_write` of a preloaded memory, do not reset it, so the worker keeps sending the old text across
+turns until one of those or a restart. Someone else's change reads `stale`; chi's own (a current `by_chi`) reads
+`✎ edited`, since the new text is in chi's conversation, and while the turn that made it still runs it reads `stale`
+until the turn ends (the GET's messages lag it; the hand-off's GET brings the word).
 
 **The source now.** `GET …/working_set/part?key=&now=1` adds, beside the sent slice, `now: {text, diff, gone}`: the
 locator's text (scrubbed to valid UTF-8 before JSON) and `TextDiff.unified` of the sent text against it (nil when
@@ -641,6 +643,34 @@ still says one `stale`, its title and its now tab naming both ("read changed · 
 the `&now=1` answer, drawn as "<label> changed after chi's prompt was built" with the diff's `+a −d` and
 `diff_view.js`'s diff ("no change" once it was edited back), or "Its source is gone now." It opens first unless the row
 has a read. No new export: an older `ws_sections.js` ignores `states`, and the 0.183.0 page ignores the field.
+
+**chi's own change on the page.** The view reads the GET's `by_chi` itself, off `server.parts` (`working_set_view.js
+ownRow`: an older cached `ws_sections.js` has no `partKeys`, build 2's maps states to `"stale"` or none): a stale part
+whose `by_chi.current` is true becomes `"edited"` in the row's `partStates`, and a row none of whose parts is still
+stale is edited. It reads `✎` (the file rows' `.e`), then `<span class="st ws-pedited"><span class="ws-pwords">preloaded
+· </span>edited</span>` (`removed` for a remove) in `--text-2`, not the warn colour; for AGENTS.md `project instructions ·
+edited`. Its title: "preloaded · chi edited it at turn 3, step 2: the new text is in its conversation; its prompt
+still sends the old text until it is next built" (a remove: "… chi removed it at turn 3, step 2: its prompt still sends
+it until it is next built"). Its tag after the tokens is the call's place, found by `tool_id` over every turn's items
+(`ws_timeline.js placeOf`), drawn as the read rows' jump (`.ws-step.ws-own`, `data-ws="jump"`); without a place, a
+plain `step N` (the server's step). A memory row whose read is stale says the read's `stale` as before. A merged row
+(a note also preloaded) stays `stale` while any part is stale without a current change; each part gets its own tab.
+On a phone's sheet the part words go (`.ws-popover.sheet .ws-pwords{display:none}`, D7): `✎ edited` alone, the name
+keeps its room; a part row keeps `edited` where it drops its sub text, and the tabs wrap.
+
+The peek (`ws_part_peek.js`) gives an edited part the tab `edited · t3·s2` (`removed · t3·s2`) right after its hold, in
+place of the now tab; it opens first unless the row has a read. Its body is the `&now=1` answer: the head "chi edited
+`<label>` at t3·s2" with the diff's `+a −d`, the diff sent → now, and one line, "Its prompt still sends the old text with
+every request; chi has the new text from its edit.", followed by "The prompt gets it when it is next built (a restart,
+a model switch)." (`rebuild: "restart"`) or "The prompt gets it when it is next built (at its next turn)."
+(`"next_turn"`); none without `rebuild`. A remove's tab: "chi removed it at t3·s2; its prompt still sends it until it
+is next built." A stale now tab gets the rebuild line under the diff: "chi gets the new text when its prompt is next
+built (a restart, a model switch)." or "chi gets the new text at its next turn."; with `by_chi.current === false`,
+above it (warn) "chi edited it at t3·s2; it changed again after that.". The words are constants beside `BOTH_CHANGED`
+(`REBUILD_LIVE`, `REBUILD_NEXT`, `STILL_SENT`, `PROMPT_GETS`). No new export: an older cached peek given `"edited"`
+sees no stale and shows the sent text only (`v0.183.0` has no `ws_part_peek.js`, so that pairing gets a fixture once
+0.184.0 is tagged); the 0.183.0 page and view ignore `by_chi`; a new page against an older chi web (no `by_chi`, no
+`rebuild`) draws build 2's stale with no rebuild line.
 
 **Compat.** An older page ignores the fields and the route; a build-2 page maps any state but `"stale"` to none, so
 `by_chi` rides beside `state: "stale"` (no new state value) and such a page draws today's `stale`; an older chi reading a newer file drops the fields

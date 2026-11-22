@@ -307,3 +307,159 @@ test("a GET an event overtook still gives its states (the event's set kept, the 
     assert.ok(p.pop.querySelector('.ws-sec.read .ws-row.stale[data-ws-id="file:/p/a.rb"]'), "the event's set kept");
   } finally { p.cleanup(); }
 });
+
+// chi's own change of a stale part (the GET's by_chi): the row says ✎ edited, its tab chi's change.
+const STYLE_DIFF = { text: "@@ -1 +1,2 @@\n-be brief\n+be terse\n+and kind", added: 2, removed: 1, new_file: false };
+const withNow = async (key, answer, run) => {
+  const saved = NOW_ANSWERS[key];
+  NOW_ANSWERS[key] = answer;
+  try { await run(); } finally { NOW_ANSWERS[key] = saved; }
+};
+const styleNow = (extra = {}) => ({ part: PARTS[5], sent: { lead: "", text: "be brief" }, now: { text: "be terse\nand kind", gone: false, diff: STYLE_DIFF }, ...extra });
+const agentsNow = (extra = {}) => ({ ...NOW_ANSWERS["agents:/p/AGENTS.md"], ...extra });
+const tabWords = (p) => [...p.start().querySelectorAll(".ws-tab")].map((t) => t.textContent);
+
+test("a part chi edited itself: ✎ edited in the plain colour, its part words apart, its tag the call's jump; the title says both facts", async () => {
+  // t5 is the read row's id here: placeOf finds its place (t1·s1).
+  const p = page({ states: [{ key: "preloads:style@system", state: "stale", by_chi: { tool_id: "t5", step: 4, op: "memory_write", current: true } }] });
+  try {
+    await tick();
+    const row = p.start().querySelector('.ws-row[data-ws-id="memory:style"]');
+    assert.ok(row.querySelector(".ws-pstale") === null, "not stale");
+    assert.equal(row.querySelector(".e")?.textContent, "✎");
+    const st = row.querySelector(".st.ws-pedited");
+    assert.equal(st.textContent, "preloaded · edited");
+    assert.equal(st.querySelector(".ws-pwords").textContent, "preloaded · ", "the phone's sheet hides this span (D7)");
+    assert.equal(st.title, "preloaded · chi edited it at turn 1, step 1: the new text is in its conversation; its prompt still sends the old text until it is next built");
+    const tag = row.querySelector(".ws-own");
+    assert.equal(tag.tagName, "BUTTON");
+    assert.equal(tag.dataset.ws, "jump");
+    assert.equal(tag.dataset.at, "0.0.1");
+    assert.equal(tag.textContent, "t1·s1");
+  } finally { p.cleanup(); }
+});
+
+test("its peek: the edited tab after its hold (the read first), chi's change and the line by rebuild", async () => {
+  const p = page({ states: [{ key: "preloads:style@system", state: "stale", by_chi: { tool_id: "t5", step: 4, op: "memory_write", current: true } }] });
+  try {
+    await withNow("preloads:style@system", styleNow({ rebuild: "restart" }), async () => {
+      await tick();
+      p.toggleOf('[data-ws-id="memory:style"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p).map((w) => w.replace(/^read · .*$/, "read")), ["read", "preload · ~100", "edited · t1·s1"]);
+      assert.ok(p.start().querySelector(".ws-tab.on").textContent.startsWith("read"), "a read opens first");
+      const edited = [...p.start().querySelectorAll(".ws-tab")].at(-1);
+      assert.ok(!edited.classList.contains("warn"));
+      edited.click();
+      await tick();
+      assert.deepEqual(p.asked.at(-1), ["s1", "preloads:style@system", "now"]);
+      const peek = p.start().querySelector(".ws-part-peek");
+      assert.equal(peek.querySelector(".ws-peek-t").textContent, "chi edited style at t1·s1");
+      assert.equal(peek.querySelector(".ws-peek-c").textContent, "+2 −1");
+      assert.match(peek.querySelector(".diff").textContent, /be terse/);
+      assert.equal(peek.querySelector(".ws-peek-copy").textContent,
+        "Its prompt still sends the old text with every request; chi has the new text from its edit. The prompt gets it when it is next built (a restart, a model switch).");
+    });
+  } finally { p.cleanup(); }
+});
+
+test("a part row chi edited (AGENTS.md, no read): its edited tab opens first; no worker says at its next turn, an older chi web nothing", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale", by_chi: { tool_id: "t9", step: 4, op: "edit", current: true } }] });
+  try {
+    await withNow("agents:/p/AGENTS.md", agentsNow({ rebuild: "next_turn" }), async () => {
+      await tick();
+      const row = p.start().querySelector('.ws-row.part[data-ws-part^="agents"]');
+      assert.equal(row.querySelector(".st").textContent, "project instructions · edited");
+      // No place on the page (t9 is no row's): a plain step, no jump.
+      const tag = row.querySelector(".ws-own");
+      assert.equal(tag.tagName, "SPAN");
+      assert.equal(tag.textContent, "step 4");
+      p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p), ["in the prompt · ~3.4k", "edited · step 4"]);
+      assert.ok(p.start().querySelectorAll(".ws-tab")[1].classList.contains("on"), "the edited tab opens first");
+      assert.match(p.start().querySelector(".ws-peek-copy").textContent, /The prompt gets it when it is next built \(at its next turn\)\.$/);
+    });
+    p.ws.popover.close();
+    await withNow("agents:/p/AGENTS.md", agentsNow(), async () => {
+      p.ws.popover.open(p.pop.ownerDocument.querySelector(".ws-chip"));
+      await tick();
+      p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+      await tick();
+      assert.equal(p.start().querySelector(".ws-peek-copy").textContent, "Its prompt still sends the old text with every request; chi has the new text from its edit.");
+    });
+  } finally { p.cleanup(); }
+});
+
+test("chi's remove: ✎ removed, its tab one line", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale", by_chi: { tool_id: "t1", step: 2, op: "remove", current: true } }] });
+  try {
+    await withNow("agents:/p/AGENTS.md", agentsNow({ now: { text: null, diff: null, gone: true } }), async () => {
+      await tick();
+      const row = p.start().querySelector('.ws-row.part[data-ws-part^="agents"]');
+      assert.equal(row.querySelector(".st").textContent, "project instructions · removed");
+      assert.match(row.querySelector(".st").title, /chi removed it at turn 1, step 1: its prompt still sends it until it is next built$/);
+      p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p), ["in the prompt · ~3.4k", "removed · t1·s1"]);
+      assert.equal(p.start().querySelector(".ws-part-peek .ws-peek-copy").textContent, "chi removed it at t1·s1; its prompt still sends it until it is next built.");
+    });
+  } finally { p.cleanup(); }
+});
+
+test("stale with chi's change not current: the now tab names chi's edit above when chi gets it; none without by_chi or rebuild", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale", by_chi: { tool_id: "t9", step: 3, op: "edit", current: false } }] });
+  try {
+    await withNow("agents:/p/AGENTS.md", agentsNow({ rebuild: "restart" }), async () => {
+      await tick();
+      const row = p.start().querySelector('.ws-row.part[data-ws-part^="agents"]');
+      assert.equal(row.querySelector(".ws-pstale")?.textContent, "stale");
+      p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p), ["in the prompt · ~3.4k", "now · changed"]);
+      const lines = [...p.start().querySelectorAll(".ws-peek-copy")];
+      assert.deepEqual(lines.map((l) => l.textContent), ["chi edited it at step 3; it changed again after that.",
+        "chi gets the new text when its prompt is next built (a restart, a model switch)."]);
+      assert.ok(lines[0].classList.contains("warn"));
+    });
+  } finally { p.cleanup(); }
+  const q = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale" }] });
+  try {
+    await withNow("agents:/p/AGENTS.md", agentsNow({ rebuild: "next_turn" }), async () => {
+      await tick();
+      q.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+      await tick();
+      assert.deepEqual([...q.start().querySelectorAll(".ws-peek-copy")].map((l) => l.textContent), ["chi gets the new text at its next turn."]);
+    });
+    q.ws.popover.close();
+    q.ws.popover.open(q.pop.ownerDocument.querySelector(".ws-chip"));
+    await tick();
+    q.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+    await tick();
+    assert.equal(q.start().querySelectorAll(".ws-peek-copy").length, 0, "an older chi web: today's now tab");
+  } finally { q.cleanup(); }
+});
+
+test("a merged row (a note also preloaded) with one part edited and one stale stays stale: a tab per part", async () => {
+  const p = page({ states: [{ key: "notes:model_notes_y@system", state: "stale", by_chi: { tool_id: "t9", step: 4, op: "memory_write", current: true } },
+    { key: "preloads:model_notes_y@system", state: "stale" }] });
+  try {
+    await tick();
+    const row = p.start().querySelector('.ws-row[data-ws-id="memory:model_notes_y"]');
+    assert.equal(row.querySelector(".ws-pstale")?.textContent, "stale");
+    assert.ok(row.querySelector(".ws-pedited") === null);
+    p.toggleOf('[data-ws-id="memory:model_notes_y"]').click();
+    await tick();
+    assert.deepEqual(tabWords(p), ["note · ~900", "edited · step 4", "preload · ~1.2k", "now · changed"]);
+  } finally { p.cleanup(); }
+});
+
+test("an event's set (no parts) keeps by_chi: the row stays edited", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale", by_chi: { tool_id: "t9", step: 4, op: "edit", current: true } }] });
+  try {
+    await tick();
+    p.ws.update({ items: [{ kind: "file", key: "/p/a.rb", state: "live", tokens: 100 }], at: 5 });
+    await tick();
+    assert.equal(p.start().querySelector('.ws-row.part[data-ws-part^="agents"] .st').textContent, "project instructions · edited");
+  } finally { p.cleanup(); }
+});
