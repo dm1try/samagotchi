@@ -971,6 +971,14 @@ module Samagotchi
       @child_reports&.release_holds
     end
 
+    # A queued turn that may not start (a participant's, WorkerParticipantGate#refuse):
+    # settled as refused for +reason+ (a code) and dropped from every UI's
+    # queue; it never runs (TurnCheckpoint.refuse_queued).
+    # @return [nil]
+    def refuse_queued_turn(origin, reason, author: nil)
+      TurnCheckpoint.refuse_queued(@session_dir, @event_log, origin, reason, author: author)
+    end
+
     def stopped_on_disk?
       SessionManager.stopped_on_disk?(@session_id, state_dir: @state_dir)
     end
