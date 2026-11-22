@@ -399,7 +399,7 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
   },
   {
     "name": "list_sessions",
-    "description": "List the other chi sessions of this project (newest first, up to 20): id, whether a worker runs it, its folder and last prompt; other projects: cwd \"/\". Use it to find the session send_note should go to.",
+    "description": "List the other chi sessions of this project (newest first, up to 20): id, whether a worker runs it, its folder and last prompt; other projects: cwd \"/\". Use it to find the session send_note or ask_session should go to.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -429,6 +429,27 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
         "session",
         "text"
       ]
+    }
+  },
+  {
+    "name": "ask_session",
+    "description": "Ask another chi session a question and get its answer as this tool's result. It runs there as a turn of its own (after a running one), labelled as this session's question; that session answers from what it knows and can read. Waits up to 35 s; still running, it gives a token: call again with only the token to keep waiting. Not for its user's questions: if it waits on one, tell your user.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session to ask: its id or a unique prefix of it (from list_sessions)"
+        },
+        "question": {
+          "type": "string",
+          "description": "The question, in words (up to 16 KiB; not a / or ! line)"
+        },
+        "token": {
+          "type": "string",
+          "description": "A still-running answer's token, from an earlier call: wait on it (no session or question)"
+        }
+      }
     }
   },
   {

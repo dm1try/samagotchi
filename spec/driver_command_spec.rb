@@ -76,3 +76,10 @@ RSpec.describe Samagotchi::SessionManager, "spawn_session's driver" do
     expect(spawned(prompt: "go", client_id: "agent:codex", driver: "agent:claude").driver).to eq("agent:claude")
   end
 end
+
+RSpec.describe "/driver's name" do
+  it "is the catalog's (the class loads when the command runs)" do
+    require "samagotchi/session_command_catalog"
+    expect(Samagotchi::SessionCommandCatalog::DRIVER_COMMAND).to eq(Samagotchi::DriverCommand::NAME)
+  end
+end

@@ -74,6 +74,15 @@ module Samagotchi
     # sent chi send's id instead: today's owner row (compat shim
     # agent_client_id).
     AGENT_FEATURE = "agent_sender"
+    # A worker (Bridge::FEATURES) that runs another session's question
+    # (ClientId::SESSION_PREFIX, ask_session) as a visitor's turn. One
+    # without it would run it as an unknown sender's, with no header: it is
+    # refused (ASK_UNAVAILABLE), as a participant's turn is (PAIR_UNAVAILABLE).
+    ASK_FEATURE = "ask_session"
+    ASK_UNAVAILABLE = {
+      "error" => "ask_unavailable",
+      "detail" => "this session's worker predates ask_session; restart it (chi sessions restart ID, or the web's update badge)"
+    }.freeze
     # The one sentence for a live worker without PAIR_FEATURE; each caller
     # adds what to do (PAIR_UNAVAILABLE, ShareTerms::OLDER_WORKER_REFUSAL).
     OLDER_THAN_PAIR = "this session's worker is too old to run a participant's turn"

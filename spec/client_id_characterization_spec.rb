@@ -42,6 +42,9 @@ RSpec.describe "ClientId: what each sender gets" do
     # An agent's chi send: no human's, not the owner; its source its id.
     "agent:claude" => [false, false, false, :agent, "agent", "agent:claude"],
     ids::AGENT_PREFIX => [false, false, false, :agent, "agent", "agent:"],
+    # Another session's question (ask_session): delivered as an agent's.
+    "session:ab12cd34" => [false, false, false, :agent, "session", "session:ab12cd34"],
+    ids::SESSION_PREFIX => [false, false, false, :agent, "session", "session:"],
     "other:1" => automatic.call,
     "webby" => automatic.call,
     "web" => automatic.call,

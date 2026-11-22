@@ -55,13 +55,14 @@
       "cancel_schedule",
       "list_sessions",
       "send_note",
+      "ask_session",
       "context_read",
       "delegate",
       "delegate_result",
       "ask_user_question",
       "objectives"
     ],
-    "digest": "sha256:780acb5f4e4769c9b330e80a24d2cabb25852df02e95d6f651fb725e63ba5d5b"
+    "digest": "sha256:b1e859962ec3234e6c0fe0a03edf6dedc9c2f8bc076581a3e664b7d73087c3f3"
   },
   "tool_choice": "auto",
   "chat_template_kwargs": {

@@ -32,6 +32,7 @@ module Samagotchi
   # Loaded on first use (a /objectives line): keeps the bundle test kit's
   # load budget (spec/samagotchi/testing/sandbox_spec.rb).
   autoload :ObjectivesCommand, File.expand_path("objectives_command", __dir__)
+  autoload :DriverCommand, File.expand_path("driver_command", __dir__)
 
   # The session commands a session worker runs (a -p one-shot too): /model,
   # /models, /llm-context, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on

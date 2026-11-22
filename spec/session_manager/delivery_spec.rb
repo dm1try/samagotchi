@@ -346,6 +346,24 @@ RSpec.describe Samagotchi::SessionManager do
         expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::AGENT_FEATURE)
       end
 
+      it "refuses another session's question to a worker without ask_session, posts it to one with" do
+        own("worker")
+        old = client_naming(%w[delivery])
+        expect(old).not_to receive(:post_turn)
+        expect(described_class.deliver_turn(session.id, client_id: "session:ab12cd34", prompt: "q", delivery: "queue",
+                                                        state_dir: tmpdir, bridge: -> { old }))
+          .to have_attributes(status: :refused, code: 409, ack: Samagotchi::Delivery::ASK_UNAVAILABLE)
+        posting = client_naming(%w[delivery ask_session])
+        allow(posting).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+        expect(described_class.deliver_turn(session.id, client_id: "session:ab12cd34", prompt: "q", delivery: "queue",
+                                                        state_dir: tmpdir, bridge: -> { posting }).status).to eq(:accepted)
+        expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::ASK_FEATURE)
+        # No readable Bridge while a worker holds it: an older one may read the file, so not sent.
+        expect(described_class.deliver_turn(session.id, client_id: "session:ab12cd34", prompt: "q", state_dir: tmpdir,
+                                                        bridge: -> {}).status).to eq(:timeout)
+        expect(input_files).to be_empty
+      end
+
       it "writes an agent's file as cli:send while a worker with no readable Bridge holds the session" do
         own("worker")
         expect(described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "q", state_dir: tmpdir,

@@ -3,6 +3,8 @@
 require "samagotchi/agent_caller"
 require "samagotchi/guardrails/parent_approvals"
 require "samagotchi/session_inbox"
+require "samagotchi/steer"
+require "samagotchi/visitor"
 
 RSpec.describe Samagotchi::AgentCaller do
   let(:sid) { "0b9e1c2a-1111-4222-8333-444455556666" }
@@ -74,6 +76,16 @@ RSpec.describe "ClientId.parent_line? / the agent row" do
     expect(ids.agent_name("agent:")).to eq("agent")
     expect(ids.agent_name("agent:#{"x" * 40}")).to eq("x" * 32)
     expect(ids.agent_name("cli:send")).to be_nil
+  end
+
+  it "names another session's question (session:<id8>): not an agent's, never a parent line" do
+    expect(ids.session("0b9e1c2a-1111-4222-8333-444455556666")).to eq("session:0b9e1c2a")
+    expect([ids.session?("session:0b9e1c2a"), ids.agent?("session:0b9e1c2a"), ids.parent_line?("session:0b9e1c2a")])
+      .to eq([true, false, false])
+    expect([ids.session_name("session:0b9e]\n1c"), ids.session_name("session:"), ids.session_name("agent:x")]).to eq(["0b9e1c", "?", nil])
+    expect(Samagotchi::Steer.cuts?("session:0b9e1c2a")).to be(false)
+    expect(Samagotchi::SessionInbox.turn_end_data?({ "client_id" => "session:0b9e1c2a", "prompt" => "q" })).to be(true)
+    expect(Samagotchi::Visitor.of?("session:0b9e1c2a", nil)).to be(true)
   end
 
   it "is unattended: it starts an idle session, never a stopped or archived one" do

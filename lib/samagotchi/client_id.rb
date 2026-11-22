@@ -28,6 +28,10 @@ module Samagotchi
     AGENT_PREFIX = "agent:"
     # The longest name an agent's id carries (AgentCaller.clean).
     AGENT_NAME_MAX = 32
+    # Another chi session's question (its model's ask_session tool):
+    # session:<id8>. As an agent's, and always a visitor (Visitor); no
+    # session command, never merged into a running turn.
+    SESSION_PREFIX = "session:"
     # chi restart.
     CLI_RESTART = "cli:restart"
     # A delegating parent's task or follow-up: delegate:<parent8>.
@@ -101,6 +105,8 @@ module Samagotchi
     # label carry its name (Steer.source_for_client, #label_for).
     agent = Sender.new(match: AGENT_PREFIX, human: false, owner: false, interactive: false, wake: :agent, origin: "agent",
                        source: :named, label: "agent")
+    # Another chi session's question: delivered as an agent's is.
+    session_question = agent.with(match: SESSION_PREFIX, origin: "session", label: "session")
 
     # A participant: a human's input, never the owner's.
     participant = Sender.new(match: PARTICIPANT_PREFIX, human: true, owner: false, interactive: false, wake: :participant,
@@ -133,6 +139,7 @@ module Samagotchi
       Sender.new(match: PLUGIN, **unattended, wake: :plugin, source: "plugin_send", label: "plugin"),
       Sender.new(match: RELAY_PREFIX, **unattended),
       agent,
+      session_question,
       participant,
       # compat shim review_client_id: the legacy review:<id> id uses the
       # participant sender row too.
@@ -202,8 +209,24 @@ module Samagotchi
     # AgentCaller.clean gave).
     def agent(name) = "#{AGENT_PREFIX}#{name}"
 
-    # Whether +client_id+ is an agent's (agent:<name>).
-    def agent?(client_id) = sender(client_id).wake == :agent
+    # Whether +client_id+ is an agent's (agent:<name>); another session's
+    # question (session:) is not one.
+    def agent?(client_id) = sender(client_id).match == AGENT_PREFIX
+
+    # The client id another session's question carries: session:<id8>.
+    def session(session_id) = "#{SESSION_PREFIX}#{session_id.to_s[0, 8]}"
+
+    # Whether +client_id+ is another session's question (session:<id8>).
+    def session?(client_id) = sender(client_id).match == SESSION_PREFIX
+
+    # The id8 in a session question's id, cleaned again as a header or a
+    # label reads it ("?" when nothing is left); nil for another id.
+    def session_name(client_id)
+      return nil unless session?(client_id)
+
+      name = client_id.to_s.delete_prefix(SESSION_PREFIX).gsub(/[^A-Za-z0-9_-]/, "")[0, 8]
+      name.empty? ? "?" : name
+    end
 
     # The name in an agent's id, cleaned again as a header or a label
     # reads it (a thin client's id comes as it typed it): "agent" when

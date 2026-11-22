@@ -251,6 +251,8 @@ module Samagotchi
           return "schedule"
         when "agent"
           return "agent #{ClientId.agent_name(id)}"
+        when "session"
+          return "session #{ClientId.session_name(id)}"
         end
 
         ClientId.sender(id).label || fallback

@@ -44,6 +44,8 @@
       { "client_id": "agent:chi-0b9e1c2a", "expected": "agent chi-0b9e1c2a" },
       { "client_id": "agent:", "expected": "agent agent" },
       { "client_id": "agent:a b]\n[x", "expected": "agent abx" },
+      { "client_id": "session:ab12cd34", "expected": "session ab12cd34" },
+      { "client_id": "session:", "expected": "session ?" },
       { "client_id": "system:schedule:1234abcd", "expected": "schedule" },
       { "client_id": "system:schedule:", "expected": "schedule" },
       { "client_id": "web:restart", "expected": "web" },

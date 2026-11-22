@@ -423,9 +423,10 @@ module Samagotchi
     # The tools a scratch session doesn't offer, and its memory_write.
     def restrict_scratch_tools!
       # A scratch session's children would outlive it, and so would a
-      # note it left in a peer; its memories would too (write and edit
-      # into the memories: ScratchWrites).
-      [Tools::Delegate::NAME, Tools::DelegateResult::NAME, Tools::SendNote::NAME].each { |name| @tools.unregister(name) }
+      # note it left in a peer or a question's turn; its memories would too
+      # (write and edit into the memories: ScratchWrites).
+      [Tools::Delegate::NAME, Tools::DelegateResult::NAME, Tools::SendNote::NAME,
+       Tools::AskSession::NAME].each { |name| @tools.unregister(name) }
       @tools[Tools::MemoryWrite::NAME].handler = ->(_call, _kctx) { SCRATCH_MEMORY_WRITE }
     end
     private :restrict_scratch_tools!

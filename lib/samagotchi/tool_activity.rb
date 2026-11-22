@@ -207,6 +207,7 @@ module Samagotchi
       when ToolNames::AskUserQuestion::NAME then "asking user"
       when ToolNames::ListSessions::NAME then "listing sessions"
       when ToolNames::SendNote::NAME then "sending a note"
+      when ToolNames::AskSession::NAME then "asking a session"
       when ToolNames::ContextRead::NAME then "reading attached context"
       when ToolNames::Delegate::NAME then "delegating"
       when ToolNames::DelegateResult::NAME then "waiting for a delegate"
@@ -416,6 +417,9 @@ module Samagotchi
         call[:cwd].to_s.strip.empty? ? nil : "cwd=#{preview_tool_param(call[:cwd])}"
       when ToolNames::SendNote::NAME
         "session=#{preview_tool_param(call[:session])} text=#{preview_tool_param(call[:content])}"
+      when ToolNames::AskSession::NAME
+        next_token = call[:token].to_s.strip
+        next_token.empty? ? "session=#{preview_tool_param(call[:session])} question=#{preview_tool_param(call[:content])}" : "token"
       when ToolNames::ContextRead::NAME
         parts = []
         parts << "name=#{preview_tool_param(call[:content])}" unless call[:content].to_s.strip.empty?

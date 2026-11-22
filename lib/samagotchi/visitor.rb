@@ -4,7 +4,8 @@ require_relative "client_id"
 
 module Samagotchi
   # Whether a turn's sender is a visitor in a session: an agent's
-  # (agent:<name>) that is not the session's driver (Session#driver). A
+  # (agent:<name>) that is not the session's driver (Session#driver), or
+  # another chi session's question (session:<id8>, ask_session). A
   # visitor's turn opens with one header line naming it (Steer::OPENER_HEADERS),
   # counts toward session.max_wakes (Worker#run_prompt) and is not the
   # owner's prompt (OwnerPrompt). The driver's turns are as chi send's
@@ -18,6 +19,8 @@ module Samagotchi
 
     # @param session [Session, nil] the session the turn runs in
     def of?(client_id, session)
+      return true if ClientId.session?(client_id)
+
       ClientId.agent?(client_id) && client_id.to_s != driver_of(session)
     end
 

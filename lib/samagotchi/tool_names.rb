@@ -121,6 +121,10 @@ module Samagotchi
       NAME = "send_note"
     end
 
+    module AskSession
+      NAME = "ask_session"
+    end
+
     module ContextRead
       NAME = "context_read"
     end

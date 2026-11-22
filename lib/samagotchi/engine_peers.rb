@@ -7,6 +7,10 @@ module Samagotchi
   # (KernelLoop::Services#peers, Engine#wire_kernel) and a delegate's approval relay
   # (Engine#relay_peer).
   class Engine
+    # The running turn's id as other threads see it (TurnState), nil
+    # between turns: what PeerView#turn_id reads.
+    def running_turn_id = @turn_state.context&.id
+
     # The kernel's Tools::Peers, following the current session. cancelled?
     # is the running turn's cancel, for a tool that waits (delegate_result):
     # the controller is set from another thread and a tool gets no other
@@ -15,6 +19,8 @@ module Samagotchi
     # return on it, execute hands its command over early).
     PeerView = Struct.new(:engine) do
       def session_id = engine.session&.id
+      # The running turn's id (ask_session's request_id), nil between turns.
+      def turn_id = engine.running_turn_id
       def cwd = engine.session&.working_directory
       def project_root = engine.session&.project_root
       def project_id = engine.session&.project_id

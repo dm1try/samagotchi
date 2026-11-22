@@ -6,7 +6,6 @@ require_relative "llm_context_command"
 require_relative "thinking_command"
 require_relative "toolkit_command"
 require_relative "parent_answers_command"
-require_relative "driver_command"
 require_relative "title_command"
 require_relative "reasoning_history_command"
 require_relative "working_set_command"
@@ -32,7 +31,10 @@ module Samagotchi
     THINKING_COMMAND = ThinkingCommand::NAME
     TOOLKIT_COMMAND = ToolkitCommand::NAME
     PARENT_ANSWERS_COMMAND = ParentAnswersCommand::NAME
-    DRIVER_COMMAND = DriverCommand::NAME
+    # DriverCommand::NAME (a spec keeps them the same): the class loads
+    # when the command runs (SessionCommands), not with the catalog (the
+    # bundle test kit's load budget).
+    DRIVER_COMMAND = "/driver"
     TITLE_COMMAND = TitleCommand::NAME
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     WORKING_SET_COMMAND = WorkingSetCommand::NAME

@@ -206,6 +206,7 @@ RSpec.describe Samagotchi::Steer do
         { kind: "input", source: "mystery" } => "[Steer from the user, #{tail}",
         { kind: "input", source: "agent:claude" } => "[Steer from the agent claude, sent with chi send, #{tail}",
         { kind: "input", source: "agent:Bad]\n[x" } => "[Steer from the agent badx, sent with chi send, #{tail}",
+        { kind: "input", source: "session:ab12cd34" } => format(described_class::SESSION_QUESTION_HEADER, "ab12cd34"),
         { kind: "steer", source: "user" } => "[Steer from the user, #{tail}",
         { kind: "steer", source: "parent_agent" } => "[Steer from the parent agent that started this session, #{tail}",
         { "kind" => "steer", "source" => "check-in" } => "[Steer from the check-in plugin, #{tail}"

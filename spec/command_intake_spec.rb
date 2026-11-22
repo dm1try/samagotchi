@@ -26,6 +26,7 @@ RSpec.describe Samagotchi::CommandIntake do
       "relay:1234abcd" => false,
       "participant:p_0123abcd" => false,
       "agent:claude" => true,
+      "session:ab12cd34" => false,
       "other" => false
     }
   end

@@ -51,6 +51,7 @@ module Samagotchi
         "cancel_schedule" => { content: "name", fallback: :prefix_or_raw },
         "list_sessions" => { fallback: :prefix, fallback_key: "cwd" },
         "send_note" => { content: "text" },
+        "ask_session" => { content: "question" },
         "context_read" => { content: "name", fallback: :prefix_or_raw },
         "delegate" => { content: "task", fallback: :prefix_or_raw },
         "ask_user_question" => { content: "question", also: %w[question], verbatim: %w[options], options: true,
