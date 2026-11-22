@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../../session"
+require_relative "../../reply_for"
 require_relative "../../reply_wait/target"
 
 module Samagotchi
@@ -11,7 +12,10 @@ module Samagotchi
       # POST …/wait calls: "w1." and the url-safe base64 (no padding) of
       # {s: session_id, t: turn, r: report_turn_id, q: queued, e:
       # ended_before, c: cursor, b: baseline ({messages, question_id,
-      # last_turn}) or nil, g: owner_grace}.
+      # last_turn}) or nil, g: owner_grace, f: the asking surface's
+      # ReplyFor values (an ask's reply_for; left out without one, so such a
+      # token's bytes are as before, and a token made before it strips
+      # nothing)}.
       #
       # Unsigned on purpose: every field is one the owner may already put
       # in a POST …/wait body (only the owner's routes take a token);
@@ -20,7 +24,7 @@ module Samagotchi
       # helpers (SessionInbox). A token says nothing a body couldn't.
       module Token
         PREFIX = "w1."
-        KEYS = %w[s t r q e c b g].freeze
+        KEYS = %w[s t r q e c b g f].freeze
         STRINGS = %w[t r c].freeze
         FLAGS = %w[q e].freeze
         BASELINE_FIELDS = { "messages" => Integer, "question_id" => String, "last_turn" => String }.freeze
@@ -32,22 +36,53 @@ module Samagotchi
         module_function
 
         # @param target [ReplyWait::Target]
+        # @param reply_for [ReplyFor, nil] the asking surface's (its answers
+        #   shaped for it: Web::SessionAccessRoutes#wait_result_json)
         # @return [String]
-        def dump(session_id, target)
+        def dump(session_id, target, reply_for: nil)
           fields = { s: session_id, t: target.turn, r: target.report_turn_id, q: target.queued == true,
                      e: target.ended_before == true, c: target.cursor, b: target.baseline&.to_h, g: target.owner_grace }
-          PREFIX + [JSON.generate(fields)].pack("m0").tr("+/", "-_").delete("=")
+          fields[:f] = reply_for.to_file if reply_for
+          encode(fields)
+        end
+
+        # +string+ (a token, or nil) carrying +reply_for+ too; as it is
+        # without one.
+        # @raise [Invalid]
+        def carrying(string, reply_for)
+          return string if string.nil? || reply_for.nil?
+
+          encode(decode(checked(string)).merge("f" => reply_for.to_file))
         end
 
         # @return [Array(String, ReplyWait::Target)] the session id and the wait
         # @raise [Invalid]
         def load(string)
-          raise Invalid, "not a wait token" unless string.is_a?(String) && string.start_with?(PREFIX)
-
-          fields = decode(string.delete_prefix(PREFIX))
+          fields = decode(checked(string))
           raise Invalid, "a wait token names unknown fields" unless (fields.keys - KEYS).empty?
 
+          reply_for_of(fields["f"])
           [session_of(fields["s"]), target_of(fields)]
+        end
+
+        # The asking surface a token carries (#dump's reply_for:): nil for
+        # none, or a token made before it.
+        # @return [ReplyFor, nil]
+        # @raise [Invalid]
+        def reply_for(string) = reply_for_of(decode(checked(string))["f"])
+
+        def checked(string)
+          raise Invalid, "not a wait token" unless string.is_a?(String) && string.start_with?(PREFIX)
+
+          string.delete_prefix(PREFIX)
+        end
+
+        def encode(fields) = PREFIX + [JSON.generate(fields)].pack("m0").tr("+/", "-_").delete("=")
+
+        def reply_for_of(raw)
+          return nil if raw.nil?
+
+          ReplyFor.from(raw) || raise(Invalid, "a wait token's f is reply_for's values")
         end
 
         # A wait body's or a token's baseline: nil, or a Baseline from

@@ -125,7 +125,7 @@ module Samagotchi
                                               cancelled: stopping, **options)
         rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
-        ask_response(id, outcome, request_id: options[:request_id])
+        ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end
@@ -228,8 +228,10 @@ module Samagotchi
       end
 
       # The ask's answer for an Ask value (+request_id+ echoed when given:
-      # the client sees this chi web used it).
-      def ask_response(id, outcome, request_id: nil)
+      # the client sees this chi web used it), shaped for +reply_for+ (the
+      # request's: a /continue yes's too, which opens no message), its token
+      # carrying it for the next wait.
+      def ask_response(id, outcome, request_id: nil, reply_for: nil)
         case outcome
         when SessionAccess::Ask::Ran then json_response(200, { status: "command", session_id: outcome.session_id })
         when SessionAccess::Ask::Refused then ask_refused(id, outcome)
@@ -237,9 +239,10 @@ module Samagotchi
           result = outcome.result
           return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
 
-          json = wait_result_json(result, session_access.parent_strategy(outcome.session_id)).merge(session_id: outcome.session_id)
+          json = wait_result_json(result, session_access.parent_strategy(outcome.session_id), reply_for: reply_for)
+                 .merge(session_id: outcome.session_id)
           json[:asked] = outcome.asked if outcome.asked && outcome.asked != outcome.session_id
-          json[:token] = outcome.token if outcome.token
+          json[:token] = SessionAccess::Exchange::Token.carrying(outcome.token, reply_for) if outcome.token
           json[:request_id] = request_id if request_id
           json_response(200, json)
         end
@@ -283,6 +286,7 @@ module Samagotchi
         end
 
         session_id, target = SessionAccess::Exchange::Token.load(body["token"])
+        reply_for = SessionAccess::Exchange::Token.reply_for(body["token"])
         # The URL's id may be a prefix (as the ask's): resolved first (no
         # such session, or several: session_route's 404).
         full = session_access.resolve(id)
@@ -292,7 +296,7 @@ module Samagotchi
                                                    **wait_extras)
         return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
 
-        json = wait_result_json(result, session_access.parent_strategy(full)).merge(session_id: full)
+        json = wait_result_json(result, session_access.parent_strategy(full), reply_for: reply_for).merge(session_id: full)
         json[:token] = body["token"] if result.status == :timeout
         json_response(200, json)
       rescue SessionAccess::Exchange::Token::Invalid => e
@@ -326,8 +330,10 @@ module Samagotchi
       # went in before the wait, so a wait that fails (chi web stopping, the
       # session deleted, its files unreadable) is still a 200: wait_error
       # {error: server_stopping | not_found | wait_failed, detail} in place
-      # of reply (an answer retried would be 409).
-      def answered_wait(id, question_id, start, seconds, answered:)
+      # of reply (an answer retried would be 409). +reply_for+: the pending
+      # turn's (its saved opener's, read before the answer went in), which
+      # shapes the reply and rides its token.
+      def answered_wait(id, question_id, start, seconds, answered:, reply_for: nil)
         head = answered ? { status: "answered" } : { status: "not_pending", answered_here: false }
         head = { **head, session_id: id, id: question_id }
         target = ReplyWait::Target.answer(start)
@@ -336,8 +342,8 @@ module Samagotchi
           return answer_wait_error(head, "server_stopping", "chi web is stopping; the answer went in")
         end
 
-        reply = wait_result_json(result, session_access.parent_strategy(id))
-        reply[:token] = SessionAccess::Exchange::Token.dump(id, target) if result.status == :timeout
+        reply = wait_result_json(result, session_access.parent_strategy(id), reply_for: reply_for)
+        reply[:token] = SessionAccess::Exchange::Token.dump(id, target, reply_for: reply_for) if result.status == :timeout
         json_response(200, { **head, reply: reply })
       rescue ArgumentError => e # deleted while waiting
         answer_wait_error(head, "not_found", e.message)

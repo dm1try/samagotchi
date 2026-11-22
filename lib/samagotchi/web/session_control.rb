@@ -5,6 +5,7 @@ require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../image_store"
 require_relative "../prompt_history"
+require_relative "../reply_for"
 require_relative "../session"
 require_relative "../session_command_catalog"
 require_relative "../session_manager"
@@ -65,6 +66,11 @@ module Samagotchi
         start = answer_wait_start(id, session, qid) if wait
         return session_not_found(id) if wait && !start
 
+        # The pending turn's surface, from its saved opener (the running
+        # turn's checkpoint copy until its first boundary), read before the
+        # answer goes in: its reply is shaped for it (#answered_wait).
+        reply_for = ReplyFor.of_latest_turn(session.messages) if wait
+
         # client_id: only chi answer's (a parent agent's answer, which the
         # worker holds to its guardrails.parent_answers) is passed on; any
         # other is dropped, so a forward can only tighten (an answer never
@@ -93,7 +99,7 @@ module Samagotchi
                                              detail: reply_detail(reply, "the worker refused that option") })
           end
         end
-        relayed.is_a?(Symbol) ? answered_wait(id, qid, start, wait, answered: relayed == :answered) : relayed
+        relayed.is_a?(Symbol) ? answered_wait(id, qid, start, wait, answered: relayed == :answered, reply_for: reply_for) : relayed
       end
 
       # A request to the worker sent once more when the worker dropped it as

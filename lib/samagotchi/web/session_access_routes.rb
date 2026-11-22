@@ -5,6 +5,8 @@ require_relative "../session_access/local"
 require_relative "../session_inbox"
 require_relative "../reply_wait"
 require_relative "../pending_question"
+require_relative "../plain_reply"
+require_relative "../reply_for"
 require_relative "../context_sources"
 require_relative "../peer_exchanges"
 require_relative "../context_command"
@@ -249,10 +251,15 @@ module Samagotchi
 
       RESULT_FIELDS = %i[text file outcome limit error_kind retryable cancel_reason stopped_by kept_steps turn_id origin].freeze
 
-      def wait_result_json(result, strategy)
+      # +reply_for+: the asking surface's (ReplyFor), passed in by the route
+      # (an ask's from its request, a token's from the token, an answer's
+      # from the pending turn's saved opener), never looked up after the
+      # turn: a plain one gets the reply made plain (PlainReply), here only.
+      def wait_result_json(result, strategy, reply_for: nil)
         json = { status: result.status.to_s }
         RESULT_FIELDS.each { |key| json[key] = result[key] }
         json[:text] = json[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
+        json[:text] = PlainReply.strip(json[:text]) if reply_for&.plain?
         json[:question] = result.question&.to_file
         json[:parent_strategy] = strategy_json(strategy)
         json

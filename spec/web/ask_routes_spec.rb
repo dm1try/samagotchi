@@ -140,6 +140,35 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
         expect(deliveries).to be_empty
       end
 
+      it "makes a plain surface's answer plain, on the way out only: the reply file keeps the model's text" do
+        session = make
+        markdown = "## Status\n- **add** works: run `ruby t.rb add`\n1. next ✅"
+        worker(accepted("t1"), reply: markdown)
+
+        status, body = ask(session, { prompt: "status?", reply_for: "voice" })
+        expect(status).to eq(200)
+        expect(body["text"]).to eq("Status\nadd works: run ruby t.rb add\n1. next")
+        # The session isn't saved yet (the worker writes the reply first): the request's value is used.
+        expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages).to be_empty
+        expect(Samagotchi::SessionInbox.read_outputs(dir_of(session))).to eq([markdown])
+        expect(ask(session, { prompt: "status?", reply_for: { room: "short" } }).last["text"]).to eq(markdown)
+        expect(ask(session, { prompt: "status?" }).last["text"]).to eq(markdown)
+      end
+
+      it "carries a plain surface in the timeout's token, so its wait is plain too; a token from before strips nothing" do
+        session = make(status: "running")
+        own(session)
+        worker(accepted("held"))
+
+        token = ask(session, { prompt: "slow one", timeout: 0.2, reply_for: "voice" }).last.fetch("token")
+        expect(token_module.reply_for(token)).to have_attributes(formatting: "plain")
+        Samagotchi::SessionInbox.write_output(dir_of(session), "- **done** now", enqueued_id: "held")
+        expect(wait(session.id, { token: token, timeout: 1 }).last).to include("status" => "done", "text" => "done now")
+
+        _id, target = token_module.load(token)
+        expect(wait(session.id, { token: token_module.dump(session.id, target), timeout: 1 }).last["text"]).to eq("- **done** now")
+      end
+
       it "sends no anchor for none, for values full everywhere, or for a command line (kept in hand only)" do
         session = make
         worker(accepted("t1"), reply: "ok")
@@ -697,6 +726,36 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       allow(failing).to receive(:wait).and_return(Samagotchi::ReplyWait::Result.new(status: :canceled))
       expect(answer(wait: 1))
         .to match([200, include("status" => "answered", "wait_error" => include("error" => "server_stopping"))])
+    end
+
+    it "shapes the reply for the pending turn's surface, read from its saved opener before the answer goes in" do
+      voice = { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false }
+      session.messages = [{ role: "user", content: "go on", turn_id: "t1", reply_for: voice, reply_line: "[Reply for this message: …]" }]
+      session.save(state_dir: state_dir)
+      allow(client).to receive(:answer) do
+        # The worker replies and then saves: the opener is read before this.
+        Samagotchi::SessionInbox.write_output(dir_of(session), "**Done.** Ran `rm 2` ✅")
+        Samagotchi::Session.load(session.id, state_dir: state_dir).tap { |s| s.messages = [] }.save(state_dir: state_dir)
+        Samagotchi::BridgeClient::Response.new(status: 200, body: "{}")
+      end
+
+      status, body = answer(wait: 1)
+      expect(status).to eq(200)
+      expect(body["reply"]).to include("status" => "done", "text" => "Done. Ran rm 2")
+    end
+
+    it "leaves a wake turn's reply as it is after a declared turn: the latest opening declares nothing" do
+      voice = { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false }
+      session.messages = [{ role: "user", content: "go on", turn_id: "t1", reply_for: voice },
+                          { role: "model", content: "ok" },
+                          { role: "system", content: "[CONTEXT NOTE]", turn_start: true, turn_id: "w1" }]
+      session.save(state_dir: state_dir)
+      allow(client).to receive(:answer) do
+        Samagotchi::SessionInbox.write_output(dir_of(session), "**Done.**")
+        Samagotchi::BridgeClient::Response.new(status: 200, body: "{}")
+      end
+
+      expect(answer(wait: 1).last["reply"]).to include("text" => "**Done.**")
     end
 
     it "answers as before without wait, and 400 for a bad one" do

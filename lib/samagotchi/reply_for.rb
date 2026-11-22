@@ -144,6 +144,15 @@ module Samagotchi
         end
       end
 
+      # The ReplyFor the latest turn in +messages+ was opened with: its
+      # opening (Steer.turn_prompt?) is a wake's too, which declares none,
+      # so a wake turn's question never takes an earlier ask's surface.
+      # @return [ReplyFor, nil]
+      def of_latest_turn(messages)
+        opening = Array(messages).reverse_each.find { |message| Steer.turn_prompt?(message) }
+        opening && from(opening[MESSAGE_KEY] || opening[MESSAGE_KEY.to_s])
+      end
+
       private
 
       def checked(value, where:)

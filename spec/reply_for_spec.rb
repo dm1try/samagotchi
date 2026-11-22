@@ -139,4 +139,14 @@ RSpec.describe Samagotchi::ReplyFor do
       expect(described_class.opener_fields([], nil)).to eq({})
     end
   end
+
+  describe ".of_latest_turn (a pending question's turn, for its answer's reply)" do
+    it "is the latest turn opening's value: a wake's opening declares none" do
+      opener = { role: "user", content: "hi", turn_id: "t1", reply_for: voice }
+      expect(described_class.of_latest_turn([opener, { role: "model", content: "?" }]).to_file).to eq(voice)
+      expect(described_class.of_latest_turn([opener, { role: "system", content: "note", turn_start: true }])).to be_nil
+      expect(described_class.of_latest_turn([opener, { role: "user", content: "web", turn_id: "t2" }])).to be_nil
+      expect(described_class.of_latest_turn([])).to be_nil
+    end
+  end
 end
