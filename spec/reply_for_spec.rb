@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "samagotchi/reply_for"
+require "samagotchi/pending_question"
 
 RSpec.describe Samagotchi::ReplyFor do
   let(:voice) { { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false } }
@@ -147,6 +148,24 @@ RSpec.describe Samagotchi::ReplyFor do
       expect(described_class.of_latest_turn([opener, { role: "system", content: "note", turn_start: true }])).to be_nil
       expect(described_class.of_latest_turn([opener, { role: "user", content: "web", turn_id: "t2" }])).to be_nil
       expect(described_class.of_latest_turn([])).to be_nil
+    end
+  end
+
+  describe "#answers? (which questions a surface without detail may answer)" do
+    def question(**fields) = Samagotchi::PendingQuestion.new(id: "q", question: "?", **fields)
+
+    it "answers the model's own and the step-limit question; never an approval, a hook's or a user-only one" do
+      no_detail = described_class.from(voice)
+      expect(no_detail.answers?(question)).to be(true)
+      expect(no_detail.answers?(question(kind: "continue"))).to be(true)
+      expect(no_detail.answers?(question(kind: "approval", approval: {}))).to be(false)
+      expect(no_detail.answers?(question(kind: "hook", hook: "cost-cap"))).to be(false)
+      expect(no_detail.answers?(question(user_only: true))).to be(false)
+      expect(no_detail.needs_detail_text(question(kind: "approval"))).to eq("chi needs an approval: open it on a full screen.")
+    end
+
+    it "answers anything with detail" do
+      expect(described_class.from("formatting" => "plain").answers?(question(kind: "approval", user_only: true))).to be(true)
     end
   end
 end

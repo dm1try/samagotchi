@@ -58,6 +58,19 @@ module Samagotchi
         qid = body["id"]
         return error_response(400, "missing_fields", "id is required") if qid.to_s.strip.empty?
 
+        # reply_for: the answering surface's (a thin client's, ReplyFor). One
+        # without detail may not answer an approval, a spending question or
+        # a user-only option (ReplyFor#answers?): 403, nothing relayed.
+        begin
+          answering = ReplyFor.parse(body["reply_for"])
+        rescue ReplyFor::Invalid => e
+          return error_response(400, "invalid_answer", e.message)
+        end
+        pending = session.pending_question
+        if answering && pending && pending.id.to_s == qid.to_s && !answering.answers?(pending)
+          return json_response(403, ReplyFor::NEEDS_DETAIL)
+        end
+
         # wait: a thin client's answer that also waits for what comes next
         # (AskRoutes#answered_wait), its start read before the answer goes in.
         wait, error = answer_wait_option(body)

@@ -185,6 +185,15 @@ module Samagotchi
           question: busy.question&.to_file, parent_strategy: (strategy_json(busy.strategy) if busy.strategy) }.compact
       end
 
+      # A question +reply_for+'s surface may not answer (ReplyFor#answers?):
+      # needs: "detail", the words to say in its text, the question's id and
+      # kind only (no options, no approval's facts); {} for any other.
+      def needs_detail_fields(reply_for, question)
+        return {} if reply_for.nil? || question.nil? || reply_for.answers?(question)
+
+        { needs: "detail", text: reply_for.needs_detail_text(question), question: question.to_file.slice("id", "kind") }
+      end
+
       def strategy_json(strategy) = { name: strategy.name, allowed: strategy.allowed, origin: strategy.origin.to_s }
 
       def wait_start_json(id, start)
@@ -261,6 +270,7 @@ module Samagotchi
         json[:text] = json[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         json[:text] = PlainReply.strip(json[:text]) if reply_for&.plain?
         json[:question] = result.question&.to_file
+        json.merge!(needs_detail_fields(reply_for, result.question)) if result.status == :waiting_for_answer
         json[:parent_strategy] = strategy_json(strategy)
         json
       end

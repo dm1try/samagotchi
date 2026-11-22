@@ -169,6 +169,60 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
         expect(wait(session.id, { token: token_module.dump(session.id, target), timeout: 1 }).last["text"]).to eq("- **done** now")
       end
 
+      describe "a question the turn stops on, asked without detail" do
+        let(:approval) { { id: "q1", question: "Run rm -rf build?", options: %w[Allow Deny], kind: "approval", approval: {} } }
+
+        # The worker takes the ask, then its turn asks +question+.
+        def asking(session, question)
+          own(session)
+          allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **options|
+            deliveries << [id, options]
+            Samagotchi::Session.load(id, state_dir: state_dir).tap do |s|
+              s.status = "running"
+              s.pending_question = question
+            end.save(state_dir: state_dir)
+            accepted("t1")
+          end
+        end
+
+        it "says an approval (a relayed one's empty approval too), a hook's and a user-only one in words, no options" do
+          [approval, approval.merge(kind: "hook", hook: "cost-cap"), approval.except(:kind, :approval).merge(user_only: true)]
+            .each do |question|
+            session = make
+            asking(session, question)
+
+            status, body = ask(session, { prompt: "clean up", reply_for: "voice", timeout: 1 })
+            expect(status).to eq(200)
+            expect(body).to include("status" => "waiting_for_answer", "needs" => "detail",
+                                    "text" => end_with("open it on a full screen.").or(end_with("open it there.")))
+            expect(body["question"]).to eq({ "id" => "q1", "kind" => question[:kind] }.compact)
+          end
+        end
+
+        it "returns the model's question and the step-limit one as today, and every question with detail" do
+          [approval.except(:kind, :approval), approval.merge(kind: "continue")].each do |question|
+            session = make
+            asking(session, question)
+
+            body = ask(session, { prompt: "clean up", reply_for: "voice", timeout: 1 }).last
+            expect(body).to include("status" => "waiting_for_answer", "question" => include("options" => %w[Allow Deny]))
+            expect(body).not_to have_key("needs")
+          end
+          session = make
+          asking(session, approval)
+          expect(ask(session, { prompt: "x", reply_for: { formatting: "plain" }, timeout: 1 }).last).not_to have_key("needs")
+        end
+
+        it "says it in words on the 409 waiting too" do
+          session = make(status: "running", pending_question: approval)
+          own(session)
+
+          status, body = ask(session, { prompt: "and?", reply_for: "voice" })
+          expect([status, body["error"], body["needs"]]).to eq([409, "waiting", "detail"])
+          expect(body["question"]).to eq("id" => "q1", "kind" => "approval")
+        end
+      end
+
       it "sends no anchor for none, for values full everywhere, or for a command line (kept in hand only)" do
         session = make
         worker(accepted("t1"), reply: "ok")
@@ -756,6 +810,33 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       end
 
       expect(answer(wait: 1).last["reply"]).to include("text" => "**Done.**")
+    end
+
+    describe "with reply_for (the answering surface)" do
+      let(:session) do
+        make(status: "running", pending_question: { id: "q1", question: "Run it?", options: %w[Yes No], kind: "approval", approval: {} })
+      end
+
+      it "refuses an approval from a surface without detail with 403 needs_detail, nothing relayed" do
+        expect(client).not_to receive(:answer)
+        expect(answer(reply_for: "voice")).to eq([403, Samagotchi::ReplyFor::NEEDS_DETAIL])
+        expect(answer(reply_for: { formatting: "plain", detail: false }).first).to eq(403)
+        expect(answer(reply_for: "bogus")).to match([400, include("error" => "invalid_answer")])
+      end
+
+      it "relays it with detail, or without the field (the owner's, as today)" do
+        answered(200)
+        expect(answer(reply_for: { formatting: "plain" }).first).to eq(200)
+        expect(answer({}).first).to eq(200)
+      end
+
+      it "relays a model's question from a surface without detail" do
+        model = make(status: "running", pending_question: { id: "q1", question: "Which?", options: %w[A B] })
+        own(model)
+        allow(app).to receive(:bridge_client).with(model.id).and_return(client)
+        answered(200)
+        expect(call("/api/sessions/#{model.id}/answer", body: { id: "q1", selected: ["A"], reply_for: "voice" }).first).to eq(200)
+      end
     end
 
     it "answers as before without wait, and 400 for a bad one" do

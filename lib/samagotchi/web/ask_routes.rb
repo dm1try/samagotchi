@@ -234,7 +234,7 @@ module Samagotchi
       def ask_response(id, outcome, request_id: nil, reply_for: nil)
         case outcome
         when SessionAccess::Ask::Ran then json_response(200, { status: "command", session_id: outcome.session_id })
-        when SessionAccess::Ask::Refused then ask_refused(id, outcome)
+        when SessionAccess::Ask::Refused then ask_refused(id, outcome, reply_for: reply_for)
         else
           result = outcome.result
           return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
@@ -252,7 +252,7 @@ module Samagotchi
       ASK_BUSY_WORDS = { "busy" => "a turn is running: ask with queue, or wait for it",
                          "waiting" => "a question waits for an answer" }.freeze
 
-      def ask_refused(id, refused)
+      def ask_refused(id, refused, reply_for: nil)
         case refused.kind
         when :canceled then error_response(503, "server_stopping", "chi web is stopping; ask again")
         when :unknown
@@ -263,7 +263,8 @@ module Samagotchi
         when :continuing then refusal(409, "continuing", refused.message, session_id: refused.session_id)
         when :busy
           words = ASK_BUSY_WORDS.fetch(refused.busy.error)
-          json_response(409, busy_json(refused.busy).merge(detail: words, message: words))
+          json = busy_json(refused.busy).merge(detail: words, message: words)
+          json_response(409, json.merge(needs_detail_fields(reply_for, refused.busy.question)))
         else refused_delivery(refused.result)
         end
       end

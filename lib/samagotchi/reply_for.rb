@@ -13,7 +13,7 @@ module Samagotchi
   #   most ONE_LINE_CHARS characters);
   # - choices: "many" or how many options a question may offer (0..9);
   # - detail: true, or false (no commands, code or diffs; no approvals,
-  #   spending questions or user-only options either: ReplyShape).
+  #   spending questions or user-only options either: #answers?).
   # A missing value is the full one, and a value that is full everywhere is
   # no ReplyFor at all (nil): full is the absence of a value, never a
   # stored "full", so a full ask sends and saves what no ask does.
@@ -187,6 +187,36 @@ module Samagotchi
     def plain? = formatting == "plain"
 
     def detail? = detail
+
+    # The question kinds a surface without detail may not answer
+    # (PendingQuestion#kind): an approval (a delegate's relayed one too),
+    # a hook's (a spending question: cost-cap, work-cap). The model's own
+    # (nil) and the step-limit question ("continue") it may.
+    FULL_SCREEN_KINDS = %w[approval hook].freeze
+    # What such a surface is told instead of the question (spoken by a
+    # voice client), per kind.
+    NEEDS_DETAIL_WORDS = {
+      "approval" => "chi needs an approval: open it on a full screen.",
+      nil => "chi has a question only a full screen can answer: open it there."
+    }.freeze
+    NEEDS_DETAIL = {
+      "error" => "needs_detail",
+      "detail" => "this question is answered on a full screen (an approval, a spending question or a user-only option)"
+    }.freeze
+
+    # Whether this surface may answer +question+ (a PendingQuestion): any
+    # with detail; without it, not a FULL_SCREEN_KINDS one (told by kind,
+    # never by approval:, which a relayed one may have empty) nor one whose
+    # options are the user's only (user_only). Like client_id, a
+    # convention for an honest client: the token can still answer anything.
+    def answers?(question)
+      return true if detail? || question.nil?
+
+      !FULL_SCREEN_KINDS.include?(question.kind.to_s) && question.user_only != true
+    end
+
+    # The words for a question this surface may not answer (#answers?).
+    def needs_detail_text(question) = NEEDS_DETAIL_WORDS.fetch(question.kind.to_s == "approval" ? "approval" : nil)
 
     # One phrase per restricted value, in a fixed order; a full value says
     # nothing.
