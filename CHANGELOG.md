@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - The web's working set: every "From the start" row now has a ▸ that shows the text chi was sent for that part of
   its prompt (a memory, AGENTS.md, the base prompt, the tools' names and sizes), with a tab per hold when a memory is
   in the prompt twice or was also read. The list is 520 wide always, so opening a row no longer moves the others.
+- The web's working set: a "From the start" row whose memory or AGENTS.md changed since chi was sent it says `stale`,
+  and its peek gets a "now" tab with the difference (a stopped session too).
 
 ### Changed
 
