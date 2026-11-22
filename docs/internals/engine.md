@@ -784,7 +784,7 @@ are in [architecture.md](../architecture.md)'s file table.
 | `engine/models.rb` | `Engine::ModelsPart`: model names, identity, notes, `switch_model!`, the profile, `backend` |
 | `engine/model_settings.rb` | `Engine::ModelSettingsPart`: SessionModelSettings and EngineSnapshots, forwarded |
 | `engine/events.rb` | `Engine::EventsPart`: observers, `#announce`, the event lock, held announcements |
-| `engine/cards.rb` | `Engine::CardsPart`: `#show_card`, anytime commands |
+| `engine/cards.rb` | `Engine::CardsPart`: `#show_card` (and `between_turns:`), anytime commands |
 | `engine/objectives.rb` | `Engine::ObjectivesPart`: the objectives stage's builder and forwards (`announce_objectives`, `show_objective_proposals`, `track_objectives_after`), Check this's and the tracker's side requests (`ask_objective_check`, `ask_objective_track`) |
 | `engine/messages.rb` | `Engine::MessagesPart`: out-of-turn message edits, checkpoints, the live conversation |
 | `engine/plugins.rb` | `Engine::PluginsPart`: plugins, init tasks, staged tools, `Plugin::Host` |
@@ -794,6 +794,7 @@ are in [architecture.md](../architecture.md)'s file table.
 | `engine/session.rb` | `Engine::SessionPart`: `#session=`, the state dir, the relay's view, the system prompt |
 | `engine/verify.rb` | `Engine::VerifyPart`: the Verify/Revise anchors' stage builder |
 | `engine/questions.rb` | `Engine::QuestionsPart`: ask-user-question (QuestionDesk, forwarded: the hosts hold `Engine#question_desk`; the forwards stay for the Engine's parts, the one-shot and Engine-only specs) |
+| `engine/sign_in.rb` | `Engine::SignInPart`: `ctx.sign_in` flows and cards, `/callback`, and ending flows at shutdown (idle exit waits for a waiting flow) |
 | `engine/toolkit.rb` | `Engine::ToolkitPart`: the toolkit, `ctx.load_tools`, the toolkit suggestion's builder |
 | `engine/context_judge.rb` | `Engine::ContextJudgePart`: the candidate judge's builder and `judge_late_candidates` |
 | `engine/turn_helpers.rb` | `Engine::TurnHelpersPart`: turn settings, images, model ref, used memories, the warm-up's builder |
