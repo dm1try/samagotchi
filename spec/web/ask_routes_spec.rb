@@ -231,6 +231,22 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
           expect(saved).to have_attributes(question: question[:question], header: question[:header])
         end
 
+        it "makes the question plain on a plain token's wait too" do
+          question = { id: "q2", header: "**Pick** a `file`", question: "Which file: `README.md` or **Gemfile**?",
+                       options: ["`README.md`", "**Gemfile**"] }
+          session = make(status: "running")
+          own(session)
+          worker(accepted("held"))
+          token = ask(session, { prompt: "slow one", timeout: 0.2, reply_for: "voice" }).last.fetch("token")
+          Samagotchi::Session.load(session.id, state_dir: state_dir).tap { |s| s.pending_question = question }
+                             .save(state_dir: state_dir)
+
+          body = wait(session.id, { token: token, timeout: 1 }).last
+          expect(body["status"]).to eq("waiting_for_answer")
+          expect(body["question"]).to include("header" => "Pick a file", "question" => "Which file: README.md or Gemfile?",
+                                              "options" => ["`README.md`", "**Gemfile**"])
+        end
+
         it "says it in words on the 409 waiting too" do
           session = make(status: "running", pending_question: approval)
           own(session)
@@ -825,6 +841,24 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       status, body = answer(wait: 1)
       expect(status).to eq(200)
       expect(body["reply"]).to include("status" => "done", "text" => "Done. Ran rm 2")
+    end
+
+    it "makes the next question plain for the pending turn's plain surface, its options byte-exact" do
+      voice = { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false }
+      session.messages = [{ role: "user", content: "go on", turn_id: "t1", reply_for: voice }]
+      session.save(state_dir: state_dir)
+      allow(client).to receive(:answer) do
+        Samagotchi::Session.load(session.id, state_dir: state_dir).tap do |s|
+          s.pending_question = { id: "q2", header: "**Next** step", question: "Run `rm 2` **now**?",
+                                 options: ["`rm 2`", "**Skip**"] }
+        end.save(state_dir: state_dir)
+        Samagotchi::BridgeClient::Response.new(status: 200, body: "{}")
+      end
+
+      reply = answer(wait: 1).last["reply"]
+      expect(reply["status"]).to eq("waiting_for_answer")
+      expect(reply["question"]).to include("id" => "q2", "header" => "Next step", "question" => "Run rm 2 now?",
+                                           "options" => ["`rm 2`", "**Skip**"])
     end
 
     it "leaves a wake turn's reply as it is after a declared turn: the latest opening declares nothing" do
