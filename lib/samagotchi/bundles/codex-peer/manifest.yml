@@ -6,14 +6,14 @@ description: "Pair this session with an OpenAI Codex CLI session you work with: 
 trust_level: reviewed
 files:
   skill_codex_peer.md:
-    sha256: sha256:2ed3c1df4796de6d1e3d801eda0fe586d6bc10bc5e2e303ae618f55a0040f55d
+    sha256: sha256:ea13e199ea9a2173cde395ed2bc0c3d5ba6171ff2b5aec05ff2772df043aedc4
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as a note with its text (codex-outbox)"
 plugin:
   file: plugin.rb
   sha256: sha256:d3ce9e57cc6d7118466686c29eff8b76fd773a45fad513d8c4c46271373c8f18
 scripts:
-  pair: sha256:a61c3d311ce3f3e5386e90f0f867f649a39763a5883877e731e43d84dd9c85aa
-  chi-peer-SKILL.md: sha256:16ced6a3abec8d2b283817eeae0739ee3eb8dd82b8a3eaf27cb29ce244a731fa
+  pair: sha256:c0d11e89227fa0c60dd73acadd9e7010f634c057a107b0670f38c8e7064c34a7
+  chi-peer-SKILL.md: sha256:885a5f513fcf8bf2d0a7b073ad3866e6c003beccb622c2b744257e2c97fa399c
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.

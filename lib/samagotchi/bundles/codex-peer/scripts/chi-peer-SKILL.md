@@ -122,9 +122,12 @@ EOF
 - The third is the `ref:` value of the message you answer (`s-ab12cd` above),
   so chi ties the answer to its send; leave it out when the message had no
   `ref:` line, and for a message you start.
-- chi puts your whole text in its conversation (up to about 10,000
-  characters; a longer one it reads on demand), and keeps each answer's text
-  there, so don't repeat points from an earlier answer. The outbox itself
+- chi puts your whole text in its conversation (up to its tool output cap,
+  10,000 characters by default, for a message that wakes it; up to 2,000 for
+  one that doesn't; a longer one it reads on demand), and keeps each answer's
+  text there, so don't repeat points from an earlier answer (a chi newer than
+  0.184.0; 0.184.0 or older keeps only the latest text: repeat them there,
+  as before). The outbox itself
   keeps only the latest push, so start the summary with the title you are
   answering, and end it with your verdict (`VERDICT OK`, `VERDICT CHANGES` or
   `VERDICT UNSURE`): an OK wakes chi once to close the round.

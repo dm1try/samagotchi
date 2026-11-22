@@ -134,14 +134,14 @@ if [ -z "$inbox" ]; then
 socket: $sock
 claude cwd: $PWD
 paired: $(date '+%Y-%m-%d %H:%M')
-Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-outbox context."
+Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as claude-outbox notes holding their text."
   summary="Claude Code paired from $PWD"
 else
   text="Claude Code peer inbox
 socket: $inbox (on this machine: an ssh -R forward of Claude's socket $sock on Claude's machine)
 claude cwd: $PWD
 paired: $(date '+%Y-%m-%d %H:%M')
-Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-outbox context.
+Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as claude-outbox notes holding their text.
 If claude_send says the Claude session is gone, the ssh tunnel may be down: tell the user to restart it and pair again."
   summary="Claude Code paired from $PWD over ssh"
 fi

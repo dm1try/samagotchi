@@ -74,6 +74,8 @@ module Samagotchi
       LAST_SEND = "last-send.json"
       SKILL_FILE = "chi-peer-SKILL.md"
       PAIR_PLACEHOLDER = "__CHI_PEER_PAIR__"
+      # scripts/pair-remote's path (claude-peer's skill: the SSH pairing).
+      PAIR_REMOTE_PLACEHOLDER = "__CHI_PEER_PAIR_REMOTE__"
       PAYLOADS_PLACEHOLDER = "__CHI_PEER_PAYLOADS__"
       DIFF_LINES = 20
       # Under the session's data dir: the moved message went (or was tried).
@@ -404,6 +406,7 @@ module Samagotchi
         return [target, nil] unless source
 
         substitutions = { PAIR_PLACEHOLDER => File.join(File.dirname(source), "pair"),
+                          PAIR_REMOTE_PLACEHOLDER => File.join(File.dirname(source), "pair-remote"),
                           PAYLOADS_PLACEHOLDER => tilde(ctx.data_dir) }.merge(skill_substitutions(ctx))
         [target, substitutions.reduce(File.read(source)) { |skill, (placeholder, value)| skill.gsub(placeholder, value) }]
       end
