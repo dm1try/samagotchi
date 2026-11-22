@@ -545,8 +545,10 @@ how it went); only the redraw is counted: an answer is read again at most once p
 (the route's 200 `fixed` or the event's), and a block failing after it says a fix didn't help. The stream's `block_fix` handler
 (`stream_handlers.js`, dep `blockFix`) hands the worker's word over: `fixed` re-reads that turn's answer (`getSession(id,
 {tail, turnId})`) and writes the bubble as `applyFinalAnswer` writes it, which can't find it by its old text; `failed`
-and `dropped` say a fix didn't help. A block is marked asked (`data-block-fix-asked`) before its POST, since the word can
-come before the 202 (a quick side answer); a 202 after it starts no give-up. No word within 60 s of a 202: the line
+and `dropped` say a fix didn't help. Both 202 answers carry the block's key (`data-block-fix-key`); a keyed event settles
+only that asked block, leaving another block's give-up timer running. A block is marked asked before its POST, since the
+word can come before the 202 (a quick side answer); an event before the 202 or an older worker's keyless 202 keeps the
+all-asked fallback for unkeyed blocks. A 202 after the word starts no give-up. No word within 60 s of a 202: the line
 gives up (today's words and Ask in chat);
 a session switch drops the timers. The line's words are `data-text` (CSS), Ask in chat a button whose label is CSS
 (`data-label`) with an `aria-label`, one delegated click listener per root; it fills the composer after the draft

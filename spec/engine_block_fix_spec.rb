@@ -77,11 +77,12 @@ RSpec.describe Samagotchi::Engine::BlockFixPart do
     it "asks once: 202 running while asked, then the stamp's answer" do
       gate = Queue.new
       side_answers << -> { gate.pop }
-      expect(fix).to eq([202, { state: "running" }])
-      expect(fix).to eq([202, { state: "running" }])
+      expected_key = Samagotchi::BlockFix.key("mermaid", bad)
+      expect(fix).to eq([202, { state: "running", key: expected_key }])
+      expect(fix).to eq([202, { state: "running", key: expected_key }])
       gate << Samagotchi::IdleClient::Summary.new(text: "```mermaid\n#{good}\n```", model: "m")
       settle
-      expect(fix).to eq([202, { state: "running" }])
+      expect(fix).to eq([202, { state: "running", key: expected_key }])
       expect(engine.apply_block_fixes).to eq(1)
       expect(asks.size).to eq(1)
       expect(fix(good)).to eq([200, { state: "failed", reason: "it failed again after a fix" }])

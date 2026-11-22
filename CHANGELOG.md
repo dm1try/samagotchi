@@ -25,6 +25,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Config-preloaded prompt memories no longer appear held twice or open on an empty read tab in the web's working set.
+- A block-fix result settles only its own block, so another block in the same answer stays asking while its fix runs.
 
 ## [0.184.0] - 2026-11-22
 
