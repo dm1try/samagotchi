@@ -803,6 +803,40 @@ RSpec.describe Samagotchi::Web::SessionHub do
       stopper&.join
     end
 
+    it "emits one schedule_disabled per outcome that disabled its schedule, for the notifier" do
+      hub, schedules = hub_with(true)
+      hub.subscribe(->(event) { events << event })
+      entry = Struct.new(:skips, :failures).new(12, 0)
+      off = Samagotchi::Schedules::Outcome.new(id: "abc123", title: "Heartbeat", status: "skipped",
+                                               detail: "the session is running a turn", entry: entry, disabled: true)
+      plain = Samagotchi::Schedules::Outcome.new(id: "def456", status: "skipped", detail: "busy", entry: entry)
+      allow(schedules).to receive(:tick).and_return(Samagotchi::Schedules::Tick.new(outcomes: [plain, off]))
+      allow(schedules).to receive(:session_of).with(entry).and_return("sess-1")
+      allow(Samagotchi::Log).to receive(:warn)
+
+      hub.send(:run_schedule_tick)
+
+      disabled = events.select { |event| event.type == "schedule_disabled" }
+      expect(disabled.map(&:data)).to match([
+        { id: "abc123", title: "Heartbeat", kind: "skipped", count: 12, reason: "the session is running a turn",
+          session_id: "sess-1", at: a_string_matching(/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/) }
+      ])
+      expect(Samagotchi::Log).not_to have_received(:warn)
+    end
+
+    it "emits nothing and logs nothing for a tick result that is not a Tick" do
+      hub, schedules = hub_with(true)
+      hub.subscribe(->(event) { events << event })
+      allow(Samagotchi::Log).to receive(:warn)
+      [nil, Queue.new].each do |result|
+        allow(schedules).to receive(:tick).and_return(result)
+        hub.send(:run_schedule_tick)
+      end
+
+      expect(events.map(&:type)).not_to include("schedule_disabled")
+      expect(Samagotchi::Log).not_to have_received(:warn)
+    end
+
     it "never ticks when auto_tick is off" do
       hub, schedules = hub_with(false)
 

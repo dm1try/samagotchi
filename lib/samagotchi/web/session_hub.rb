@@ -51,7 +51,9 @@ module Samagotchi
 
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal, `chi` with
-      #   the #chi_state fields when chi version state changes. seq is monotonic per
+      #   the #chi_state fields when chi version state changes, `chi_notice`
+      #   (#publish_notice) and `schedule_disabled` (#publish_disabled) for
+      #   the Push::Notifier. seq is monotonic per
       # hub, for the log's sake: there is no replay.
       Event = Struct.new(:type, :seq, :data, keyword_init: true)
 
@@ -385,13 +387,30 @@ module Samagotchi
       end
 
       def run_schedule_tick
-        Samagotchi::Schedules.new(state_dir: @state_dir).tick
+        schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
+        now = Time.now
+        result = schedules.tick(now: now)
+        publish_disabled(schedules, result, now) if result.is_a?(Samagotchi::Schedules::Tick)
       rescue StandardError => e
         Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
       ensure
         @monitor.synchronize do
           @schedule_tick_in_flight = false
           @schedule_tick_thread = nil
+        end
+      end
+
+      # A recurring schedule this tick turned off (Schedules::Outcome#disabled):
+      # one `schedule_disabled` event each, for the Push::Notifier (the page has
+      # no listener), emitted the way #publish_notice does. +at+ is the tick's
+      # time; +session_id+ is the session the schedule acts on (Schedules#session_of).
+      def publish_disabled(schedules, result, now)
+        result.outcomes.select(&:disabled).each do |outcome|
+          entry = outcome.entry
+          kind = outcome.status == "skipped" ? "skipped" : "failed"
+          data = { id: outcome.id, title: outcome.title, kind: kind, count: kind == "skipped" ? entry.skips : entry.failures,
+                   reason: outcome.detail, session_id: schedules.session_of(entry), at: now.utc.iso8601 }
+          @monitor.synchronize { emit("schedule_disabled", data) }
         end
       end
 

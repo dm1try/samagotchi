@@ -828,6 +828,136 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  describe "an outcome that disables its schedule (Outcome#disabled, docs/scheduling.md)" do
+    def gone(dir, id)
+      FileUtils.rm_f(Samagotchi::Session.session_file(id, state_dir: dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: dir))
+    end
+
+    def busy(dir, id)
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(id, state_dir: dir), prompt: "wait for me")
+    end
+
+    it "says so on the skip that reaches max_skips, carrying the entry as stored; the skips before it don't" do
+      Dir.mktmpdir("schedules-disabled-skip") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 2)
+        busy(dir, anchor)
+
+        first = schedules.tick(now: Time.now + 120).outcomes.first
+        expect(first).to have_attributes(status: "skipped", disabled: false)
+        last = schedules.tick(now: Time.now + 120).outcomes.first
+        expect(last).to have_attributes(status: "skipped", disabled: true)
+        expect(last.entry).to have_attributes(id: entry.id, skips: 2, enabled: false)
+        expect(schedules.lookup(entry.id).enabled).to be(false)
+      end
+    end
+
+    it "says so on the failure that reaches max_failures" do
+      Dir.mktmpdir("schedules-disabled-fail") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 2)
+        gone(dir, anchor)
+
+        expect(schedules.tick(now: Time.now + 120).outcomes.first.disabled).to be(false)
+        last = schedules.tick(now: Time.now + 120).outcomes.first
+        expect(last).to have_attributes(status: "failed", disabled: true)
+        expect(last.entry).to have_attributes(failures: 2, enabled: false)
+      end
+    end
+
+    it "says so when a pending turn's failure reaches max_failures" do
+      Dir.mktmpdir("schedules-disabled-pending") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1d"), mode: "same", max_failures: 1)
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: { "enqueued_id" => "turn" })
+        )
+        started_at = Time.iso8601(entry.next_due) + 1
+        expect(schedules.tick(now: started_at).outcomes.first).to have_attributes(status: "pending", disabled: false)
+        saved = Samagotchi::Session.load(anchor, state_dir: dir)
+        saved.last_turn = Samagotchi::LastTurn.new(outcome: "failed", ended_at: (started_at + 1).iso8601, enqueued_id: "turn")
+        saved.save(state_dir: dir)
+
+        resolved = schedules.tick(now: started_at + 2).outcomes.first
+        expect(resolved).to have_attributes(status: "failed", disabled: true)
+        expect(resolved.entry).to have_attributes(failures: 1, enabled: false)
+      end
+    end
+
+    it "never on a --dry-run at the budget, nor on a `date` one-off that fails" do
+      Dir.mktmpdir("schedules-disabled-not") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 1)
+        busy(dir, anchor)
+        expect(schedules.tick(dry_run: true, now: Time.now + 120).outcomes.first.disabled).to be(false)
+        expect(schedules.lookup(entry.id).enabled).to be(true)
+
+        other = session(dir).id
+        one_off = schedules.add(target: other, prompt: "Once", recurrence: described_class.recurrence(date: "2026-11-20T09:00"),
+                                max_failures: 1)
+        gone(dir, other)
+        outcome = schedules.tick(now: Time.now + 120).outcomes.find { |candidate| candidate.id == one_off.id }
+        expect(outcome).to have_attributes(status: "failed", disabled: false)
+      end
+    end
+
+    it "says so on a run-now that uses up the budget" do
+      Dir.mktmpdir("schedules-disabled-run-now") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1h"), max_skips: 1)
+        busy(dir, anchor)
+
+        expect(schedules.run_now(entry.id)).to have_attributes(status: "skipped", disabled: true)
+      end
+    end
+
+    it "is not an owner's disable made between the pass's start and its end" do
+      Dir.mktmpdir("schedules-disabled-owner") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+        busy(dir, anchor)
+        allow(schedules).to receive(:read).and_wrap_original do |original, **kw|
+          file = original.call(**kw)
+          next file if kw[:strict]
+
+          file.with(entries: file.entries.map { |stored| stored.is_a?(described_class::Entry) ? stored.with(enabled: false) : stored })
+        end
+
+        expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
+      end
+    end
+  end
+
+  it "resets skips and failures when a schedule is enabled again" do
+    Dir.mktmpdir("schedules-enable-reset") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 2)
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(anchor, state_dir: dir), prompt: "wait for me")
+      2.times { schedules.tick(now: Time.now + 120) }
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, skips: 2)
+
+      schedules.enable(entry.id)
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: true, skips: 0, failures: 0)
+      expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: true, skips: 1)
+    end
+  end
+
   it "prunes the links behind the kept window with their delegates, never the anchor" do
     Dir.mktmpdir("schedules-prune") do |root|
       dir = File.join(root, "sessions")

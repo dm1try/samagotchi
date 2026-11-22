@@ -100,6 +100,12 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
     notifier.call(hub_event(type: "chi_notice", seq: 3, data: { kind: kind, version: version, **notes }))
   end
 
+  def schedule_disabled(at: "2026-11-22T09:00:00Z", **data)
+    notifier.call(hub_event(type: "schedule_disabled", seq: 4,
+                            data: { id: "a1b2c3d4e5f60718", title: "Heartbeat", kind: "skipped", count: 12,
+                                    reason: "the session is running a turn", session_id: "s1", at: at, **data }))
+  end
+
   def advance(seconds)
     clock[0] += seconds
     notifier.pump
@@ -150,6 +156,52 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
                                 body: "failed (gem install exited 1). Open chi web for details.", url: "/", badge: 0, open: [] }]
       ])
       expect(store.sent_keys.keys).to eq(["chi:update_failed:0.19.0"])
+    end
+
+    describe "a schedule chi web's tick turned off (schedule_disabled)" do
+      it "pushes it once, opening its session, with a 24-hour TTL and normal urgency" do
+        session(project_root: "/Users/me/app")
+        schedule_disabled
+        schedule_disabled
+        advance(3)
+
+        expect(client.calls.map { |call| call.values_at(:ttl, :urgency, :payload) }).to eq([
+          [24 * 3600, "normal", { v: 1, kind: "show", tag: "chi:schedule_disabled:a1b2c3d4e5f60718:2026-11-22T09:00:00Z",
+                                  title: "Schedule disabled: Heartbeat",
+                                  body: "skipped 12 times: the session is running a turn\nchi schedule enable a1b2c3d4",
+                                  url: "/?dir=/Users/me/app#/s/s1", badge: 0, open: [] }]
+        ])
+        expect(store.sent_keys.keys).to eq(["chi:schedule_disabled:a1b2c3d4e5f60718:2026-11-22T09:00:00Z"])
+      end
+
+      it "names an untitled schedule by its short id, says one time, and opens / for a session it does not know" do
+        schedule_disabled(title: nil, kind: "failed", count: 1, reason: "archived", session_id: "elsewhere")
+        advance(3)
+
+        expect(client.calls.map { |call| call[:payload].values_at(:title, :body, :url) }).to eq([
+          ["Schedule disabled: a1b2c3d4", "failed 1 time: archived\nchi schedule enable a1b2c3d4", "/"]
+        ])
+      end
+
+      it "is shown with a chi web page in front (there is no schedules view to see it in)" do
+        presence.report("desk", true)
+        schedule_disabled
+        advance(3)
+
+        expect(client.calls.size).to eq(1)
+      end
+
+      it "shows a later disable of the same schedule again" do
+        schedule_disabled
+        advance(3)
+        schedule_disabled(at: "2026-11-23T09:00:00Z")
+        advance(3)
+
+        expect(client.calls.map { |call| call[:payload][:tag] }).to eq([
+          "chi:schedule_disabled:a1b2c3d4e5f60718:2026-11-22T09:00:00Z",
+          "chi:schedule_disabled:a1b2c3d4e5f60718:2026-11-23T09:00:00Z"
+        ])
+      end
     end
 
     it "says a failure that left the gem installed as a problem, not as a missing install" do

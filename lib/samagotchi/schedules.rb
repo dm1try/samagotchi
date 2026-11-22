@@ -163,9 +163,10 @@ module Samagotchi
     )
 
     # What one entry did in a tick: "fired", "skipped", "missed", "failed" or
-    # "dry" (a --dry-run's "would fire"). +detail+ is the reason.
-    Outcome = Data.define(:id, :title, :status, :detail, :entry) do
-      def initialize(id:, status:, title: nil, detail: nil, entry: nil) = super
+    # "dry" (a --dry-run's "would fire"). +detail+ is the reason. +disabled+:
+    # this skip or failure used up a recurring entry's budget (#mark_disabled).
+    Outcome = Data.define(:id, :title, :status, :detail, :entry, :disabled) do
+      def initialize(id:, status:, title: nil, detail: nil, entry: nil, disabled: false) = super
     end
 
     # A whole tick.
@@ -348,6 +349,7 @@ module Samagotchi
       pending = []
       prune_after = []
       links = nil
+      started = []
 
       FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
@@ -359,7 +361,7 @@ module Samagotchi
         end
 
         file = read(strict: true)
-        list = file.entries.grep(Entry)
+        list = started = file.entries.grep(Entry)
         # Ordered by the moment each entry is due, then id: with one chain
         # firing per tick, the entries of that chain take turns (a skipped
         # entry keeps its `next_due`, so the earliest waiting one goes next).
@@ -465,7 +467,7 @@ module Samagotchi
       end
       links ||= links_now unless prune_after.empty?
       prune_after.each { |entry| prune(entry, links) }
-      Tick.new(locked: false, outcomes: outcomes)
+      Tick.new(locked: false, outcomes: dry_run ? outcomes : mark_disabled(outcomes, started))
     end
 
     # Fire one entry now, whatever its next_due says (`chi schedule run-now`).
@@ -515,11 +517,15 @@ module Samagotchi
         file.entries[position] = reserved
       end
 
-      return outcome if outcome
+      return mark_disabled([outcome], [entry]).first if outcome
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no such schedule") unless reserved
 
-      fire_and_record(reserved, links)
+      mark_disabled([fire_and_record(reserved, links)], [entry]).first
     end
+
+    # The session a schedule acts on now (#target_of), else its head (gone or
+    # archived): where chi web's phone notification about it opens.
+    def session_of(entry) = target_of(entry, links_now).first || entry.head
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
     def self.tick_interval_minutes
@@ -695,7 +701,9 @@ module Samagotchi
           file.entries[position] = nil
           file.entries.compact!
         else
-          file.entries[position] = entry.with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
+          changed = entry.with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
+          # Enabled again with a fresh budget: its next skip must not end it at once.
+          file.entries[position] = enabled ? changed.with(skips: 0, failures: 0) : changed
         end
       end
       entry
@@ -790,6 +798,25 @@ module Samagotchi
                  last_fired: now.utc.iso8601, firing_since: now.utc.iso8601, firing_token: SecureRandom.uuid,
                  last_result: nil,
                  enabled: one_off ? false : entry.enabled)
+    end
+
+    # The skips and failures that turned off a recurring entry that was on when
+    # the pass began (+before+), as the file has it now: one diff covers every
+    # path that records one. A `date` one-off is spent, not disabled; an entry
+    # off within budget is an owner's `chi schedule disable`.
+    def mark_disabled(outcomes, before)
+      ended = outcomes.select { |outcome| %w[skipped failed].include?(outcome.status) }.map(&:id)
+      on = before.select { |entry| entry.enabled && entry.recurrence[:kind] != "date" && ended.include?(entry.id) }.map(&:id)
+      return outcomes if on.empty?
+
+      off = read.entries.grep(Entry).select do |entry|
+        on.include?(entry.id) && !entry.enabled && (entry.skips >= entry.max_skips || entry.failures >= entry.max_failures)
+      end
+      off.each do |entry|
+        index = outcomes.rindex { |outcome| outcome.id == entry.id && %w[skipped failed].include?(outcome.status) }
+        outcomes[index] = outcomes[index].with(disabled: true, entry: entry)
+      end
+      outcomes
     end
 
     def skipped(entry, reason)
