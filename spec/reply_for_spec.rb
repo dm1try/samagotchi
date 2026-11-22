@@ -88,7 +88,7 @@ RSpec.describe Samagotchi::ReplyFor do
       expect(line).to include("plain spoken sentences, not lists").and include("at most 60 words")
         .and include("at most 3 choices").and include("can't show commands, code or diffs")
       expect(line.index("plain")).to be < line.index("60 words")
-      expect(described_class.from("room" => "one_line").line).to include("one line of at most 80 characters")
+      expect(described_class.from("room" => "one_line").line).to include("one line of at most 80 characters: one short sentence of 15 words or fewer, the answer only")
         .and(satisfy { |text| !text.include?("plain") && !text.include?("choices") })
       expect(described_class.from("choices" => 0).line).to include("one yes-or-no question")
     end

@@ -81,7 +81,7 @@ The values (a missing one is the full value, as the web has):
 | value | full | restricted |
 |---|---|---|
 | `formatting` | `markdown` | `plain`: no markdown, no emoji, no links |
-| `room` | `long` | `short` (at most 60 words), `one_line` (at most 80 characters) |
+| `room` | `long` | `short` (at most 60 words), `one_line` (at most 80 characters, one sentence of 15 words or fewer) |
 | `choices` | `many` | `0` to `9`: how many options a question may offer |
 | `detail` | `true` | `false`: no commands, code or diffs, and no approvals (below) |
 

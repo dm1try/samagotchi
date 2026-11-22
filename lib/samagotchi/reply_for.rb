@@ -54,6 +54,8 @@ module Samagotchi
     # The counted limits the room's wording says.
     SHORT_WORDS = 60
     ONE_LINE_CHARS = 80
+    # one_line's sentence too (eval 0015 B9: characters alone ran long on Claude).
+    ONE_LINE_WORDS = 15
 
     # Where both of chi's lines open (#line, RETURN_LINE): one lead, so a
     # copy of it inside someone else's text is quoted on the wire
@@ -229,7 +231,8 @@ module Samagotchi
     }.freeze
     ROOM_WORDS = {
       "short" => "has room for a short reply of at most #{SHORT_WORDS} words",
-      "one_line" => "has room for one line of at most #{ONE_LINE_CHARS} characters: one short sentence, the answer only"
+      "one_line" => "has room for one line of at most #{ONE_LINE_CHARS} characters: one short sentence of " \
+                    "#{ONE_LINE_WORDS} words or fewer, the answer only"
     }.freeze
     DETAIL_WORDS = { false => "can't show commands, code or diffs: describe them in words" }.freeze
 
