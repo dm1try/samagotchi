@@ -3,6 +3,11 @@
 require "samagotchi/prompt_warmup"
 require "samagotchi/kernel_loop"
 require "samagotchi/model_profile"
+require "samagotchi/engine"
+require "samagotchi/session"
+require "samagotchi/memory_index/size"
+require "support/test_kernel"
+require "tmpdir"
 
 RSpec.describe Samagotchi::PromptWarmup do
   subject(:warmup) { described_class.new }
@@ -225,5 +230,59 @@ RSpec.describe Samagotchi::KernelLoop, "turn-end warm-up" do
     kernel.run([{ role: "user", content: "hi" }])
 
     expect(requests.map { |request| request[:slot] }).to eq([1, nil])
+  end
+end
+
+# The warm-up builds the next turn's prompt but sends nothing as the
+# session's: after a reset during the turn (a plugin's prompt_changed!, a
+# /stats), its rebuild must not overwrite the parts, notes and memory index
+# the turn's own prompt recorded.
+RSpec.describe Samagotchi::Engine, "turn-end warm-up records nothing", :warmup do
+  around do |example|
+    with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Ornith") do
+      Dir.mktmpdir("chi-state") do |dir|
+        @state_dir = dir
+        example.run
+      end
+    end
+  end
+
+  let(:warmups) { Queue.new }
+  let(:client) do
+    test_client.tap do |c|
+      allow(c).to receive(:warm_up) do |prompt, **kwargs|
+        warmups << prompt
+        Samagotchi::Client::Warmup.new(slot: kwargs[:slot], cache_n: 1, prompt_n: 1, prompt_ms: 1)
+      end
+    end
+  end
+  let(:kernel) { test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36) }
+  let(:engine) do
+    described_class.new(client: client, kernel: kernel, profile: "qwen36").tap { |e| e.session_state_dir = @state_dir }
+  end
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Ornith", working_directory: Dir.pwd) }
+
+  it "leaves the session's parts, notes and memory index as the turn's after a reset during the turn" do
+    index = "- **short** · system\n"
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call) { |name, **| name.to_s.empty? ? index : "" }
+    metrics = engine.instance_variable_get(:@metrics)
+    allow(client).to receive(:complete) do |_prompt, on_chunk: nil, **|
+      # Mid-turn: the prompt is dropped and the sources change.
+      engine.instance_variable_get(:@prompt_builder).reset!
+      index = "- **a much longer index line than before** · system\n"
+      on_chunk&.call(content: "Answer", payload: { "content" => "Answer", "id_slot" => 2 })
+      "Answer"
+    end
+
+    engine.run_turn(session, "hi")
+    engine.prompt_warmup.wait(2)
+
+    expect(warmups.size).to eq(1)
+    expect(warmups.pop).to include("a much longer index line")
+    indexes = session.prompt_parts.select { |part| part.kind == "indexes" }
+    expect(indexes.map(&:chars)).to include("System memories:\n- **short** · system\n".length)
+    size = ->(text) { Samagotchi::MemoryIndex::Size.of_text(:system, text, chars_per_token: Samagotchi::MemoryIndex::Size.chars_per_token).figures }
+    expect(metrics.instance_variable_get(:@memory_index)[:system]).to eq(size.call("- **short** · system\n"))
+    expect(size.call(index)).not_to eq(size.call("- **short** · system\n"))
   end
 end
