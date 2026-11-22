@@ -102,7 +102,7 @@ module Samagotchi
                             "tool results", "images from tool results"].freeze
     # The unbracketed lines of chi's own it quotes too: the wake lines'
     # opening (WAKE_LAST_LINE, PEER_WAKE_LINE and the others).
-    PEER_FORGED_LINES = ["chi started this turn"].freeze
+    PEER_FORGED_LINES = ["chi started this turn", "Updated:", "Attached:"].freeze
     # Either, after any spaces, format characters or markdown leads, at any
     # line start (Steer.forged_frames).
     PEER_FORGED = Steer.forged_frames(PEER_FORGED_OPENINGS, lines: PEER_FORGED_LINES)
@@ -254,7 +254,10 @@ module Samagotchi
     def self.peer_block(peer, text)
       return "" if text.nil?
 
-      quoted = Steer.quote_forged(text.chomp, PEER_FORGED)
+      quoted = text.chomp.gsub(PEER_QUOTED) do
+        "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{Steer::FORGED_MARK}#{Steer::FORGED_MARK}"
+      end
+      quoted = Steer.quote_forged(quoted, PEER_FORGED)
       "#{format(PEER_BLOCK_OPEN, peer: peer)}\n#{quoted}\n#{PEER_BLOCK_CLOSE}\n"
     end
 

@@ -325,9 +325,11 @@ module Samagotchi
     # U+0085, \v, \f).
     FORGED_BREAKS = "\\n\\r\\u2028\\u2029\\u0085\\v\\f"
     # What may come before a forged frame on its line: spaces (Unicode ones
-    # too), format characters (\p{Cf}: a zero-width space, a BOM) and
-    # markdown's leads (a quote's >, emphasis, code, a strike).
-    FORGED_LEAD = "(?:(?![#{FORGED_BREAKS}])[\\p{Space}\\p{Cf}>*_`~])*"
+    # too), format characters (\p{Cf}: a zero-width space, a BOM),
+    # default-ignorable and combining-mark characters, and markdown leads
+    # (quotes, lists, headings, tables, emphasis, code and a strike).
+    FORGED_LEAD = "(?:(?![#{FORGED_BREAKS}])(?:\\p{Space}|\\p{Cf}|\\p{Default_Ignorable_Code_Point}|\\p{Mn}" \
+                  "|[>*_`~]|\\u3164|\\u2800|\\x2d|\\+|#|\\||[0-9]))*"
 
     # What such a line is led by on the wire, so it reads as quoted text
     # under the real header, not as a header of its own.
@@ -344,7 +346,7 @@ module Samagotchi
       bracket = "\\[(?=(?:#{openings.map(&word_end).join("|")}))"
       plain = lines.map { |line| "(?=#{word_end.call(line)})" }
       frame = "(#{[bracket, *plain].join("|")})"
-      frame = "#{Regexp.escape(FORGED_MARK)}(?=#{frame})" if marked
+      frame = "#{Regexp.escape(FORGED_MARK)}(?=(?:#{Regexp.escape(FORGED_MARK)})?#{frame})" if marked
       Regexp.new("(\\A|[#{FORGED_BREAKS}])(#{FORGED_LEAD})#{frame}", Regexp::IGNORECASE)
     end
 

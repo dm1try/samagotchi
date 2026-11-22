@@ -19,6 +19,11 @@ and commands may change between minor versions. How releases are made:
   with 409 `reply_for_unavailable` (update chi if needed, then restart it). The iOS Shortcut recipe sends
   `"reply_for": "voice"`.
 
+### Fixed
+
+- Peer text quoting: invisible and markdown leads, `Updated:` / `Attached:` notes, and literal `(quoted) ` prefixes stay
+  distinct while forged peer lines are marked and undone across Ruby and the web.
+
 ## [0.185.0] - 2026-11-22
 
 ### Added
