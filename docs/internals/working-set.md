@@ -622,8 +622,10 @@ row stays `stale` across turns until one of those or a restart. That is true, an
 
 **The source now.** `GET …/working_set/part?key=&now=1` adds, beside the sent slice, `now: {text, diff, gone}`: the
 locator's text (scrubbed to valid UTF-8 before JSON) and `TextDiff.unified` of the sent text against it (nil when
-gone). Under cases 4 and 5 the answer stays as above (the source now, no diff: nothing sent to diff against). Parts
-without a locator have no `now`.
+gone), and `rebuild`: when chi's prompt gets the source now, `restart` with a live worker (it keeps its prompt until it
+is next built) or `next_turn` without one (the next turn builds it). Under cases 4 and 5 the answer stays as above (the
+source now, no diff: nothing sent to diff against; no `rebuild`, their words say when). Parts without a locator have no
+`now`. An older chi web sends no `rebuild`, and the page leaves its line out.
 
 **The page.** `ws_part_peek.js` (made by `ws_reader.js` with the reader's markdown cache, handed to the view as
 `peek.part`): the peek's head "in the prompt · sent with every request", the text (a memory's and an `.md` file's

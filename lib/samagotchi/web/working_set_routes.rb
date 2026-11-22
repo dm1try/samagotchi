@@ -118,7 +118,8 @@ module Samagotchi
       # start" part as chi sent it (WorkingSetPart.answer: the slice of the
       # saved head, or the line that says why not and, under a changed head,
       # the source now). +now+: with the slice, the source now and its diff
-      # (a stale row's "now" tab). Owner only: participants see no prompt text. The parts and
+      # (a stale row's "now" tab) and when chi gets it (rebuild: restart with
+      # a live worker, else next_turn). Owner only: participants see no prompt text. The parts and
       # messages[0] come from one source: a live worker's complete snapshot
       # frame, else the session file. The file is read only when the snapshot
       # is missing or a source lookup needs the session's working directory.
@@ -144,7 +145,7 @@ module Samagotchi
         body = WorkingSetPart.answer(parts: parts, messages: messages, key: key,
                                      older_worker: !live.nil? && WorkingSetPart.older_worker?(live.dig("snapshot", "chi_version")),
                                      running: !live&.dig("snapshot", "current_turn").nil?, root: MemoryPaths.system_dir,
-                                     cwd: cwd, now: req.GET["now"] == "1")
+                                     cwd: cwd, now: req.GET["now"] == "1", live: !live.nil?)
         return error_response(404, "unknown_part", WorkingSetPart::UNKNOWN) unless body
 
         json_response(200, body)

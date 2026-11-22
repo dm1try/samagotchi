@@ -579,6 +579,29 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       expect(now_call.call("indexes:system")).not_to have_key("now")
     end
 
+    it "says on &now=1 when chi gets the source now: restart with a live worker, next_turn without; none under a changed head" do
+      session = built_session
+      now_call = ->(key) { call("/api/sessions/#{session.id}/working_set/part?key=#{URI.encode_www_form_component(key)}&now=1").last }
+      preload = keys[@built.prompt_parts.index(part_of("preloads"))]
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be terse\n")
+      expect(now_call.call(preload)).to include("rebuild" => "next_turn")
+      expect(part_call(session, preload).last).not_to have_key("rebuild")
+
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => nil, "chi_version" => Samagotchi::VERSION },
+        "session_state_snapshot" => { "prompt_parts" => JSON.parse(JSON.generate(session.prompt_parts.map(&:to_h))) }
+      )
+      expect(now_call.call(preload)).to include("rebuild" => "restart")
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"))
+      expect(now_call.call(preload)).to include("rebuild" => "restart", "now" => { "text" => nil, "diff" => nil, "gone" => true })
+
+      allow(app).to receive(:bridge_get_json).and_return(nil)
+      changed = built_session(head: "an older head")
+      body = call("/api/sessions/#{changed.id}/working_set/part?key=identity:identity@system&now=1").last
+      expect(body).to include("changed" => "idle")
+      expect(body).not_to have_key("rebuild")
+    end
+
     it "keeps a changed head's answer on &now=1: the source now, no diff (nothing sent to diff against)" do
       session = built_session(head: "an older head")
       body = call("/api/sessions/#{session.id}/working_set/part?key=identity:identity@system&now=1").last

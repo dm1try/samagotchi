@@ -45,9 +45,13 @@ module Samagotchi
     # +root+: chi web's memories folder (MemoryPaths.system_dir); +cwd+: the
     # session's working directory (its AGENTS.md chain); +now+: with the
     # sent slice, the source now and its diff from what was sent
-    # ({text, diff, gone}, the page's "now" tab), when a locator fetches it.
+    # ({text, diff, gone}, the page's "now" tab), when a locator fetches it,
+    # and +rebuild+: when chi's prompt gets the source now ("restart": a
+    # +live+ worker keeps its prompt until it is next built; "next_turn":
+    # a session with none builds it at its next turn). Never under a
+    # changed head (cases 4 and 5 say when in their own words).
     # @return [Hash, nil] nil when no part has that key
-    def answer(parts:, messages:, key:, older_worker:, running:, root:, cwd:, now: false)
+    def answer(parts:, messages:, key:, older_worker:, running:, root:, cwd:, now: false, live: false)
       parts = PromptPart.list(parts)
       index = PromptPart.keys(parts).index(key.to_s)
       return nil unless index
@@ -80,7 +84,7 @@ module Samagotchi
       # Each side ends its last line: a stripped note's or file's text would draw "\ No newline" markers otherwise.
       lined = ->(text) { text.end_with?("\n") ? text : "#{text}\n" }
       diff = source[:gone] ? nil : TextDiff.unified(lined.call(sent[:text]), lined.call(source[:text])).merge(new_file: false)
-      shown.merge(sent: sent, now: source.merge(diff: diff))
+      shown.merge(sent: sent, now: source.merge(diff: diff), rebuild: live ? "restart" : "next_turn")
     end
 
     # The parts of +parts+ (a saved or wire list) whose source changed
