@@ -479,3 +479,40 @@ test("a prompt memory chi only wrote (no read): no read tab, its edited tab open
     });
   } finally { p.cleanup(); }
 });
+
+test("a prompt memory chi wrote and someone changed again (its item stale by that write, no read): the now tab's head names the prompt text alone", async () => {
+  const p = page({ states: [{ key: "preloads:style@system", state: "stale", by_chi: { tool_id: "t7", step: 1, op: "memory_write", current: false } }] });
+  try {
+    await withNow("preloads:style@system", styleNow({ rebuild: "restart" }), async () => {
+      const write = { tool: "memory_write", title: "style", status: "ok", tool_id: "t7" };
+      p.ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [write] }] }, 0), prompt: "go" }]);
+      p.ws.update({ items: [{ kind: "memory", key: "style", scope: "system", state: "stale", tokens: 0 }], at: 4 });
+      await tick();
+      const row = p.start().querySelector('[data-ws-id="memory:style"]');
+      assert.equal(row.querySelector(".ws-pstale").title, "preloaded · changed after chi's prompt was built");
+      p.toggleOf('[data-ws-id="memory:style"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p), ["preload · ~100", "now · changed"]);
+      assert.equal(p.start().querySelector(".ws-part-peek .ws-peek-t").textContent, "style changed after chi's prompt was built");
+      assert.equal(p.start().querySelector(".ws-part-peek .ws-peek-copy.warn").textContent, "chi edited it at t1·s1; it changed again after that.");
+    });
+  } finally { p.cleanup(); }
+});
+
+test("an AGENTS.md chi's write emptied (its source reads gone): edited on the row and in its tab, never removed", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale", by_chi: { tool_id: "t9", step: 4, op: "write", current: true } }] });
+  try {
+    await withNow("agents:/p/AGENTS.md", agentsNow({ now: { text: null, diff: null, gone: true }, rebuild: "restart" }), async () => {
+      await tick();
+      const row = p.start().querySelector('.ws-row.part[data-ws-part^="agents"]');
+      assert.equal(row.querySelector(".st").textContent, "project instructions · edited");
+      p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p), ["in the prompt · ~3.4k", "edited · step 4"]);
+      const peek = p.start().querySelector(".ws-part-peek");
+      assert.equal(peek.querySelector(".ws-peek-t").textContent, "chi edited AGENTS.md at step 4");
+      assert.equal(peek.querySelector(".ws-peek-note").textContent, "Its source is gone now.");
+      assert.doesNotMatch(peek.textContent, /removed/);
+    });
+  } finally { p.cleanup(); }
+});
