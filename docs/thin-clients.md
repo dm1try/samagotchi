@@ -101,6 +101,9 @@ The answer goes in before the wait starts, so a wait that fails afterwards
 `wait_failed`, and a `detail`) in place of `reply`. Don't answer again (that
 would be 409): ask or wait on the session instead.
 
+Ask waits also return 409 `busy` / `waiting` / `continuing` / `owned_by_tui`, or 503
+`server_stopping` (ask again).
+
 ## An agent over HTTP
 
 An agent (Claude Code, Codex, a script acting on its own) should drive chi

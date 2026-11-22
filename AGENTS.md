@@ -94,7 +94,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-output-limits.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - System 1, the approval judge (`lib/samagotchi/system_one/`, `GuardrailWiring#request_approval`, `chi guardrails replay`) → `docs/guardrails.md` (System 1)
 - System 1's common layer and saved runs (`SystemOne::Recording`, `Runs`, `RunsStore`, `ApprovalLabel`, `chi judgments`) → `docs/system-one.md`
-- Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle, `chi.prompt_section`, `ctx.cache_confirm`) → `docs/plugins.md`; their prompt place → `docs/internals/prompt-caching.md`
+- Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle, `chi.prompt_section`, `ctx.cache_confirm`, `ctx.secrets`, `ctx.sign_in`) → `docs/plugins.md`; their prompt place → `docs/internals/prompt-caching.md`
 - Block renderers (`block_renderers:`, `BlockRenderers`, `BlockFix`, `Engine::BlockFixPart`, `web.block_fix`, the sandboxed frame, `block_host.js`, the hard rules) → `docs/internals/block-renderers.md`; a bundle's side → `docs/plugins.md` (Block renderers)
 - Inline widgets (```` ```chi-ui ```` picks and walks, `InlineWidgets`, the lenient pass, `data-widget`) → `docs/internals/inline-widgets.md`
 - What each shipped bundle does for a user (btw, mcp, cost-cap, work-cap, claude-peer, skills…; the bundles' own settings) → `docs/bundles.md`

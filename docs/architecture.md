@@ -338,20 +338,21 @@ The full request layout, what breaks the cache and the rules for changes:
 
 #### Subscribing to the live stream (and the bridge)
 
-For an **always-on** consumer (an external SSE client, a second UI), use
-`Engine#subscribe` rather than passing `on_event:` to a single turn. It is a thread-safe,
+For an **always-on** worker-side consumer (an external SSE client, a second UI), take the
+Worker's `Engine#event_log` and subscribe directly to that `SessionObserver`. It is a thread-safe,
 error-isolated fan-out with a monotonic `event_seq` on every event:
 
 ```ruby
-handle = engine.subscribe(observer: ->(event) { ... })   # observer receives {..., event_seq:}
-engine.unsubscribe(handle: handle)
+log = engine.event_log
+handle = log.subscribe(observer: ->(event) { ... })   # observer receives {..., event_seq:}
+log.unsubscribe(handle: handle)
 engine.session_state_snapshot   # => { status:, message_count:, last_prompt:, event_seq: }
 ```
 
-`Engine#subscribe` forwards to the Engine's event log (`SessionObserver`, shown as `Engine#event_log`), and that log
-is the seam the SSE bridge (`Samagotchi::Bridge`) rides on: the Worker reads it once after it built the Engine and hands
-it to the Bridge and to its own collaborators (`ContinueOffer`, `WorkerParticipantGate`, `WorkerTaskWakes`,
-`WorkerInbound`), which subscribe, announce and take the event lock on it directly. The same goes for the turn state,
+`Engine#subscribe` forwards to this event log for the Engine's own parts and the one-shot host, but worker hosts hold
+`Engine#event_log` directly. The Worker reads it once after it built the Engine and hands it to the Bridge and to its
+own collaborators (`ContinueOffer`, `WorkerParticipantGate`, `WorkerTaskWakes`, `WorkerInbound`), which subscribe,
+announce and take the event lock on it directly. The same goes for the turn state,
 the question desk and the steer cut (`Engine#turn_state`, `#question_desk`, `#steer_cut`): the Worker hands them to the
 Bridge (which hands the desk on to `RelayVerifier` and `RelayWatcher`) and to `WorkerInbound`, `WorkerIdleExit` and
 `ContinueOffer`, which call them directly instead of the Engine's forwards. The bridge
@@ -670,7 +671,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Bundle authoring | `bundle_command.rb` (`BundleCommand`), `bundle_command/{scaffold,check,test_run}.rb`, `bundle_command/try/{run,sandbox,trace}.rb`, `testing.rb` + `testing/` (the test kit) | `chi bundle new`, `check`, `test` and `try`, and the kit a bundle's tests load it with ([bundle-authoring.md](bundle-authoring.md), [internals/bundles.md](internals/bundles.md)). |
 | Session file | `session.rb` (`Session`, `Session::FIELDS`), `session_field.rb` (`SessionField`), `session_paths.rb` (`SessionPaths`), `session_setup.rb` (`SessionSetup`) | A session's `<uuid>.json`: one `SessionField` row per key (default, cast, what the file gets; the codec on its type), from which `Session.new`, `.from_h` and `#to_h` are built; `SessionPaths` is where the file and the session's dir are and the id rule, a leaf `Session` extends (so `ArchiveStore` and `ContextSources` name no `Session` constant; both still require session.rb at load); `SessionSetup` the settings a fork and a continue carry (`.of`), applied by member name; every new-session request (chi's run flags, the one-shot, `chi send --new`, chi web's create) builds its setup with `SessionSetup.from_request`, and `spec/session_setup_entrypoints_spec.rb` holds each entrypoint's cell for each member. See [sessions.md](sessions.md#session-file). |
 | Session config (`--set`) | `session_config.rb` (`SessionConfig`, `SessionConfig::Settings`) | A session's own settings as one value (`Session#settings`, `SessionSetup#settings`): `core`, the `--set KEY=VALUE` values of the core keys marked `session: true` (`Config::Entry`), typed by `Config.coerce!` and read first through `Config.get(key, session:)` (`RecapSetup`; `Engine#session=` rebuilds the recap job, `IdleScheduler#replace_job`), file key `config_settings`; `bundles`, the `--set BUNDLE.KEY=VALUE` values, checked against the manifest's `session_settings:`, laid over `bundles: <name>:` in `ctx.settings` ([plugins.md](plugins.md)), file key `bundle_settings`. `SessionConfig.clash` refuses a bundle setting named like a core one (install, `chi bundle check`). See [configuration.md](configuration.md#per-session-settings). |
-| Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/tool_spec.rb` (`Plugin::ToolSpec`: a checked tool declaration, how it is registered), `plugin/loader.rb`, `plugin/context.rb` (`ctx`), `plugin/http.rb` + `plugin/http_transport.rb` (`ctx.http`), `plugin/card.rb` (`Plugin::Card`) | What a bundle's plugin registers: tools, commands, annotation actions, hooks, services, toolkits, peer sources; what its handlers get as `ctx` ([plugins.md](plugins.md)). |
+| Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/tool_spec.rb` (`Plugin::ToolSpec`: a checked tool declaration, how it is registered), `plugin/loader.rb`, `plugin/context.rb` (`ctx`), `plugin/http.rb` + `plugin/http_transport.rb` (`ctx.http`), `plugin/http_stream.rb` (`ctx.http.stream`) + `plugin/sse_reader.rb`, `plugin/http_errors.rb`, `plugin/secrets.rb` (`Plugin::Secrets`, `ctx.secrets`) + `plugin/sign_in.rb` (`Plugin::SignIn`, `ctx.sign_in`), `plugin/card.rb` (`Plugin::Card`) | What a bundle's plugin registers: tools, commands, annotation actions, hooks, services, toolkits, peer sources; what its handlers get as `ctx` ([plugins.md](plugins.md)). |
 | Peer bundles' base | `plugin/peer.rb` (`Plugin::Peer`) | What claude-peer and codex-peer share (the send tool, the command, the cards, payloads); each bundle's subclass sets its strings and transport ([bundles.md](bundles.md#the-claude-peer-bundle)). |
 | Shipped bundles | `bundles/` (`mcp`, `github-pr`, `loop-guard`, `skills`, `source-links`, …) | Bundles that ship with chi. |
 | Hooks | `hooks/registry.rb` (`Hooks::Registry`), `hooks/loader.rb`, `hook_routes.rb` (`HookRoutes`), `event_routes.rb` (`EventRoutes`) | Hook registration and dispatch; what a hook or plugin does beyond reading its event (notice, question, stop, steer) routed to the UIs (cards and notices through one set of routes) ([hooks.md](hooks.md)). |

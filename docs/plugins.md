@@ -31,7 +31,7 @@ plugin:
   # required: true           # optional: a guardrail plugin; if it fails to load, every tool call is
                              # denied (see chi.on's on_error: :fail_closed; chi 0.157.0 or newer)
   # parts:                   # optional: more .rb files of the plugin, loaded in this order before file:
-  #   client.rb: sha256:…    # (see "A plugin in several files" below; needs the chi after 0.182.0)
+  #   client.rb: sha256:…    # (see "A plugin in several files" below; needs chi 0.183.0)
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's rules check it too
                              # every key below has a chi floor: check warns when requires_chi admits a chi that never read it
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
@@ -119,8 +119,8 @@ plugin:
 - Not `require_relative`: a file pulled in that way skips the sha256 check, is cached by Ruby across reloads (a
   reload would keep the old classes) and defines its constants outside the bundle's namespace.
 - A bundle that uses `parts:` should require a chi that reads them (`requires_chi`): an older chi would install the
-  plugin file alone. `chi bundle check` warns of a lower `requires_chi` from the chi release that brings parts on
-  (until then the key has no release to name). A record written that way is refused at load with `bundle NAME's
+  plugin file alone. `chi bundle check` warns of a `requires_chi` below 0.183.0, the
+  release that brings parts. A record written that way is refused at load with `bundle NAME's
   plugin parts aren't installed (reinstall the bundle)`.
 
 ## The API: `register(chi)`
@@ -956,7 +956,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.judge(name, state:)`, `ctx.judge_later(name, state:) { |result| … }`, `ctx.judgments` | a cheap System 1 question this bundle declared, saved as a run: see [Judgments](#judgments-chijudgment-and-ctxjudge) |
 | `ctx.sign_in(title:, button:, timeout: 300, port: nil, path: "/callback", cancel: nil) { \|redirect_uri\| address }` | send the owner to an address and get back where the browser was sent: see [Sign-in](#sign-in-ctxsign_in) |
 | `ctx.secrets` | the bundle's tokens, kept apart from its data files (`get`, `set`, `delete`, `update`): see [Secrets](#secrets-ctxsecrets) |
-| `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
+| `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`, `stream`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
 | `ctx.declared_tools` | the tool names the session's next turn declares (its toolkit resolved, with its own adds and removes): ask this, not the name, whether a tool is there. Your bundle's own `chi.tool` tools are in it only on a kit that declares them (`full`, an `add:`); elsewhere they are reachable, not declared (the testing kit answers every tool, as on full, unless `bundle.set(declared_tools: […])`) |
@@ -1065,7 +1065,7 @@ A card from a thread of your own (a sign-in's result, a server's state) that a t
 lands in that turn's block, which the web collapses when the turn ends. `between_turns: true` keeps it out: while a
 turn runs it is shown as an anytime command's card is (outside the turn's block, marked `anytime: true`), else as
 any card between turns. It is the rule chi's own sign-in cards follow. The test kit records it on the card
-(`between_turns: true`). The keyword needs a chi newer than 0.182.0 (an older one raises `ArgumentError`).
+(`between_turns: true`). The keyword needs chi 0.183.0 or newer (an older one raises `ArgumentError`).
 
 A worker keeps its last 20 cards (questions included) and, apart, its
 last 20 hook notices, for a UI that joins later; a question still waiting
