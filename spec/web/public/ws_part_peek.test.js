@@ -42,7 +42,7 @@ const NOW_ANSWERS = {
   "preloads:style@system": { part: PARTS[5], sent: { lead: "this memory is required …\n", text: "be brief" }, now: { text: null, diff: null, gone: true } },
 };
 
-function page({ states = null } = {}) {
+function page({ states = null, preloadedMemories = [], usedMemories = [], promptParts = PARTS, readMemory = true } = {}) {
   const center = document.createElement("section");
   const historyEl = document.createElement("div");
   const infoEl = document.createElement("div");
@@ -59,12 +59,12 @@ function page({ states = null } = {}) {
   const getWorkingSet = states ? () => Promise.resolve({ items, at: 4, running: false, ...(gets.states ? { parts: gets.states } : {}) }) : undefined;
   const getItem = (_id, kind, key) => Promise.resolve({ kind, key, events: [{ tool_id: "t5", op: "memory_read", step: 1, sent: true, text: "be brief" }] });
   const preview = createWorkingSetPreview({ centerEl: center, session: () => "s1", state: () => ({ dir: "/p" }), getItem, getPart });
-  const current = { preloadedMemories: [], mutedMemories: [], usedMemories: [], dir: "/p", promptParts: PARTS, ctxTokens: 30000, ctxWindow: 128000 };
+  const current = { preloadedMemories, mutedMemories: [], usedMemories, dir: "/p", promptParts, ctxTokens: 30000, ctxWindow: 128000 };
   const ws = createWorkingSet({ historyEl, infoEl, state: () => current, session: () => "s1", peek: preview.peek, onTimeline: preview.open, getWorkingSet });
   preview.attach(ws);
   const memoryRow = { tool: "memory_read", title: "style", status: "ok", tool_id: "t5" };
   const fileRow = { tool: "read", title: "a.rb", status: "ok", tool_id: "t1", ref: { kind: "file", path: "/p/a.rb" } };
-  ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [fileRow, memoryRow] }] }, 0), prompt: "go" }]);
+  ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [fileRow, ...(readMemory ? [memoryRow] : [])] }] }, 0), prompt: "go" }]);
   ws.update({ items, at: 4 });
   const pop = ws.popover.pop;
   ws.popover.open(infoEl.querySelector(".ws-chip"));
@@ -151,6 +151,36 @@ test("one row, several holds: a tab each, kind and size; a read is today's peek 
     await tick();
     assert.match(p.start().querySelector(".ws-part-peek .wsr-text").textContent, /be brief/);
     assert.ok(p.start().querySelector(".ws-held") === null);
+  } finally { p.cleanup(); }
+});
+
+test("prompt-part memories are preloaded when the used list also names them, without a read tab", async () => {
+  const p = page({ usedMemories: ["identity", "style"], readMemory: false });
+  try {
+    for (const name of ["identity", "style"]) {
+      const row = p.start().querySelector(`[data-ws-id="memory:${name}"]`);
+      assert.ok(row);
+      assert.ok(row.querySelector(".ws-twice") === null, `${name} is not held twice`);
+      p.toggleOf(`[data-ws-id="memory:${name}"]`).click();
+      await tick();
+      const opened = p.start().querySelector(`[data-ws-id="memory:${name}"]`);
+      assert.ok(opened.querySelector(".ws-held") === null, `${name} does not open on a read tab`);
+      assert.ok(opened.nextElementSibling?.classList.contains("ws-part-peek"));
+      p.toggleOf(`[data-ws-id="memory:${name}"]`).click();
+    }
+  } finally { p.cleanup(); }
+});
+
+test("a memory read by a turn and preloaded still says held twice", async () => {
+  const p = page({ preloadedMemories: ["style"] });
+  try {
+    const row = p.start().querySelector('[data-ws-id="memory:style"]');
+    assert.equal(row.querySelector(".ws-twice").textContent, "held twice");
+    p.toggleOf('[data-ws-id="memory:style"]').click();
+    await tick();
+    const opened = p.start().querySelector('[data-ws-id="memory:style"]');
+    assert.match(opened.nextElementSibling.querySelector(".ws-tab").textContent, /^read · /);
+    assert.ok(p.start().querySelector(".ws-held"));
   } finally { p.cleanup(); }
 });
 

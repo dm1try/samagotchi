@@ -22,6 +22,10 @@ and commands may change between minor versions. How releases are made:
   wakes chi when it asks, under the same `context.peer_turns` count (claude-peer 0.6.0, codex-peer 0.5.0: their
   skills say when to wake).
 
+### Fixed
+
+- Config-preloaded prompt memories no longer appear held twice or open on an empty read tab in the web's working set.
+
 ## [0.184.0] - 2026-11-22
 
 ### Added
