@@ -215,6 +215,44 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
     end
   end
 
+  # TurnAnchors through Ask, Exchange and Local to SessionManager's
+  # deliver_turn (Local's own, not a double of it), on each delivery.
+  describe "a turn's anchors" do
+    let(:anchors) { Samagotchi::TurnAnchors.new(revises: { turn_id: "123e4567-e89b-12d3-a456-426614174000" }) }
+    let(:managed) { [] }
+
+    def manager_worker(*results)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **options|
+        managed << [id, options]
+        result = results.size > 1 ? results.shift : results.first
+        Samagotchi::SessionInbox.write_output(dir_of(Samagotchi::Session.load(id, state_dir: tmpdir)), "there",
+                                              enqueued_id: result.enqueued_id)
+        result
+      end
+    end
+
+    it "reaches SessionManager.deliver_turn, again on the new link after a continue took the old one" do
+      old = make
+      newer = make
+      heads = [old.id, old.id, newer.id].map { |id| Samagotchi::SessionInbox::Resolved.new(id: id, asked: old.id, via: :same) }
+      allow(access).to receive(:head) { heads.size > 1 ? heads.shift : heads.first }
+      continued = Samagotchi::SessionManager::DeliverResult.new(
+        status: :refused, code: 409, ack: { "error" => Samagotchi::SessionManager::DeliverResult::CONTINUED, "detail" => "c" }
+      )
+      manager_worker(continued, accepted("t3"))
+
+      expect(call(old.id, anchors: anchors).result.text).to eq("there")
+      expect(managed.map { |id, options| [id, options[:anchors]] }).to eq([[old.id, anchors], [newer.id, anchors]])
+    end
+
+    it "sends none without them" do
+      session = make
+      manager_worker(accepted("t1"))
+      call(session.id)
+      expect(managed.first.last).not_to have_key(:anchors)
+    end
+  end
+
   describe "when a continue takes the link after it was located" do
     let(:continued) do
       Samagotchi::SessionManager::DeliverResult.new(

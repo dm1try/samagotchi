@@ -196,6 +196,29 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     expect(result.refusal_text).to eq("refused: #{deleting["detail"]}")
   end
 
+  # A turn's anchors (TurnAnchors) run on this machine only: a non-empty
+  # carrier is refused before any request; nil or empty sends as before.
+  describe "a turn's anchors" do
+    let(:anchors) { Samagotchi::TurnAnchors.new(revises: { turn_id: "123e4567-e89b-12d3-a456-426614174000" }) }
+
+    it "refuses a non-empty one as local-only (BadRequest: exit 2), nothing sent" do
+      access, calls = scripted([202, { status: "accepted", enqueued_id: "e1" }])
+      expect { access.deliver_turn("s-1", prompt: "hi", client_id: "cli:send", images: [], anchors: anchors) }
+        .to raise_error(Samagotchi::SessionAccess::BadRequest, /anchors run on this machine only: run it on /)
+      expect(calls).to be_empty
+    end
+
+    it "sends nil or empty anchors as a turn without them" do
+      [nil, Samagotchi::TurnAnchors.new].each do |none|
+        access, calls = scripted([202, { status: "accepted", enqueued_id: "e1" }])
+        result = access.deliver_turn("s-1", prompt: "hi", client_id: "cli:send", images: [], anchors: none)
+        expect(result.status).to eq(:accepted)
+        expect(calls.find { |_m, path, _o| path.end_with?("/turn") }.last[:body].keys)
+          .to contain_exactly(:prompt, :client_id, :history)
+      end
+    end
+  end
+
   describe "a chain delete (chi --remote sessions delete --chain)" do
     it "names the feature chi web lists (Web::App::CHAIN_DELETE_FEATURE), and that chi web lists it" do
       expect(described_class::CHAIN_DELETE_FEATURE).to eq(Samagotchi::Web::App::CHAIN_DELETE_FEATURE)

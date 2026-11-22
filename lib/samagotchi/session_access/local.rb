@@ -205,9 +205,11 @@ module Samagotchi
       #   SessionManager's own wait
       # @param enqueued_id [String, nil] the turn's id (an ask's request_id's);
       #   nil: SessionManager mints one
+      # @param anchors [TurnAnchors, Hash, nil] what the turn points at
+      #   (SessionManager.deliver_turn's anchors:); nil: none
       def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false, manager: nil, bridge: nil,
-                       enqueued_id: nil)
-        routing = { manager: manager, bridge: bridge, enqueued_id: enqueued_id }.compact
+                       enqueued_id: nil, anchors: nil)
+        routing = { manager: manager, bridge: bridge, enqueued_id: enqueued_id, anchors: anchors }.compact
         SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
                                         follow: follow, **routing, **dir)
       end
