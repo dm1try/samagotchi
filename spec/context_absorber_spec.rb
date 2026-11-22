@@ -464,7 +464,11 @@ RSpec.describe Samagotchi::ContextAbsorber do
       }
       cases.each do |text, quoted|
         expect(described_class.peer_block("Codex", text)).to eq("[PEER MESSAGE from Codex]\n#{quoted}\n[END PEER MESSAGE]\n")
+        # .peer_text_of (the web's rendered text) gives it back as pushed.
+        expect(described_class.peer_text_of("head\n#{described_class.peer_block("Codex", text)}last")).to eq(text)
       end
+      expect(described_class.peer_text_of("head\n[PEER MESSAGE from Codex]\nno end")).to be_nil
+      expect(described_class.peer_text_of("an older note")).to be_nil
     end
 
     it "leaves markdown that only starts with a frame's bare word: chi's system frames match with their colon" do

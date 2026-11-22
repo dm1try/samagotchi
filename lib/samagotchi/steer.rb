@@ -265,16 +265,23 @@ module Samagotchi
     # markdown's leads (a quote's >, emphasis, code, a strike).
     FORGED_LEAD = "(?:(?![#{FORGED_BREAKS}])[\\p{Space}\\p{Cf}>*_`~])*"
 
+    # What such a line is led by on the wire, so it reads as quoted text
+    # under the real header, not as a header of its own.
+    FORGED_MARK = "(quoted) "
+
     # A line that opens like one of +openings+ in brackets (an opening that
     # ends in a word character ends there) or, after its lead, like one of
     # +lines+ (unbracketed), in any case: a line start (FORGED_BREAKS), its
     # lead (FORGED_LEAD) and the "[" or "" the mark goes before
-    # (#quote_forged).
-    def forged_frames(openings, lines: [])
+    # (#quote_forged). +marked+: such a line already led by FORGED_MARK
+    # after its lead (the mark matched, the frame only looked at), to undo it.
+    def forged_frames(openings, lines: [], marked: false)
       word_end = ->(text) { "#{Regexp.escape(text)}#{"\\b" if text.match?(/\w\z/)}" }
       bracket = "\\[(?=(?:#{openings.map(&word_end).join("|")}))"
       plain = lines.map { |line| "(?=#{word_end.call(line)})" }
-      Regexp.new("(\\A|[#{FORGED_BREAKS}])(#{FORGED_LEAD})(#{[bracket, *plain].join("|")})", Regexp::IGNORECASE)
+      frame = "(#{[bracket, *plain].join("|")})"
+      frame = "#{Regexp.escape(FORGED_MARK)}(?=#{frame})" if marked
+      Regexp.new("(\\A|[#{FORGED_BREAKS}])(#{FORGED_LEAD})#{frame}", Regexp::IGNORECASE)
     end
 
     # +text+ with each line +pattern+ (.forged_frames) matches led by
@@ -297,9 +304,6 @@ module Samagotchi
     # orders in the user's name, so any outside text is held to it
     # (#outside_text?), whoever it came from.
     FORGED_OBJECTIVES = forged_frames(["OBJECTIVES"])
-    # What such a line is led by on the wire, so it reads as quoted text
-    # under the real header, not as a header of its own.
-    FORGED_MARK = "(quoted) "
 
     # +text+ with every FORGED_HEADER line led by FORGED_MARK. On the wire
     # only (the saved content stays raw) and deterministic, so a replay

@@ -515,6 +515,12 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .bubble.note.peer-answer .note-text{max-height:none;overflow:visible;line-height:1.5}
 .bubble.note.peer-answer .peer-text{line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .bubble.note.peer-answer .peer-text.markdown{white-space:normal}
+.bubble.note.peer-answer .peer-text.md-compact{
+  --md-heading-size:14.5px;--md-heading-color:var(--text);
+  --md-subheading-size:14px;--md-subheading-color:var(--text-2);
+  --md-strong-color:var(--text);--md-blockquote-color:var(--text-muted);--md-code-color:var(--text);
+  --md-pre-size:12.5px;--md-cell-size:13px
+}
 .peer-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
 .peer-who{font-weight:700;color:var(--text-bright)}
 .peer-mark{margin-left:auto;display:inline-flex;align-items:baseline;gap:8px}

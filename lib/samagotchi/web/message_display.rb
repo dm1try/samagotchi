@@ -4,6 +4,7 @@ require_relative "../session"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
 require_relative "../block_fix/stamp"
+require_relative "../context_absorber"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../message_parts"
@@ -97,8 +98,8 @@ module Samagotchi
       #   but that (a text-less step) is kept with empty content
       # @param cwd [String, nil] the session's working directory (the parts'
       #   tool titles are relative to it)
-      # @param markdown [Boolean] false: no html for a delegate report or an
-      #   answer (the participant review drops both and renders its replies
+      # @param markdown [Boolean] false: no html for a delegate report, an
+      #   answer or a peer's text (the participant review drops them and renders its replies
       #   from their redacted text, ParticipantReview#with_reply_html)
       # @param drawings [Array<Bridge::TurnDrawings::Line>, nil] the owner
       #   show's lines (TurnDrawings.cover against +msgs+): each item of a
@@ -130,6 +131,8 @@ module Samagotchi
             note[:context_source] = context_source.to_s if context_source
             peer = Samagotchi::ContextNote.fetch(m, :peer)
             note[:peer] = peer if peer.is_a?(Hash)
+            peer_html = markdown && peer_text_html(peer, note[:content])
+            note[:peer_html] = peer_html if peer_html
             payload = Samagotchi::ContextNote.fetch(m, :objectives)
             entry = payload && Samagotchi::Objectives.entry(payload, before: objectives)
             if entry
@@ -243,6 +246,16 @@ module Samagotchi
         stamp_drawn(filtered, origins, Array(drawings))
       rescue StandardError
         []
+      end
+
+      # A peer's text in its note (+peer+'s `inline`), rendered as an
+      # answer is: the bubble draws it at once (peer_note.js), so a history
+      # read asks for no render per bubble. nil without a block or a renderer.
+      def peer_text_html(peer, content)
+        return nil unless peer.is_a?(Hash) && (peer["inline"] || peer[:inline]) && @markdown_renderer.available?
+
+        text = Samagotchi::ContextAbsorber.peer_text_of(content)
+        text && @markdown_renderer.render(text)
       end
 
       # The ✂ marks of the outputs right after the model message at +index+,

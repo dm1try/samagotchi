@@ -106,6 +106,11 @@ module Samagotchi
     # Either, after any spaces, format characters or markdown leads, at any
     # line start (Steer.forged_frames).
     PEER_FORGED = Steer.forged_frames(PEER_FORGED_OPENINGS, lines: PEER_FORGED_LINES)
+    # The same lines as #peer_block led them (Steer::FORGED_MARK), for
+    # .peer_text_of to undo the mark.
+    PEER_QUOTED = Steer.forged_frames(PEER_FORGED_OPENINGS, lines: PEER_FORGED_LINES, marked: true)
+    # The block's opening line, whoever the peer (PEER_BLOCK_OPEN).
+    PEER_BLOCK_OPEN_LINE = /\A\[PEER MESSAGE from [^\]\n]*\]\z/
     # The most characters of a peer's text a note that doesn't wake holds
     # (a held or nowake answer, which the model may never need): a longer
     # one gets the long line and context_read, so background stays small.
@@ -251,6 +256,20 @@ module Samagotchi
 
       quoted = Steer.quote_forged(text.chomp, PEER_FORGED)
       "#{format(PEER_BLOCK_OPEN, peer: peer)}\n#{quoted}\n#{PEER_BLOCK_CLOSE}\n"
+    end
+
+    # The peer's text as it pushed it from a note's +content+: between the
+    # first block opening line and the last closing one, the mark
+    # .peer_block led its forged lines with undone; nil when the content
+    # holds no block (an older note, a long answer). peer_text.js
+    # peerBlock is the web's own.
+    def self.peer_text_of(content)
+      lines = content.to_s.split("\n", -1)
+      open = lines.index { |line| line.match?(PEER_BLOCK_OPEN_LINE) } or return nil
+      close = lines.rindex(PEER_BLOCK_CLOSE)
+      return nil unless close && close > open
+
+      lines[(open + 1)...close].join("\n").gsub(PEER_QUOTED) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}" }
     end
 
     def self.peer_read_kind(text, long)

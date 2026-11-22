@@ -90,6 +90,17 @@ test("an inline answer (peer.inline): the text in .peer-text under the summary, 
   assert.match(told, /^Updated: claude-outbox\..*\n> phase A: VERDICT CHANGES, 2 issues\nchi started this turn/s);
 });
 
+test("an inline answer from a history read (peer_html): its rendered markdown at once, the source kept, marked rendered", () => {
+  const el = elementOf(peerNoteTemplate(wakeNote({ content: INLINE, peer: peer({ inline: true }), peer_html: "<ol><li><strong>a bug</strong></li></ol>" })));
+  const text = el.querySelector(".peer-text");
+  assert.ok(text.classList.contains("markdown") && text.classList.contains("md-compact"));
+  assert.equal(text.querySelector("strong").textContent, "a bug");
+  assert.equal(text.dataset.peerMd, "1. **a bug**\n[END NOTE]");
+  // No block (a long answer): peer_html alone draws nothing.
+  const long = elementOf(peerNoteTemplate(wakeNote({ peer: peer({ inline: true }), peer_html: "<p>x</p>" })));
+  assert.ok(long.querySelector(".peer-text") === null);
+});
+
 test("without inline (an older session, a long answer) or with inline but no block, the bubble draws as before", () => {
   for (const note of [wakeNote(), wakeNote({ content: INLINE }), wakeNote({ peer: peer({ inline: true }) })]) {
     const el = elementOf(peerNoteTemplate(note));

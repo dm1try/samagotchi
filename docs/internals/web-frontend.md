@@ -858,12 +858,15 @@ parse is `peer_text.js`'s cut of an `inline` note's text block.
   what an opening note has (`bubble note`, `turn-start`, `data-opening-id`, the time title), so `TURN_PROMPT`,
   `card_stamps.js`, `stage_handoff.js OPENING`, `reload_check.js` and `revise_stack.js` (its `.note-text` is the
   summary) read it as any wake note. With `peer.inline` the peer's text goes in `.peer-text` under the summary (an
-  element of its own, not a `data-peer-slot`, as plain text with its source in `data-peer-md`), the "what chi told the
+  element of its own, not a `data-peer-slot`, its source in `data-peer-md`): already as markdown when a history
+  read sent the note's `peer_html` (`MessageDisplay#peer_text_html`, `ContextAbsorber.peer_text_of`, rendered and
+  sanitized as an answer is), else as plain text (a live `context_added`, an older server), the "what chi told the
   agent" fold shows the content without the block, and the bubble carries `data-peer-inline`. Without it (an older
   session, an answer over the cap) the bubble draws as before.
 - `peer_text.js` (pure): `peerBlock(content)` cuts the text out between the first `[PEER MESSAGE from …]` line and the
   last `[END PEER MESSAGE]` line and undoes the absorber's `(quoted) ` mark on forged frame lines
-  (`PEER_FORGED_OPENINGS`, the Ruby `ContextAbsorber::PEER_FORGED_OPENINGS`: `peer_text.test.js` keeps the two alike);
+  (`PEER_FORGED_OPENINGS` and `PEER_FORGED_LINES`, the Ruby `ContextAbsorber`'s, and the same line breaks and leads
+  as `Steer::FORGED_BREAKS` / `FORGED_LEAD`: `peer_text.test.js` keeps the lists alike and undoes the Ruby specs' cases);
   null without a block.
 - **The slot idiom.** Finished rows are never drawn again and a reload makes them anew, so what arrives later is
   drawn into empty slots the templates leave: a send row's `<span class="peer-slot" data-peer-ref>` after its params
@@ -876,7 +879,8 @@ parse is `peer_text.js`'s cut of an `inline` note's text block.
   (`EXCHANGES_CAP`) or holds a send drawn before it; else it is unknown and gets no pill, as are the sends of a peer
   the read doesn't name), the ↑ into each answer (none for an answer no send claims) and "Read the full
   answer" into the last answer of each source only, unless that bubble is `data-peer-inline` (its text is there). It
-  also swaps an inline bubble's `.peer-text` for its markdown (`renderMarkdown`, POST /api/render, sanitized there; an
+  also swaps a plain inline bubble's `.peer-text` (not `.markdown`: one that came with `peer_html` asks nothing) for
+  its markdown (`renderMarkdown`, POST /api/render, sanitized there; an
   optional factory dep, so a cached older app.js leaves the text plain), once per element; `history_shape.js` reads a
   `[data-peer-md]` element as its source, so live and an offscreen reload compare alike. Its one delegated click handler on the turn roots does the jumps,
   buttons, never an `href` (the page routes by its hash): ↓ `revealInHistory` + `scrollIntoView` on the answer; ↑

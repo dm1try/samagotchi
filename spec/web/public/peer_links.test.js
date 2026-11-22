@@ -116,6 +116,20 @@ test("an inline answer's text stays plain when markdown is off (no renderMarkdow
   assert.ok(!inline.querySelector(".peer-text").classList.contains("markdown"));
 });
 
+test("an inline answer that came rendered (peer_html) asks for no render", async () => {
+  const history = document.createElement("div");
+  document.body.replaceChildren(history);
+  const inline = elementOf(noteBubbleTemplate({ content: "x\n[PEER MESSAGE from Claude]\n**b**\n[END PEER MESSAGE]\ny", context_source: "claude-outbox",
+    peer: { peer: "claude", label: "Claude", summary: "s", serial: 5, inline: true }, peer_html: "<p><strong>b</strong></p>" }));
+  history.append(inline);
+  const peers = createPeers({ sessionId: () => "s1", hasPeer: () => true, onChange: () => {}, list: async () => PEERS, win: { addEventListener() {} } });
+  const asked = [];
+  createPeerLinks({ peers, roots: () => [history], renderMarkdown: async (text) => { asked.push(text); return "<p>again</p>"; } }).draw();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(asked, []);
+  assert.equal(inline.querySelector(".peer-text strong").textContent, "b");
+});
+
 test("↓ on a send goes to its answer: revealed, scrolled to, focused; ↑ goes back to the last send of its id before it", async () => {
   const { history, links } = page();
   await links.drawn();
