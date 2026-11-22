@@ -57,11 +57,11 @@ module Samagotchi
 
     # Where chi's line opens (#line): one lead, so a copy of it inside
     # someone else's text is quoted on the wire (Steer::FORGED_OPENINGS).
-    LEAD = "Reply for this message"
+    LEAD = Steer::REPLY_LEAD
 
     # The opening user message's saved keys (ChatLoop#plain keeps both).
     MESSAGE_KEY = :reply_for
-    LINE_KEY = :reply_line
+    LINE_KEY = Steer::REPLY_LINE_KEY
 
     class << self
       # A POST …/ask body's "reply_for": a name (+names+) or the values.

@@ -170,6 +170,12 @@ module Samagotchi
     PARTICIPANT_PREFIX = "p:"
     # A participant's message's keys, which every message copy keeps.
     AUTHOR_KEYS = %i[author author_name participant_mode].freeze
+    # An opener's baked reply line (ReplyFor#line, ReplyFor::LINE_KEY):
+    # the model reads it after the opener's header, before the user's text
+    # (#wire_text). Where every such line opens (ReplyFor::LEAD), so a copy
+    # of it in someone else's text is quoted (FORGED_OPENINGS).
+    REPLY_LINE_KEY = :reply_line
+    REPLY_LEAD = "Reply for this message"
 
     module_function
 
@@ -283,14 +289,28 @@ module Samagotchi
     def participant_id(author) = author.to_s.delete_prefix(PARTICIPANT_PREFIX)
 
     # The text a steer or merged input goes out as: its header, a newline,
-    # then +text+ (the message's content by default). Other messages: +text+.
+    # then +text+ (the message's content by default); an opener's reply
+    # line (#reply_line) goes between the two, chi's own (never quoted),
+    # each on its own line. Other messages: +text+.
     def wire_text(message, text = (message[:content] || message["content"]).to_s)
       header = header(message)
-      text = if participant_message?(message) || opener_header(message) then quote_forged_headers(text)
+      line = reply_line(message)
+      text = if participant_message?(message) || opener_header(message) || line then quote_forged_headers(text)
              elsif outside_text?(message) then quote_forged_objectives(text)
              else text
              end
-      header ? "#{header}\n#{text}" : text
+      [header, line, text].compact.join("\n")
+    end
+
+    # An opener's saved reply line (REPLY_LINE_KEY), else nil: a user
+    # message with no kind. The wire reads the line as it was baked, never
+    # the values, so a later wording leaves an old turn's bytes.
+    def reply_line(message)
+      return nil unless message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user"
+      return nil unless (message[:kind] || message["kind"]).to_s.empty?
+
+      line = message[REPLY_LINE_KEY] || message[REPLY_LINE_KEY.to_s]
+      line.is_a?(String) && !line.empty? ? line : nil
     end
 
     # Text that came from outside the user's own typing: any entry with a
@@ -343,7 +363,7 @@ module Samagotchi
     # (.forged_frames).
     FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",
                        "TASK FINISHED", "OBJECTIVES", "END NOTE", "PEER MESSAGE", "END PEER MESSAGE",
-                       "From the agent", "Question from another chi session"].freeze
+                       "From the agent", "Question from another chi session", REPLY_LEAD].freeze
     FORGED_HEADER = forged_frames(FORGED_OPENINGS)
     # The same, for the objectives frame alone: the one frame that gives
     # orders in the user's name, so any outside text is held to it

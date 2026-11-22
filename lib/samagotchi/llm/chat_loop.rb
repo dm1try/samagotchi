@@ -21,6 +21,7 @@ require_relative "../cut_policy"
 require_relative "../context_status"
 require_relative "../context_window"
 require_relative "../context_note"
+require_relative "../reply_for"
 require_relative "../tool_output_cut"
 require_relative "../tool_runner"
 require_relative "../tool_response"
@@ -261,8 +262,9 @@ module Samagotchi
               wire << system_message(entry, index)
             end
           when "user"
-            # A steer or merged input (always a String) goes with its header.
-            content = Steer.header(entry) ? Steer.wire_text(entry, entry[:content].to_s) : entry[:content]
+            # A steer or merged input (always a String) goes with its header,
+            # an opener with its header or its reply line (Steer.wire_text).
+            content = Steer.header(entry) || Steer.reply_line(entry) ? Steer.wire_text(entry, entry[:content].to_s) : entry[:content]
             wire << { role: "user", content: parts(content, items) }
           when "model"
             message = assistant_message(entry, paired)
@@ -499,6 +501,9 @@ module Samagotchi
           message[:turn_start] = true if entry[:turn_start] == true
           message[:verify] = entry[:verify] if entry[:verify].is_a?(Hash)
           message[:revises] = entry[:revises] if entry[:revises].is_a?(Hash)
+          # An opener's surface (ReplyFor) and the line baked from it, which the wire reads.
+          message[ReplyFor::MESSAGE_KEY] = entry[ReplyFor::MESSAGE_KEY] if entry[ReplyFor::MESSAGE_KEY].is_a?(Hash)
+          message[ReplyFor::LINE_KEY] = entry[ReplyFor::LINE_KEY] if entry[ReplyFor::LINE_KEY].is_a?(String)
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           message[:anthropic_content] = entry[:anthropic_content] if entry[:anthropic_content].is_a?(Array)
           ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }
