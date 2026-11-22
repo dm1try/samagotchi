@@ -96,9 +96,12 @@ module Samagotchi
       #   waited on again, nothing sent (Reply rebound), unless it only waits
       #   as an input file with no worker running (#waiting_turn?); else the
       #   delivery carries the id, which the Bridge dedupes
+      # @param anchors [TurnAnchors, Hash, nil] what the turn points at
+      #   (TurnAnchors), on every delivery (each relocation after a
+      #   continue's too); nil: none sent, as before
       # @return [Reply, Ran, Refused]
       def call(given, prompt:, client_id:, queue:, timeout:, cap:, continuing_wait: Exchange::CONTINUING_WAIT,
-               cancelled: nil, request_id: nil)
+               cancelled: nil, request_id: nil, anchors: nil)
         enqueued_id = SessionInbox.enqueued_id_for("ask:#{request_id}") if request_id
         deadline = @clock.call + cap
         # Everything before the wait ends by here, so its MIN_SLICE fits.
@@ -127,7 +130,7 @@ module Samagotchi
           return Refused.new(kind: :busy, session_id: at.id, busy: busy) if busy
 
           start ||= @access.prepare_wait(at.id, session: session)
-          more = enqueued_id ? { enqueued_id: enqueued_id } : {}
+          more = { enqueued_id: enqueued_id, anchors: anchors }.compact
           result = @exchange.attempt(at, prompt, client_id: client_id, queue: queue, **more).result
           if result.continued?
             follow_until ||= [@clock.call + continuing_wait, ready_by].min

@@ -156,6 +156,14 @@ RSpec.describe Samagotchi::SessionAccess::Exchange do
                                                                 delivery: nil, follow: true }])
     end
 
+    it "passes anchors to deliver_turn only when given, as they came" do
+      anchors = Samagotchi::TurnAnchors.new(revises: { turn_id: "123e4567-e89b-12d3-a456-426614174000" })
+      exchange.attempt(resolved(new_id), "again", client_id: "cli:send", anchors: anchors)
+      expect(access.calls.last[2]).to include(anchors: anchors)
+      exchange.attempt(resolved(new_id), "again", client_id: "cli:send")
+      expect(access.calls.last[2]).not_to have_key(:anchors)
+    end
+
     it "queues to a running session with queue:" do
       access.session = session(status: Samagotchi::Session::STATUS_RUNNING)
       access.owner_value = :worker

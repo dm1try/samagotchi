@@ -252,7 +252,11 @@ module Samagotchi
       # @raise [SessionManager::OwnedByTUI]
       # @param follow [Boolean] +id+ is the head #head resolved: sent only
       #   when true (an older chi web ignores it and delivers as before)
-      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false)
+      # @param anchors [TurnAnchors, Hash, nil] local-only (as Contract's words: BadRequest, exit 2): a
+      #   non-empty one is refused before any request; nil or empty sends as before
+      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false, anchors: nil)
+        raise BadRequest.new("a turn's anchors run on this machine only: run it on #{name}", code: "local_only") unless anchors.nil? || TurnAnchors.from(anchors).empty?
+
         body = { prompt: prompt, client_id: sent_id(client_id), history: false }
         body[:follow] = true if follow
         body[:images] = images.map { |ref| { file: ref[:file], name: ref[:name] } } unless images.empty?
