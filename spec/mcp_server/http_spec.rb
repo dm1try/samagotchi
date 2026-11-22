@@ -59,4 +59,20 @@ RSpec.describe Samagotchi::McpServer::Http do
       end
     end
   end
+
+  it "uses a null id for a modern object-id header mismatch" do
+    env = { "HTTP_MCP_PROTOCOL_VERSION" => "2099-01-01", "HTTP_MCP_METHOD" => "tools/list" }
+    message = { jsonrpc: "2.0", id: { bad: true }, method: "tools/list",
+                params: { _meta: { "io.modelcontextprotocol/protocolVersion" => "2026-07-28" } } }
+    status, _headers, body = post(message, env)
+    expect([status, body["id"], body["error"]["code"]]).to eq([400, nil, -32_020])
+  end
+
+  it "uses a null id for a legacy array-id session refusal" do
+    message = { jsonrpc: "2.0", id: [1], method: "tools/list" }
+    status, _headers, body = post(message)
+    expect([status, body["id"], body["error"]["code"], body["error"]["message"]]).to eq(
+      [400, nil, -32_600, "Bad Request: Missing session ID"]
+    )
+  end
 end

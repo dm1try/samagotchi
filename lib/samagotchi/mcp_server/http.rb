@@ -59,7 +59,7 @@ module Samagotchi
 
       def header_refusal(env, message)
         params = message["params"].is_a?(Hash) ? message["params"] : {}
-        id = message["id"]
+        id = Protocol.request_id(message)
         version = env["HTTP_MCP_PROTOCOL_VERSION"]
         meta_version = params.dig("_meta", VERSION_META)
         unless version == meta_version
@@ -86,13 +86,13 @@ module Samagotchi
 
         session = env["HTTP_MCP_SESSION_ID"]
         unless session.is_a?(String) && SESSION_ID.match?(session)
-          return Protocol.error_body(message["id"], Protocol::INVALID_REQUEST, "Bad Request: Missing session ID")
+          return Protocol.error_body(Protocol.request_id(message), Protocol::INVALID_REQUEST, "Bad Request: Missing session ID")
         end
 
         version = env["HTTP_MCP_PROTOCOL_VERSION"]
         return nil if version.nil? || LEGACY_VERSIONS.include?(version)
 
-        Protocol.error_body(message["id"], Protocol::INVALID_REQUEST,
+        Protocol.error_body(Protocol.request_id(message), Protocol::INVALID_REQUEST,
                             "Bad Request: Unsupported protocol version #{version} (supported: #{LEGACY_VERSIONS.join(", ")})")
       end
 

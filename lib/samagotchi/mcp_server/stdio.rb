@@ -61,6 +61,7 @@ module Samagotchi
 
       def lock_era(message)
         return if @era || !message.is_a?(Hash) || !message.key?("id") || !message["method"].is_a?(String)
+        return unless Protocol.valid_id?(message)
 
         @era = Protocol.era_of(message)
         @log&.call("mcp: #{@era} era (#{message["method"]})")
