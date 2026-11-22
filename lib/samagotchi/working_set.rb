@@ -346,6 +346,64 @@ module Samagotchi
       Now.new(text: now, diff: TextDiff.unified(had, now).merge(new_file: false), gone: false)
     end
 
+    # A prompt memory part's text now (identity, a preload, a model note),
+    # fetched with the params its build saved (PromptPart#params) and the
+    # composer the build used (Tools::MemoryRead.compose, ModelNotes.body_at),
+    # so an unchanged memory's text is the item's text byte for byte. The
+    # params are the session file's: the guard is #memory_now's. Their
+    # system_dir and project_dir must be inside +root+ (chi web's own
+    # MemoryPaths.system_dir) and the files resolved must pass
+    # #memory_paths?, or nothing is read (nil). No model key or folder is
+    # worked out again: the saved ones only. +kind+: "identity", "preloads"
+    # or "notes"; +name+: the part's ref.
+    # @return [Now, nil] text and gone (diff nil); nil when refused
+    def prompt_memory_now(kind, name, params, root:)
+      return nil unless params.is_a?(Hash) && resolution_metadata?(params)
+
+      system_dir = field(params, :system_dir)
+      project_dir = field(params, :project_dir)
+      return nil unless system_dir && inside_root?(system_dir, root) && (project_dir.nil? || inside_root?(project_dir, root))
+      return nil if name.to_s.strip.empty? || Tools::MemoryRead.invalid_name?(name.to_s)
+
+      kind.to_s == "notes" ? note_now(name.to_s, params, system_dir, project_dir, root) : read_now(name.to_s, params, system_dir, root)
+    rescue SystemCallError, ArgumentError
+      nil
+    end
+
+    # A preload's or identity's text now: resolved as memory_read resolves it.
+    def read_now(name, params, system_dir, root)
+      resolved = resolve_memory(name, params, system_dir: system_dir)
+      return nil if resolved == :stamped_paths
+      return Now.new(text: nil, diff: nil, gone: true) unless resolved
+      return nil unless memory_paths?(resolved_memory_entry(resolved), root)
+
+      Now.new(text: Tools::MemoryRead.compose(resolved), diff: nil, gone: false)
+    end
+
+    # A model note's text now: its scope's file, its overlay beside it.
+    def note_now(name, params, system_dir, project_dir, root)
+      require_relative "model_notes"
+      dir = field(params, :requested_scope).to_s == "project" ? project_dir : system_dir
+      return nil unless dir
+
+      keys = [field(params, :model_key), field(params, :fallback_model_key)]
+      path = File.join(dir, "#{name}.md")
+      overlay = keys.compact.map { |key| key.to_s.strip }.reject(&:empty?).map { |key| File.join(dir, "#{name}.#{key}.md") }
+                    .find { |candidate| File.file?(candidate) }
+      return nil unless memory_paths?({ path: path, overlay: overlay && { path: overlay } }, root)
+      return Now.new(text: nil, diff: nil, gone: true) unless File.file?(path)
+
+      text = ModelNotes.body_at(path, keys, dir: dir)
+      Now.new(text: text, diff: nil, gone: text.nil?)
+    end
+
+    # Whether +path+ is +root+ or inside it.
+    def inside_root?(path, root)
+      expanded = File.expand_path(path.to_s)
+      base = File.expand_path(root.to_s)
+      expanded == base || expanded.start_with?(File.join(base, ""))
+    end
+
     # Whether a stamp entry's file and its overlay's are .md files inside the
     # memories folder +root+ (a stamp is the session file's: never read
     # what it names elsewhere).
@@ -674,6 +732,7 @@ module Samagotchi
                          :changed?, :memory_changed?, :same_path?, :differs?, :stamp_hash, :stamp_of, :field, :event, :body_of,
                          :lines_of, :saved_diff, :memory_entries, :memory_paths?, :project_dir_within_root?,
                          :resolution_metadata?, :resolve_memory, :resolved_memory_entry, :memory_part, :overlay_tail,
-                         :memory_scope, :memory_body, :memory_item_scope
+                         :memory_scope, :memory_body, :memory_item_scope, :read_now, :note_now,
+                         :inside_root?
   end
 end
