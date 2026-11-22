@@ -206,9 +206,18 @@ module Samagotchi
 
       running = session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == id
       queued = SessionInbox.waiting_input(session_dir, id) == :turn_end
-      ended = session.last_turn&.enqueued_id == id || !SessionInbox.reply_for(session_dir, id).nil? ||
-              !TurnCheckpoint.settled_turn(session_dir, id).nil?
-      running || queued || ended || !SessionInbox.merged_into(session_dir, id).nil?
+      running || queued || ended_turn?(session, session_dir: session_dir, turn: id) ||
+        !SessionInbox.merged_into(session_dir, id).nil?
+    end
+
+    # Whether +turn+ has ended: the last one to have ended, one with its
+    # reply file, or one settled (refused, canceled, killed).
+    def ended_turn?(session, session_dir:, turn:)
+      id = turn.to_s
+      return false if id.empty?
+
+      session.last_turn&.enqueued_id == id || !SessionInbox.reply_for(session_dir, id).nil? ||
+        !TurnCheckpoint.settled_turn(session_dir, id).nil?
     end
 
     # Whether the session's live worker names TURN_IDS_FEATURE.

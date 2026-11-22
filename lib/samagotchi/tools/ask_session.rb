@@ -72,6 +72,8 @@ module Samagotchi
         require_relative "../session_access/ask"
         require_relative "../session_access/exchange"
         require_relative "../session_access/exchange/token"
+        require_relative "../reply_wait"
+        require_relative "../turn_checkpoint"
       end
 
       def initialize(peers, access, slice:, cap:)
@@ -106,9 +108,11 @@ module Samagotchi
           return refused
         end
 
+        head = SessionInbox::Head.resolve(:send, Session.resolve!(given, state_dir: @peers.state_dir), state_dir: @peers.state_dir)
         asker = SessionAccess::Ask.new(@access, exchange: exchange)
         reply = asker.call(given, prompt: question, client_id: ClientId.session(@peers.session_id), queue: true,
-                                  timeout: @slice, cap: @cap, cancelled: @cancelled, request_id: request_id(given, question))
+                                  timeout: @slice, cap: @cap, cancelled: @cancelled,
+                                  request_id: request_id(given, question, head.id))
         words(reply)
       end
 
@@ -141,12 +145,23 @@ module Samagotchi
       end
 
       # The same question to the same session within one turn waits on the
-      # first one's turn (a retry asks once): the asker, its turn, the
-      # target as given and the question.
-      def request_id(given, question)
+      # first one's turn while that turn still runs or is queued (a retry
+      # after a timeout asks once): the asker, its turn, the target as given
+      # and the question. Once that turn has ended (answered, refused,
+      # canceled: ReplyWait.ended_turn? on the session asked, +head_id+), the
+      # same words ask again under the next key (-2, -3, …), never replaying
+      # an old answer (Ask#call rebinds to any turn of its key it knows).
+      def request_id(given, question, head_id)
         turn = @peers.respond_to?(:turn_id) ? @peers.turn_id : nil
         digest = Digest::SHA256.hexdigest([given, question].join("\0"))[0, 16]
-        "#{@peers.session_id[0, 8]}-#{turn || "none"}-#{digest}"
+        base = "#{@peers.session_id[0, 8]}-#{turn || "none"}-#{digest}"
+        session = Session.load(head_id, state_dir: @peers.state_dir)
+        dir = Session.session_dir(head_id, state_dir: @peers.state_dir)
+        (1..).each do |n|
+          key = n == 1 ? base : "#{base}-#{n}"
+          enqueued = SessionInbox.enqueued_id_for("ask:#{key}")
+          return key unless ReplyWait.ended_turn?(session, session_dir: dir, turn: enqueued)
+        end
       end
 
       def words(reply)
