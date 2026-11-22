@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
 require_relative "context_note"
-require_relative "prompt_files"
 require_relative "prompt_part"
 require_relative "version"
-require_relative "working_set"
+require_relative "working_set_locator"
 
 module Samagotchi
   # One prompt part as chi sent it: what chi web's GET
@@ -29,9 +28,6 @@ module Samagotchi
     # The route's refusals.
     INVALID = "expected key (a prompt part's key)"
     UNKNOWN = "no such prompt part in this session"
-
-    # The memory kinds a changed head re-fetches (with the saved params).
-    MEMORY_KINDS = %w[identity preloads notes].freeze
 
     module_function
 
@@ -97,38 +93,14 @@ module Samagotchi
     end
 
     # The part's source now ({text:, gone:}), nil when there is none to
-    # fetch or the guard refuses: a memory with the saved params
-    # (WorkingSet.prompt_memory_now), an AGENTS.md on the session's own
-    # chain. An appended file is never fetched (its path came with a run's
-    # flags, not from where the session works); base, the kit, a plugin's
-    # section, an index and the session lines are chi's own text.
+    # fetch or the guard refuses (WorkingSet::Locator, origin :prompt: a
+    # memory with the saved params, an AGENTS.md on the session's own
+    # chain, never an appended file).
     def now_of(part, root:, cwd:)
-      now = if MEMORY_KINDS.include?(part.kind)
-              WorkingSet.prompt_memory_now(part.kind, part.ref, part.params, root: root)
-            elsif part.kind == "agents"
-              agents_now(part, cwd)
-            end
+      now = WorkingSet::Locator.of_part(part).fetch(root: root, cwd: cwd)
       now && { text: now.text, gone: now.gone }
     end
 
-    def agents_now(part, cwd)
-      path = part.params.is_a?(Hash) ? part.params["path"].to_s : ""
-      return nil if path.empty? || cwd.to_s.empty?
-
-      chain = PromptFiles.agents_paths(cwd).map { |candidate| real(candidate) }
-      return nil unless chain.include?(real(path))
-
-      text = PromptFiles.content(path)
-      WorkingSet::Now.new(text: text, diff: nil, gone: text.nil?)
-    end
-
-    # The same file however it's spelled (/tmp vs /private/tmp on macOS).
-    def real(path)
-      File.realpath(path)
-    rescue SystemCallError
-      File.expand_path(path)
-    end
-
-    private_class_method :sent_of, :now_of, :agents_now, :real
+    private_class_method :sent_of, :now_of
   end
 end
