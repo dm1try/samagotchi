@@ -278,6 +278,35 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(Time.iso8601(stored.next_due)).to be > @clock
     end
 
+    it "adds a \"disabled\" key in json to the outcome that disabled its schedule, and nothing else" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every, max_failures: 2)
+      FileUtils.rm_f(Samagotchi::Session.session_file(id, state_dir: @dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: @dir))
+      due
+
+      status, printed, error = run("tick", "--format", "json")
+      expect(status).to eq(0), error
+      expect(JSON.parse(printed)["outcomes"].first.keys).to eq(%w[id status detail])
+      due
+      status, printed, error = run("tick", "--format", "json")
+      expect(status).to eq(0), error
+      expect(JSON.parse(printed)["outcomes"]).to eq([{ "id" => entry.id, "status" => "failed",
+                                                       "detail" => "the chain is gone", "disabled" => true }])
+    end
+
+    it "prints (disabled) on the tick line that disabled its schedule" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every, max_failures: 1)
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: @dir))
+      FileUtils.rm_f(Samagotchi::Session.session_file(id, state_dir: @dir))
+      due
+
+      status, printed, error = run("tick")
+      expect(status).to eq(0), error
+      expect(printed).to eq("#{entry.id}  failed  the chain is gone (disabled)\n")
+    end
+
     it "says so when nothing is due, and when another tick holds the lock" do
       status, printed, error = run("tick")
       expect(status).to eq(0), error

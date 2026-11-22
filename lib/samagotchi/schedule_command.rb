@@ -186,7 +186,11 @@ module Samagotchi
 
       result = @schedules.tick(dry_run: @opts[:dry_run] ? true : false)
       if @opts[:format] == "json"
-        @stdout.puts(JSON.pretty_generate({ "locked" => result.locked, "outcomes" => result.outcomes.map { |outcome| { "id" => outcome.id, "status" => outcome.status, "detail" => outcome.detail } } }))
+        outcomes = result.outcomes.map do |outcome|
+          line = { "id" => outcome.id, "status" => outcome.status, "detail" => outcome.detail }
+          outcome.disabled ? line.merge("disabled" => true) : line
+        end
+        @stdout.puts(JSON.pretty_generate({ "locked" => result.locked, "outcomes" => outcomes }))
         return CLI::Exit::OK
       end
 
@@ -201,7 +205,7 @@ module Samagotchi
 
       result.outcomes.each do |outcome|
         word = outcome.status == "dry" ? "would fire" : outcome.status
-        @stdout.puts("#{outcome.id}  #{word}  #{outcome.detail}")
+        @stdout.puts("#{outcome.id}  #{word}  #{outcome.detail}#{" (disabled)" if outcome.disabled}")
       end
       CLI::Exit::OK
     rescue Schedules::Corrupt => e
@@ -216,7 +220,7 @@ module Samagotchi
       return failed("no schedule #{id}") if result.nil?
 
       if result.is_a?(Schedules::Outcome)
-        @stdout.puts("#{id}: #{result.status} · #{result.detail}")
+        @stdout.puts("#{id}: #{result.status} · #{result.detail}#{" (disabled)" if result.disabled}")
         return result.status == "failed" ? CLI::Exit::FAILED : CLI::Exit::OK
       end
 
