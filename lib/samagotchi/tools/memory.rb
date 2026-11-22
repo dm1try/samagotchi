@@ -105,6 +105,16 @@ module Samagotchi
       end
       private_class_method :prompt_memory_name
 
+      # The text a Resolved entry reads as: its file, its overlay appended
+      # (#append_overlay). memory_read's body of one name and the prompt's
+      # identity and preloads (SystemPrompt, through #call); the working
+      # set's re-fetch of a prompt part resolves with the saved keys and
+      # composes here too, so the two never differ. +read+: the file reader.
+      def self.compose(resolved, read: ->(path) { File.read(path, encoding: "UTF-8") })
+        body = read.call(resolved.path)
+        resolved.overlay_path ? append_overlay(body, read.call(resolved.overlay_path), resolved.overlay_key) : body
+      end
+
       def self.overlay_prefix(key) = "#{SEPARATOR}Model-specific guidance (#{key}):\n"
 
       def self.append_overlay(body, overlay_text, key) = "#{body}#{overlay_prefix(key)}#{overlay_text}"
@@ -166,9 +176,7 @@ module Samagotchi
             next
           end
 
-          body = File.read(resolved.path, encoding: "UTF-8")
-          body = append_overlay(body, File.read(resolved.overlay_path, encoding: "UTF-8"), resolved.overlay_key) if resolved.overlay_path
-          results << body
+          results << compose(resolved)
           reads[name] = { path: resolved.path, overlay_path: resolved.overlay_path, requested_scope: scope,
                           model_key: model_key, fallback_model_key: fallback_model_key, project_dir: project_dir }
         end

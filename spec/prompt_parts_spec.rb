@@ -82,6 +82,75 @@ RSpec.describe Samagotchi::SystemPrompt, "#prompt_parts" do
 
   def by_kind(parts, kind) = parts.select { |part| part.kind == kind.to_s }
 
+  # Every kind with one, two and three or more items, notes in two scopes, a
+  # duplicate preload and one name in two scopes: what R1 (the items made
+  # first-class) must keep byte for byte. The fixture was written by the
+  # code before R1.
+  describe "the parts golden" do
+    let(:many_notes) do
+      [note("model_notes_a", "system", "SYSTEM A"), note("model_notes_b", "system", "SYSTEM B\nline two"),
+       note("model_notes_c", "project", "PROJECT C")]
+    end
+    let(:plugins) { [plugin("alpha", "one", "First."), plugin("beta", "two", "Second.\nTwo lines."), plugin("gamma", "three", "Third.\n")] }
+
+    def golden_builds
+      FileUtils.mkdir_p(File.join(@project, ".git"))
+      FileUtils.mkdir_p(File.join(@project, "pkg", "inner"))
+      File.write(File.join(@project, "pkg", "AGENTS.md"), "Pkg rules.\n\n\n")
+      File.write(File.join(@project, "pkg", "inner", "AGENTS.md"), "Inner rules.")
+      File.write(File.join(@project, "more.md"), "More.\n")
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[dup dup project/x system/x])
+      allow(Samagotchi::ConfigFile).to receive(:appended_prompt_files).and_return(%w[../../extra.md ../../more.md])
+      Dir.chdir(File.join(@project, "pkg", "inner")) do
+        [[true, Samagotchi::ModelProfile.gemma4], [false, Samagotchi::ModelProfile.qwen36], [false, Samagotchi::ModelProfile.gemma4]].map do |chat, profile|
+          prompt = builder(profile: profile, memories: %w[cli_note], model_notes: -> { many_notes }, participants: -> { true },
+                           sections: -> { plugins })
+          allow(prompt).to(receive(:tool_surface).and_wrap_original { |_orig, layers| Samagotchi::Tools::ToolSurface.for(registry_with_tool, layers: layers) })
+          prompt.build(chat: chat)
+          { chat: chat, profile: profile.name, parts: prompt.prompt_parts.map { |part| part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope) } }
+        end
+      end
+    end
+
+    it "records the items where the builders render them: re-joined they are each section, the sections the prompt" do
+      FileUtils.mkdir_p(File.join(@project, ".git"))
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[dup dup])
+      [true, false].each do |chat|
+        prompt = builder(profile: Samagotchi::ModelProfile.qwen36, memories: %w[cli_note], model_notes: -> { many_notes },
+                         participants: -> { true }, sections: -> { plugins })
+        built = prompt.built_for(chat: chat)
+        built.parts.each do |section|
+          expect(section.items.map(&:sent).join(section.join)).to eq(section.text), section.kind.to_s
+          expect(section.items.map(&:kind).uniq).to eq([section.kind])
+        end
+        stable, volatile = built.parts.partition { |section| !%i[participants model location session].include?(section.kind) }
+        expect(built.prompt).to eq("#{stable.map(&:text).join("\n")}\n#{volatile.map(&:text).join("\n")}")
+        preloads = built.parts.find { |section| section.kind == :preloads }
+        expect(preloads.items.map(&:ref)).to eq(%w[dup dup cli_note])
+        notes = built.parts.find { |section| section.kind == :notes }
+        expect(notes.items.map(&:lead)).to eq(["Model notes (for box:m, scope=system):\n\n## model_notes_a\n", "## model_notes_b\n",
+                                               "Model notes (for box:m, scope=project):\n\n## model_notes_c\n"])
+        expect(notes.items.map(&:text)).to eq(many_notes.map(&:body))
+      end
+    end
+
+    it "keeps every build's prompt_parts as they were before R1" do
+      path = File.expand_path("fixtures/prompt_parts/golden.json", __dir__)
+      actual = JSON.pretty_generate(JSON.parse(JSON.generate(golden_builds)).each do |build|
+        build["parts"].each do |part|
+          part["ref"] = part["ref"]&.sub(@project, "<project>")
+          # The temp folder's path (its length varies with the pid) is in the location lines only.
+          part.merge!("chars" => 0, "tokens" => 0) if part["kind"] == "location"
+        end
+      end)
+      if ENV["UPDATE_PROMPTS"] == "1"
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "#{actual}\n")
+      end
+      expect("#{actual}\n").to eq(File.read(path))
+    end
+  end
+
   it "is [] before a build and after a reset" do
     prompt = builder
     expect(prompt.prompt_parts).to eq([])

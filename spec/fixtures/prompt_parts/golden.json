@@ -1,0 +1,563 @@
+[
+  {
+    "chat": true,
+    "profile": "gemma4",
+    "parts": [
+      {
+        "kind": "tools",
+        "label": "1 declared",
+        "chars": 95,
+        "tokens": 24,
+        "ref": null
+      },
+      {
+        "kind": "base",
+        "label": "base prompt",
+        "chars": 4519,
+        "tokens": 1130,
+        "ref": null
+      },
+      {
+        "kind": "identity",
+        "label": "identity",
+        "chars": 65,
+        "tokens": 17,
+        "ref": "identity",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_a",
+        "chars": 110,
+        "tokens": 28,
+        "ref": "model_notes_a",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_b",
+        "chars": 34,
+        "tokens": 9,
+        "ref": "model_notes_b",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_c",
+        "chars": 26,
+        "tokens": 7,
+        "ref": "model_notes_c",
+        "scope": "project"
+      },
+      {
+        "kind": "preloads",
+        "label": "dup",
+        "chars": 99,
+        "tokens": 25,
+        "ref": "dup"
+      },
+      {
+        "kind": "preloads",
+        "label": "dup",
+        "chars": 91,
+        "tokens": 23,
+        "ref": "dup"
+      },
+      {
+        "kind": "preloads",
+        "label": "x",
+        "chars": 93,
+        "tokens": 24,
+        "ref": "x",
+        "scope": "project"
+      },
+      {
+        "kind": "preloads",
+        "label": "x",
+        "chars": 92,
+        "tokens": 23,
+        "ref": "x",
+        "scope": "system"
+      },
+      {
+        "kind": "preloads",
+        "label": "cli_note",
+        "chars": 101,
+        "tokens": 26,
+        "ref": "cli_note"
+      },
+      {
+        "kind": "agents",
+        "label": "AGENTS.md",
+        "chars": 62,
+        "tokens": 16,
+        "ref": "<project>/AGENTS.md"
+      },
+      {
+        "kind": "agents",
+        "label": "pkg/AGENTS.md",
+        "chars": 49,
+        "tokens": 13,
+        "ref": "<project>/pkg/AGENTS.md"
+      },
+      {
+        "kind": "agents",
+        "label": "pkg/inner/AGENTS.md",
+        "chars": 57,
+        "tokens": 15,
+        "ref": "<project>/pkg/inner/AGENTS.md"
+      },
+      {
+        "kind": "appended",
+        "label": "extra.md",
+        "chars": 38,
+        "tokens": 10,
+        "ref": "<project>/extra.md"
+      },
+      {
+        "kind": "appended",
+        "label": "more.md",
+        "chars": 28,
+        "tokens": 7,
+        "ref": "<project>/more.md"
+      },
+      {
+        "kind": "plugins",
+        "label": "alpha: one",
+        "chars": 28,
+        "tokens": 7,
+        "ref": "alpha/one"
+      },
+      {
+        "kind": "plugins",
+        "label": "beta: two",
+        "chars": 35,
+        "tokens": 9,
+        "ref": "beta/two"
+      },
+      {
+        "kind": "plugins",
+        "label": "gamma: three",
+        "chars": 27,
+        "tokens": 7,
+        "ref": "gamma/three"
+      },
+      {
+        "kind": "indexes",
+        "label": "project memory index",
+        "chars": 74,
+        "tokens": 19,
+        "ref": "project"
+      },
+      {
+        "kind": "indexes",
+        "label": "system memory index",
+        "chars": 69,
+        "tokens": 18,
+        "ref": "system"
+      },
+      {
+        "kind": "participants",
+        "label": "participants",
+        "chars": 368,
+        "tokens": 92,
+        "ref": null
+      },
+      {
+        "kind": "model",
+        "label": "model",
+        "chars": 411,
+        "tokens": 103,
+        "ref": null
+      },
+      {
+        "kind": "location",
+        "label": "location",
+        "chars": 0,
+        "tokens": 0,
+        "ref": null
+      },
+      {
+        "kind": "session",
+        "label": "session",
+        "chars": 156,
+        "tokens": 39,
+        "ref": null
+      }
+    ]
+  },
+  {
+    "chat": false,
+    "profile": "qwen36",
+    "parts": [
+      {
+        "kind": "tools",
+        "label": "1 declared",
+        "chars": 11,
+        "tokens": 3,
+        "ref": null
+      },
+      {
+        "kind": "base",
+        "label": "base prompt",
+        "chars": 5052,
+        "tokens": 1263,
+        "ref": null
+      },
+      {
+        "kind": "identity",
+        "label": "identity",
+        "chars": 65,
+        "tokens": 17,
+        "ref": "identity",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_a",
+        "chars": 110,
+        "tokens": 28,
+        "ref": "model_notes_a",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_b",
+        "chars": 34,
+        "tokens": 9,
+        "ref": "model_notes_b",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_c",
+        "chars": 26,
+        "tokens": 7,
+        "ref": "model_notes_c",
+        "scope": "project"
+      },
+      {
+        "kind": "preloads",
+        "label": "dup",
+        "chars": 99,
+        "tokens": 25,
+        "ref": "dup"
+      },
+      {
+        "kind": "preloads",
+        "label": "dup",
+        "chars": 91,
+        "tokens": 23,
+        "ref": "dup"
+      },
+      {
+        "kind": "preloads",
+        "label": "x",
+        "chars": 93,
+        "tokens": 24,
+        "ref": "x",
+        "scope": "project"
+      },
+      {
+        "kind": "preloads",
+        "label": "x",
+        "chars": 92,
+        "tokens": 23,
+        "ref": "x",
+        "scope": "system"
+      },
+      {
+        "kind": "preloads",
+        "label": "cli_note",
+        "chars": 101,
+        "tokens": 26,
+        "ref": "cli_note"
+      },
+      {
+        "kind": "agents",
+        "label": "AGENTS.md",
+        "chars": 62,
+        "tokens": 16,
+        "ref": "<project>/AGENTS.md"
+      },
+      {
+        "kind": "agents",
+        "label": "pkg/AGENTS.md",
+        "chars": 49,
+        "tokens": 13,
+        "ref": "<project>/pkg/AGENTS.md"
+      },
+      {
+        "kind": "agents",
+        "label": "pkg/inner/AGENTS.md",
+        "chars": 57,
+        "tokens": 15,
+        "ref": "<project>/pkg/inner/AGENTS.md"
+      },
+      {
+        "kind": "appended",
+        "label": "extra.md",
+        "chars": 38,
+        "tokens": 10,
+        "ref": "<project>/extra.md"
+      },
+      {
+        "kind": "appended",
+        "label": "more.md",
+        "chars": 28,
+        "tokens": 7,
+        "ref": "<project>/more.md"
+      },
+      {
+        "kind": "plugins",
+        "label": "alpha: one",
+        "chars": 28,
+        "tokens": 7,
+        "ref": "alpha/one"
+      },
+      {
+        "kind": "plugins",
+        "label": "beta: two",
+        "chars": 35,
+        "tokens": 9,
+        "ref": "beta/two"
+      },
+      {
+        "kind": "plugins",
+        "label": "gamma: three",
+        "chars": 27,
+        "tokens": 7,
+        "ref": "gamma/three"
+      },
+      {
+        "kind": "indexes",
+        "label": "project memory index",
+        "chars": 74,
+        "tokens": 19,
+        "ref": "project"
+      },
+      {
+        "kind": "indexes",
+        "label": "system memory index",
+        "chars": 69,
+        "tokens": 18,
+        "ref": "system"
+      },
+      {
+        "kind": "participants",
+        "label": "participants",
+        "chars": 368,
+        "tokens": 92,
+        "ref": null
+      },
+      {
+        "kind": "model",
+        "label": "model",
+        "chars": 411,
+        "tokens": 103,
+        "ref": null
+      },
+      {
+        "kind": "location",
+        "label": "location",
+        "chars": 0,
+        "tokens": 0,
+        "ref": null
+      },
+      {
+        "kind": "session",
+        "label": "session",
+        "chars": 156,
+        "tokens": 39,
+        "ref": null
+      }
+    ]
+  },
+  {
+    "chat": false,
+    "profile": "gemma4",
+    "parts": [
+      {
+        "kind": "tools",
+        "label": "1 declared",
+        "chars": 12,
+        "tokens": 3,
+        "ref": null
+      },
+      {
+        "kind": "base",
+        "label": "base prompt",
+        "chars": 4685,
+        "tokens": 1172,
+        "ref": null
+      },
+      {
+        "kind": "identity",
+        "label": "identity",
+        "chars": 65,
+        "tokens": 17,
+        "ref": "identity",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_a",
+        "chars": 110,
+        "tokens": 28,
+        "ref": "model_notes_a",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_b",
+        "chars": 34,
+        "tokens": 9,
+        "ref": "model_notes_b",
+        "scope": "system"
+      },
+      {
+        "kind": "notes",
+        "label": "model_notes_c",
+        "chars": 26,
+        "tokens": 7,
+        "ref": "model_notes_c",
+        "scope": "project"
+      },
+      {
+        "kind": "preloads",
+        "label": "dup",
+        "chars": 99,
+        "tokens": 25,
+        "ref": "dup"
+      },
+      {
+        "kind": "preloads",
+        "label": "dup",
+        "chars": 91,
+        "tokens": 23,
+        "ref": "dup"
+      },
+      {
+        "kind": "preloads",
+        "label": "x",
+        "chars": 93,
+        "tokens": 24,
+        "ref": "x",
+        "scope": "project"
+      },
+      {
+        "kind": "preloads",
+        "label": "x",
+        "chars": 92,
+        "tokens": 23,
+        "ref": "x",
+        "scope": "system"
+      },
+      {
+        "kind": "preloads",
+        "label": "cli_note",
+        "chars": 101,
+        "tokens": 26,
+        "ref": "cli_note"
+      },
+      {
+        "kind": "agents",
+        "label": "AGENTS.md",
+        "chars": 62,
+        "tokens": 16,
+        "ref": "<project>/AGENTS.md"
+      },
+      {
+        "kind": "agents",
+        "label": "pkg/AGENTS.md",
+        "chars": 49,
+        "tokens": 13,
+        "ref": "<project>/pkg/AGENTS.md"
+      },
+      {
+        "kind": "agents",
+        "label": "pkg/inner/AGENTS.md",
+        "chars": 57,
+        "tokens": 15,
+        "ref": "<project>/pkg/inner/AGENTS.md"
+      },
+      {
+        "kind": "appended",
+        "label": "extra.md",
+        "chars": 38,
+        "tokens": 10,
+        "ref": "<project>/extra.md"
+      },
+      {
+        "kind": "appended",
+        "label": "more.md",
+        "chars": 28,
+        "tokens": 7,
+        "ref": "<project>/more.md"
+      },
+      {
+        "kind": "plugins",
+        "label": "alpha: one",
+        "chars": 28,
+        "tokens": 7,
+        "ref": "alpha/one"
+      },
+      {
+        "kind": "plugins",
+        "label": "beta: two",
+        "chars": 35,
+        "tokens": 9,
+        "ref": "beta/two"
+      },
+      {
+        "kind": "plugins",
+        "label": "gamma: three",
+        "chars": 27,
+        "tokens": 7,
+        "ref": "gamma/three"
+      },
+      {
+        "kind": "indexes",
+        "label": "project memory index",
+        "chars": 74,
+        "tokens": 19,
+        "ref": "project"
+      },
+      {
+        "kind": "indexes",
+        "label": "system memory index",
+        "chars": 69,
+        "tokens": 18,
+        "ref": "system"
+      },
+      {
+        "kind": "participants",
+        "label": "participants",
+        "chars": 368,
+        "tokens": 92,
+        "ref": null
+      },
+      {
+        "kind": "model",
+        "label": "model",
+        "chars": 411,
+        "tokens": 103,
+        "ref": null
+      },
+      {
+        "kind": "location",
+        "label": "location",
+        "chars": 0,
+        "tokens": 0,
+        "ref": null
+      },
+      {
+        "kind": "session",
+        "label": "session",
+        "chars": 156,
+        "tokens": 39,
+        "ref": null
+      }
+    ]
+  }
+]

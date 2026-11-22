@@ -128,8 +128,8 @@ RSpec.describe Samagotchi::Engine, "tool surface" do
     sess.llm_context = Samagotchi::LLMContextOverride.new(strategy: %i[stale forget])
     prompt_surfaces = []
     builder = engine.instance_variable_get(:@prompt_builder)
-    allow(builder).to receive(:build).and_wrap_original do |original, **kwargs|
-      original.call(**kwargs).tap { prompt_surfaces << builder.instance_variable_get(:@last).surface }
+    allow(builder).to receive(:built_for).and_wrap_original do |original, **kwargs|
+      original.call(**kwargs).tap { |built| prompt_surfaces << built.surface }
     end
 
     engine.run_turn(sess, "hi")

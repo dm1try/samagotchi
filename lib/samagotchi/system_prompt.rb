@@ -100,16 +100,47 @@ module Samagotchi
     #
     # parts: the Sections the prompt is joined from (stable ones, then the
     # volatile ones), in prompt order; Gemma's tail declarations are not one.
-    # prompt_parts: the same as sizes, one PromptPart per memory, file and
-    # plugin section, the tools part first (#prompt_parts).
+    # prompt_parts: the same as sizes, one PromptPart per Item, the tools
+    # part first (#prompt_parts).
     Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface, :memory_names, :parts,
                         :prompt_parts, :prompt_memories)
+
+    # One item of a section, recorded by the builder where it renders it: a
+    # memory (identity, a note, a preload), a file, a plugin's section, an
+    # index, or a whole one-item section (base, kit, the volatile lines).
+    # The prompt holds it as lead + text: lead is what chi adds before the
+    # item's own text (the "System identity …:" line, a note's "## name"
+    # and the first note of a scope its heading, a file's header line); ""
+    # for a section that is one item. label, ref, scope: the PromptPart's.
+    # chars: what the item's part is charged when it is not its section's
+    # first (the first part takes the rest of the section's text: its joins
+    # and, for notes, the scope headings; PromptPart's rule).
+    Item = Data.define(:kind, :label, :ref, :scope, :lead, :text, :chars) do
+      def initialize(kind:, label:, text:, ref: nil, scope: nil, lead: "", chars: nil)
+        super(kind: kind, label: label, ref: ref, scope: scope, lead: lead, text: text, chars: chars || (lead.length + text.length))
+      end
+
+      # The item as the prompt holds it.
+      def sent = "#{lead}#{text}"
+    end
 
     # One part of the prompt: its kind (KINDS), what it was made from (the
     # memory names of identity and preloads, the files of agents and
     # appended, the notes of notes, the plugins' Built of plugins; nil
-    # elsewhere) and its text, as the prompt holds it.
-    Section = Data.define(:kind, :ref, :text)
+    # elsewhere), its text, as the prompt holds it, and its Items, whose
+    # sent texts joined by +join+ are that text.
+    Section = Data.define(:kind, :ref, :text, :items, :join) do
+      # A section of +items+ (Item), its text their sent texts joined.
+      def self.of(kind, items, ref: nil, join: "\n\n")
+        items = items.freeze
+        new(kind: kind, ref: ref, text: items.map(&:sent).join(join), items: items, join: join)
+      end
+
+      # A section that is one item: +text+ whole, no lead.
+      def self.whole(kind, text, label:)
+        of(kind, [Item.new(kind: kind, label: label, text: text)])
+      end
+    end
 
     KINDS = %i[base identity notes preloads agents appended kit plugins indexes participants model location session].freeze
 
@@ -131,6 +162,15 @@ module Samagotchi
     # @param layers [Array<Symbol>] the turn's LLM context layers: the
     #   native prompt declares the tools they add (Tools::ToolSurface#declared)
     def build(chat: false, thinking: nil, layers: [])
+      built_for(chat: chat, thinking: thinking, layers: layers).prompt
+    end
+
+    # The Built #build returns the prompt of, so a caller reads the prompt,
+    # its parts, notes and index from one object (Engine#system_prompt): a
+    # #reset! on another thread may land right after, and the readers
+    # below (#prompt_parts…) would then answer nothing.
+    # @return [Built]
+    def built_for(chat: false, thinking: nil, layers: [])
       key = [chat, thinking, layers]
       cache = @cache
       built = cache[key] || (cache[key] = build_prompt(chat: chat, thinking: thinking, layers: layers))
@@ -138,7 +178,7 @@ module Samagotchi
       @last = built
       @last_prompt_memory_names = built.memory_names
       @last_prompt_memories = built.prompt_memories
-      built.prompt
+      built
     end
 
     # The memory indexes the prompt #build returned last holds, per scope
@@ -224,44 +264,30 @@ module Samagotchi
 
     private
 
-    # One #build's work: the prompt and what it read, in a Built. The
-    # @section_* and @measured_* scratch is this build's (the turn thread's)
-    # alone: #reset! never touches it.
+    # One #build's work: the prompt and what it read, in a Built. Each
+    # builder returns its Section with its Items; nothing is kept between
+    # builds (#reset! never touches a build in flight).
     def build_prompt(chat:, thinking:, layers:)
-      @section_identity_memory_name = nil
-      @section_activated_memory_names = []
-      @section_notes = nil
-      @section_files = []
-      @section_plugins = []
-      @measured_stable_length = nil
-      @section_parts = []
-      @section_file_chars = []
-      @section_item_chars = {}
-      @section_preload_chars = []
-      @section_preload_scopes = []
-      @section_index_chars = {}
       surface = tool_surface(layers)
-      prompt = system_prompt_with_index(assist_system_prompt(chat: chat, surface: surface),
-                                        chat: chat, thinking: thinking, surface: surface)
+      composed = compose(assist_system_prompt(chat: chat, surface: surface), chat: chat, thinking: thinking, surface: surface)
+      sections = composed.sections
       prompt_parts = Degrade.call(:prompt, "prompt_parts_failed", fallback: []) do
-        prompt_parts_for(@section_parts, chat: chat, surface: surface)
+        prompt_parts_for(sections, chat: chat, surface: surface)
       end
-      prompt_memories = prompt_memories_for(@section_parts)
-      Built.new(prompt: prompt, memory_index: @measured_index, notes: @section_notes || [],
-                files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length,
-                surface: surface, memory_names: [@section_identity_memory_name, *@section_activated_memory_names].compact.uniq.freeze,
-                parts: @section_parts.freeze, prompt_parts: prompt_parts.freeze, prompt_memories: prompt_memories)
+      by_kind = sections.to_h { |section| [section.kind, section] }
+      files = %i[agents appended].flat_map { |kind| Array(by_kind[kind]&.ref) }
+      memory_names = [by_kind[:identity]&.ref, *Array(by_kind[:preloads]&.ref)].compact.uniq
+      Built.new(prompt: composed.prompt, memory_index: composed.memory_index, notes: Array(by_kind[:notes]&.ref),
+                files: files.freeze, sections: Array(by_kind[:plugins]&.ref).freeze, stable_length: composed.stable_length,
+                surface: surface, memory_names: memory_names.freeze, parts: sections.freeze, prompt_parts: prompt_parts.freeze,
+                prompt_memories: prompt_memories_for(sections))
     end
 
     def prompt_memories_for(sections)
       sections.flat_map do |section|
         case section.kind
-        when :identity
-          section.ref ? [[section.ref, "system"]] : []
-        when :preloads
-          Array(section_items(section)).map { |_, name, _, scope| [name, scope] }
-        else
-          []
+        when :identity, :preloads then section.items.map { |item| [item.ref, item.scope] }
+        else []
         end
       end.map(&:freeze).uniq.freeze
     end
@@ -271,9 +297,9 @@ module Samagotchi
     LABELS = { base: "base prompt", kit: "toolkit prompt", participants: "participants", model: "model",
                location: "location", session: "session" }.freeze
 
-    # The PromptParts of +sections+ (a build's), the tools part first. A
-    # multi-item section is one part per item; its headings and joins go
-    # into its first part, so the parts sum to the section's text.
+    # The PromptParts of +sections+ (a build's), the tools part first: one
+    # per Item. A multi-item section's headings and joins go into its first
+    # part, so the parts sum to the section's text.
     def prompt_parts_for(sections, chat:, surface:)
       tools_chars = tools_chars(chat: chat, surface: surface)
       parts = sections.flat_map { |part| section_parts(part) }
@@ -295,39 +321,13 @@ module Samagotchi
     end
 
     def section_parts(section)
-      items = section_items(section)
-      return [PromptPart.build(kind: section.kind, label: LABELS.fetch(section.kind, section.kind), chars: section.text.length)] if items.nil?
-
+      items = section.items
       # The first item's own chars are the rest of the text.
-      rest = items.drop(1).sum { |item| item[2] }
-      items.each_with_index.map do |(label, ref, chars, scope), index|
-        PromptPart.build(kind: section.kind, label: label, ref: ref, scope: scope,
-                         chars: index.zero? ? section.text.length - rest : chars)
+      rest = items.drop(1).sum(&:chars)
+      items.each_with_index.map do |item, index|
+        PromptPart.build(kind: section.kind, label: item.label, ref: item.ref, scope: item.scope,
+                         chars: index.zero? ? section.text.length - rest : item.chars)
       end
-    end
-
-    # [label, ref, own chars, scope] per item of a section made of several
-    # (scope: a memory part's, else nil), nil for a section that is one part.
-    def section_items(section)
-      case section.kind
-      when :identity then [[section.ref.to_s, section.ref, section.text.length, "system"]] if section.ref
-      when :notes
-        # In the text's order: it groups the notes by scope.
-        Array(section.ref).group_by(&:scope).values.flatten(1).map do |note|
-          [note.name, note.name, "## #{note.name}\n#{note.body}".length, note.scope]
-        end
-      when :preloads
-        scopes = @section_preload_scopes
-        item_list(Array(section.ref), @section_preload_chars) { |name| [name, name] }
-          &.each_with_index&.map { |item, index| [*item, scopes&.[](index)] }
-      when :agents, :appended
-        top = MemoryPaths.work_tree_root(Dir.pwd)
-        item_list(Array(section.ref), @section_item_chars[section.kind]) { |path| [file_label(path, top), path] }
-      when :plugins
-        Array(section.ref).map { |built| ["#{built.bundle}: #{built.name}", "#{built.bundle}/#{built.name}", built.prompt_text.length] }
-      when :indexes
-        [["project memory index", "project", @section_index_chars[:project]], ["system memory index", "system", @section_index_chars[:system]]]
-      end&.then { |items| items.empty? ? nil : items }
     end
 
     # A file part's label: its path under the work tree +top+ (AGENTS.md,
@@ -336,14 +336,6 @@ module Samagotchi
       return Paths.tilde(path) unless top && path.start_with?("#{top}/")
 
       path.delete_prefix("#{top}/")
-    end
-
-    # [label, ref, chars] per ref (+yield+ gives label and ref), nil when
-    # the recorded chars don't line up with the refs.
-    def item_list(refs, chars)
-      return nil unless chars && chars.size == refs.size
-
-      refs.each_with_index.map { |ref, index| [*yield(ref), chars[index]] }
     end
 
     # The session's tools as a build under +layers+ declares them, read
@@ -487,60 +479,55 @@ module Samagotchi
     # and the session close the prompt (Gemma's tool declarations still
     # follow them).
     def system_prompt_with_index(base, chat: false, thinking: nil, surface: tool_surface([]))
+      compose(base, chat: chat, thinking: thinking, surface: surface).prompt
+    end
+
+    # #system_prompt_with_index's prompt with what its build measured: the
+    # Sections in prompt order, the indexes' sizes and the stable length.
+    Composed = Data.define(:prompt, :sections, :memory_index, :stable_length)
+
+    def compose(base, chat:, thinking:, surface:)
       thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
       indexes = { project: read_memory_index("project"), system: read_memory_index("system") }
-      @measured_index = measure_indexes(indexes)
-      memory_sections = %i[project system].map { |scope| memory_sections_head(indexes, scope) }.join("\n\n")
-      # Built eagerly and in this order: the builders set the @section_* scratch.
+      memory_index = measure_indexes(indexes)
+      # Built eagerly and in this order (the warnings, the activated names).
       base_text = [thinking_token + base, not_loaded_line(surface), rg_guidance].compact.join("\n")
-      @section_index_chars = { project: memory_sections_head(indexes, :project).length,
-                               system: memory_sections_head(indexes, :system).length }
       stable = [
-        Section.new(kind: :base, ref: nil, text: base_text),
-        section(:identity, -> { @section_identity_memory_name }) { system_identity_section },
-        section(:notes, -> { @section_notes }) { model_notes_section },
-        section(:preloads, -> { Array(@section_activated_memory_names).dup }) { explicit_memory_section },
-        files_section(:agents) { project_specific_description },
-        files_section(:appended) { appended_section },
-        section(:kit, nil) { kit_prompt_section(surface) },
-        section(:plugins, -> { @section_plugins }) { plugin_prompt_section },
-        Section.new(kind: :indexes, ref: %i[project system], text: memory_sections)
+        Section.whole(:base, base_text, label: LABELS[:base]),
+        system_identity_section,
+        model_notes_section,
+        explicit_memory_section,
+        project_specific_description,
+        appended_section,
+        whole_section(:kit) { kit_prompt_section(surface) },
+        plugin_prompt_section,
+        Section.of(:indexes, %i[project system].map { |scope| index_item(indexes, scope) }, ref: %i[project system])
       ].compact
       stable_text = stable.map(&:text).join("\n")
-      volatile = [section(:participants, nil) { participants_section }, section(:model, nil) { current_model },
-                  section(:location, nil) { project_location }, section(:session, nil) { current_session }].compact
-      @section_parts = stable + volatile
-      return with_tail_declarations(stable_text, chat: chat, surface: surface) if volatile.empty?
+      volatile = [whole_section(:participants) { participants_section }, whole_section(:model) { current_model },
+                  whole_section(:location) { project_location }, whole_section(:session) { current_session }].compact
+      sections = (stable + volatile).freeze
+      if volatile.empty?
+        return Composed.new(prompt: with_tail_declarations(stable_text, chat: chat, surface: surface), sections: sections,
+                            memory_index: memory_index, stable_length: nil)
+      end
 
       prompt = "#{stable_text}\n#{volatile.map(&:text).join("\n")}"
-      @measured_stable_length = stable_text.length + 1 if chat
-      with_tail_declarations(prompt, chat: chat, surface: surface)
+      Composed.new(prompt: with_tail_declarations(prompt, chat: chat, surface: surface), sections: sections,
+                   memory_index: memory_index, stable_length: chat ? stable_text.length + 1 : nil)
     end
 
-    # One scope's block of the indexes section.
-    def memory_sections_head(indexes, scope)
-      "#{scope.to_s.capitalize} memories:\n#{indexes[scope]}"
+    # One scope's block of the indexes section: "Project memories:" and the text.
+    def index_item(indexes, scope)
+      Item.new(kind: :indexes, label: "#{scope} memory index", ref: scope.to_s, lead: "#{scope.to_s.capitalize} memories:\n",
+               text: indexes[scope].to_s)
     end
 
-    # A Section of +kind+ with what the block (a builder) returns, nil when
+    # A one-item Section of +kind+ with what the block returns, nil when
     # that is nil (never when it is empty: an "" part stays in the prompt).
-    # +ref+ is read after the block ran, so it may name what the builder set.
-    def section(kind, ref = nil, &)
+    def whole_section(kind)
       text = yield
-      if text.nil?
-        nil
-      else
-        Section.new(kind: kind, ref: ref.respond_to?(:call) ? ref.call : ref, text: text)
-      end
-    end
-
-    # A Section whose ref is the files its builder added to @section_files.
-    def files_section(kind, &block)
-      before = @section_files&.size || 0
-      section(kind, nil, &block)&.then do |part|
-        @section_item_chars[kind] = Array(@section_file_chars)[before..].dup if @section_item_chars
-        part.with(ref: Array(@section_files)[before..].dup)
-      end
+      text.nil? ? nil : Section.whole(kind, text, label: LABELS.fetch(kind, kind.to_s))
     end
 
     # The tools the session's toolkit leaves out, named once right after the
@@ -587,8 +574,13 @@ module Samagotchi
     def plugin_prompt_section
       Degrade.call(:prompt, "plugin_section_failed") do
         built = Array(@sections_lookup.call)
-        @section_plugins = built
-        Plugin::PromptSections.text(built)
+        next nil if Plugin::PromptSections.text(built).nil?
+
+        items = built.map do |one|
+          Item.new(kind: :plugins, label: "#{one.bundle}: #{one.name}", ref: "#{one.bundle}/#{one.name}",
+                   lead: one.prompt_text.delete_suffix(one.text.to_s), text: one.text.to_s)
+        end
+        Section.of(:plugins, items, ref: built)
       end
     end
 
@@ -612,8 +604,9 @@ module Samagotchi
           next if body.start_with?("Error:")
           next if body.strip.empty?
 
-          @section_identity_memory_name = name
-          return "System identity (auto-loaded, scope=system):\n#{body}"
+          item = Item.new(kind: :identity, label: name, ref: name, scope: "system",
+                          lead: "System identity (auto-loaded, scope=system):\n", text: body.to_s)
+          return Section.of(:identity, [item], ref: name)
         end
         nil
       end
@@ -624,15 +617,20 @@ module Samagotchi
     # line left out. nil without any, so the prompt stays as it was.
     def model_notes_section
       Degrade.call(:prompt, "model_notes_failed") do
-        @section_notes = []
         notes = Array(@model_notes_lookup.call)
         return nil if notes.empty?
 
         ref = @model_lookup.call&.ref
-        notes.group_by(&:scope).map do |scope, list|
+        # In the text's order: a heading per scope, the scope's notes under it.
+        items = notes.group_by(&:scope).flat_map do |scope, list|
           heading = ref.to_s.empty? ? "Model notes (scope=#{scope}):" : "Model notes (for #{ref}, scope=#{scope}):"
-          [heading, *list.map { |note| "## #{note.name}\n#{note.body}" }].join("\n\n")
-        end.join("\n\n").tap { @section_notes = notes }
+          list.each_with_index.map do |note, index|
+            own = "## #{note.name}\n"
+            Item.new(kind: :notes, label: note.name, ref: note.name, scope: note.scope, text: note.body.to_s,
+                     lead: index.zero? ? "#{heading}\n\n#{own}" : own, chars: own.length + note.body.to_s.length)
+          end
+        end
+        Section.of(:notes, items, ref: notes)
       end
     end
 
@@ -711,7 +709,7 @@ module Samagotchi
     def explicit_memory_section
       return nil if @requested_memories.empty?
 
-      entries = []
+      items = []
       @activated_memory_names ||= []
       @requested_memories.each do |raw|
         names = raw.split(",").map(&:strip).reject(&:empty?)
@@ -727,17 +725,15 @@ module Samagotchi
           # status line. The memory-body injection itself stays here — the
           # SystemPrompt is the single source of truth for the system prompt.
           @activated_memory_names << actual_name
-          @section_activated_memory_names << actual_name
-          entry = "this memory is required by the user in the current context: memory name: #{actual_name}\n#{body}"
-          @section_preload_chars&.push(entry.length)
-          @section_preload_scopes&.push(scope || answered_scope(body, actual_name))
-          entries << entry
+          items << Item.new(kind: :preloads, label: actual_name, ref: actual_name, scope: scope || answered_scope(body, actual_name),
+                            lead: "this memory is required by the user in the current context: memory name: #{actual_name}\n",
+                            text: body.to_s)
         end
       end
 
-      return nil if entries.empty?
+      return nil if items.empty?
 
-      entries.join("\n\n")
+      Section.of(:preloads, items, ref: items.map(&:ref))
     end
 
     # The scope whose file answered a bare preload's read (memory_read
@@ -773,9 +769,8 @@ module Samagotchi
         sections = PromptFiles.agents_sections(Dir.pwd)
         return nil if sections.empty?
 
-        @section_files&.concat(sections.map(&:path))
-        @section_file_chars&.concat(sections.map { |section| section.text.length })
-        sections.map(&:text).join("\n\n")
+        top = MemoryPaths.work_tree_root(Dir.pwd)
+        Section.of(:agents, sections.map { |section| file_item(:agents, section, top) }, ref: sections.map(&:path))
       end
     end
 
@@ -789,7 +784,7 @@ module Samagotchi
         cwd = Dir.pwd
         top = MemoryPaths.work_tree_root(cwd)
         seen = Set.new((skip_agent_description? ? [] : PromptFiles.agents_paths(cwd)).map { |path| canonical_path(path) })
-        sections = []
+        items = []
         appended_candidates(cwd).each do |path, source|
           next unless seen.add?(canonical_path(path))
 
@@ -800,12 +795,16 @@ module Samagotchi
           text = PromptFiles.section(path, "Appended from #{PromptFiles.display_path(path, top: top)}:")
           next unless text
 
-          @section_files&.push(path)
-          @section_file_chars&.push(text.length)
-          sections << text
+          items << file_item(:appended, PromptFiles::Section.new(path: path, text: text), top)
         end
-        sections.empty? ? nil : sections.join("\n\n")
+        items.empty? ? nil : Section.of(:appended, items, ref: items.map(&:ref))
       end
+    end
+
+    # A file's Item: its PromptFiles::Section, the header line its lead.
+    def file_item(kind, section, top)
+      lead, text = section.text.split("\n", 2)
+      Item.new(kind: kind, label: file_label(section.path, top), ref: section.path, lead: "#{lead}\n", text: text.to_s)
     end
 
     # [absolute path, "config" | "cli"], in prompt order.

@@ -77,7 +77,7 @@ RSpec.describe Samagotchi::SystemPrompt do
     def description(cwd)
       saved = ENV["SAMAGOTCHI_SKIP_AGENTS_MD"]
       ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
-      Dir.chdir(cwd) { prompt.send(:project_specific_description) }
+      Dir.chdir(cwd) { prompt.send(:project_specific_description)&.text }
     ensure
       saved.nil? ? ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD") : ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = saved
     end
