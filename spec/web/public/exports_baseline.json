@@ -877,6 +877,11 @@
     "peerSummaryText",
     "verdictTemplate"
   ],
+  "peer_text.js": [
+    "PEER_FORGED_LINES",
+    "PEER_FORGED_OPENINGS",
+    "peerBlock"
+  ],
   "picture_regions.js": [
     "CARD_ROOM",
     "COARSE_CARD_ROOM",

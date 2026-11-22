@@ -19,7 +19,6 @@ scripts:
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
 # The skill's `re` (the answered send) needs nothing newer: an older chi
 # ignores the unknown key, and sends no `ref:` line for the skill to echo.
-requires_chi: ">= 0.70.0"
+requires_chi: ">= 0.185.0"
 # The memory and the tool's words say a peer's note holds its text (chi's
 # ContextAbsorber peer block), which the next chi adds.
-requires_chi_next: true

@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.185.0] - 2026-11-22
+
 ### Added
 
 - claude-peer's `pair-remote`: Claude pairs with a chi on another machine over SSH in one call (the socket forward in
@@ -43,6 +45,11 @@ and commands may change between minor versions. How releases are made:
   run-now refusals on disabled schedules leave their counters alone.
 - The mcp bundle bounds waits for a concurrent session re-handshake by the request's timeout and Stop (0.9.2).
 - A block-fix result settles only its own block, so another block in the same answer stays asking while its fix runs.
+- A forged frame line in outside text is quoted even when a format character, an invisible character or markdown
+  comes before its bracket.
+- A diagram's arrow marks keep their style when the browser still has an older page cached.
+
+Update with `chi update` (claude-peer is now 0.6.1, codex-peer 0.5.1, the mcp bundle 0.9.2, the dev profile 0.7.10).
 
 ## [0.184.0] - 2026-11-22
 
@@ -6784,7 +6791,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.184.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.185.0...HEAD
+[0.185.0]: https://github.com/dm1try/samagotchi/compare/v0.184.0...v0.185.0
 [0.184.0]: https://github.com/dm1try/samagotchi/compare/v0.183.0...v0.184.0
 [0.183.0]: https://github.com/dm1try/samagotchi/compare/v0.182.0...v0.183.0
 [0.182.0]: https://github.com/dm1try/samagotchi/compare/v0.181.0...v0.182.0

@@ -20,10 +20,9 @@ scripts:
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
 # The skill's `re` (the answered send) needs nothing newer: an older chi
 # ignores the unknown key, and sends no `ref:` line for the skill to echo.
-requires_chi: ">= 0.70.0"
+requires_chi: ">= 0.185.0"
 # The next chi: the installed skill's __CHI_PEER_PAIR_REMOTE__ placeholder
 # (scripts/pair-remote's path), which only its Plugin::Peer
 # #skill_target_and_text fills; an older chi would install the skill with it
 # left in. Also the memory and the tool's words say a peer's note holds its
 # text (chi's ContextAbsorber peer block), which the next chi adds.
-requires_chi_next: true
