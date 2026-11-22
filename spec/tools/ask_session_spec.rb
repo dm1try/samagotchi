@@ -64,6 +64,42 @@ RSpec.describe Samagotchi::Tools::AskSession do
     expect(deliveries.first.last[:enqueued_id]).to match(Samagotchi::SessionInbox::ENQUEUED_ID_NAME)
   end
 
+  # A worker that answers each question under the id it was sent with.
+  def answering(*replies)
+    allow(access).to receive(:deliver_turn) do |id, **options|
+      deliveries << [id, options]
+      Samagotchi::SessionInbox.write_output(dir_of(Samagotchi::Session.load(id, state_dir: tmpdir)), replies.shift,
+                                            enqueued_id: options[:enqueued_id])
+      Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "enqueued_id" => options[:enqueued_id] })
+    end
+  end
+
+  it "asks the same question again once its first turn ended in this turn, never replaying the old answer" do
+    asked = make
+    answering("not yet", "done now")
+
+    expect(ask("Are you done?", session: asked.id)).to end_with("not yet")
+    expect(ask("Are you done?", session: asked.id)).to end_with("done now")
+    expect(deliveries.size).to eq(2)
+    expect(deliveries.map { |_id, options| options[:enqueued_id] }.uniq.size).to eq(2)
+  end
+
+  it "waits on the first turn of a question asked again while that turn still runs (a retry asks once)" do
+    asked = make(status: "running")
+    own(asked)
+    # A busy worker: the question waits queued as an input file under its id.
+    allow(access).to receive(:deliver_turn) do |id, **options|
+      deliveries << [id, options]
+      Samagotchi::SessionInbox.write_input(dir_of(asked), prompt: options[:prompt], client_id: options[:client_id],
+                                                          enqueued_id: options[:enqueued_id], delivery: options[:delivery])
+      Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "enqueued_id" => options[:enqueued_id] })
+    end
+
+    expect(ask("Slow?", session: asked.id)).to include("still answering")
+    expect(ask("Slow?", session: asked.id)).to include("still answering")
+    expect(deliveries.size).to eq(1)
+  end
+
   it "gives a token while the turn still runs, which a second call (token only) waits on to the answer" do
     asked = make(status: "running")
     own(asked)

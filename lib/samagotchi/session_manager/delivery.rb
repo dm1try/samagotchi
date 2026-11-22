@@ -239,7 +239,11 @@ module Samagotchi
         return refused if refused
 
         enqueued_id ||= SessionInbox.new_enqueued_id
+        # Whether the worker that answered reads an agent: id (nil: no Bridge
+        # answered): the file fallback below keeps it when it does.
+        agent_reader = nil
         if (client = bridge.call)
+          agent_reader = worker_has?(client, Delivery::AGENT_FEATURE) if ClientId.agent?(client_id)
           if (missing = anchors.present.find { |anchor| !worker_has?(client, anchor.class::FEATURE) })
             return DeliverResult.new(status: :refused, code: 409, ack: missing.class::UNAVAILABLE)
           end
@@ -265,7 +269,7 @@ module Samagotchi
           end
           # compat shim agent_client_id: a worker from before agent: reads
           # an agent's line as chi send's (today's owner row).
-          client_id = ClientId::CLI_SEND if ClientId.agent?(client_id) && !worker_has?(client, Delivery::AGENT_FEATURE)
+          client_id = ClientId::CLI_SEND if ClientId.agent?(client_id) && !agent_reader
 
           begin
             options = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id }
@@ -306,16 +310,23 @@ module Samagotchi
         # it with no header).
         if (Steer.participant_author?(author) || ClientId.session?(client_id)) &&
            (holder = delivery_presence(manager, session_id, state_dir)).owned? && !holder.tui_owned?
-          return DeliverResult.new(status: :timeout, via: :file,
-                                   ack: { "error" => "worker_timeout",
-                                          "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
+          return exiting_refused
         end
-        # compat shim agent_client_id: a worker still holding the session
-        # with its Bridge gone (exiting) may be an older one, which reads
-        # no agent: id: chi send's instead (a downgrade to today's owner
-        # row, not a refusal). A worker that starts for the file reads it.
-        if ClientId.agent?(client_id) && delivery_presence(manager, session_id, state_dir).owned?
-          client_id = ClientId::CLI_SEND
+
+        # compat shim agent_client_id: an agent's file while a worker holds
+        # the session and no Bridge answered (a 413, a 5xx or a socket error
+        # from one that did keeps the id it read: agent_reader). Its
+        # sidecar's features say which worker it is: one without
+        # agent_sender reads chi send's id instead (today's owner row); one
+        # it can't tell (exiting, its sidecar gone) is refused, as a
+        # participant's is, never run as the owner. A worker that starts for
+        # the file reads the agent's id.
+        if ClientId.agent?(client_id) && agent_reader.nil? &&
+           (holder = delivery_presence(manager, session_id, state_dir)).owned? && !holder.tui_owned?
+          case sidecar_agent_reader(session_dir)
+          when false then client_id = ClientId::CLI_SEND
+          when nil then return exiting_refused
+          end
         end
         input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
         input[:images] = images unless images.empty?
@@ -439,6 +450,24 @@ module Samagotchi
 
       private def queue_unavailable
         DeliverResult.new(status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE)
+      end
+
+      # A message held back while an exiting worker holds the session: the
+      # file's reader is unknown (a participant's, a session's question, an
+      # agent's the sidecar can't vouch for).
+      private def exiting_refused
+        DeliverResult.new(status: :timeout, via: :file,
+                          ack: { "error" => "worker_timeout",
+                                 "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
+      end
+
+      # Whether the worker whose sidecar is in +session_dir+ reads an agent:
+      # id (Delivery::AGENT_FEATURE): true, false, or nil when there is no
+      # sidecar to read (a worker leaving, starting, or gone).
+      private def sidecar_agent_reader(session_dir)
+        link = WorkerLink.resolve(session_dir, unlink: false)
+        sidecar = link.respond_to?(:sidecar) ? link.sidecar : nil
+        sidecar ? Array(sidecar.features).include?(Delivery::AGENT_FEATURE) : nil
       end
 
       private def ask_unavailable = DeliverResult.new(status: :refused, code: 409, ack: Delivery::ASK_UNAVAILABLE)
