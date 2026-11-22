@@ -235,7 +235,7 @@ module Samagotchi
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, no_interrupt: body["no_interrupt"] == true,
                                                  author: principal(req).author,
-                                                 anchors: TurnAnchors.from(body),
+                                                 anchors: TurnAnchors.from_turn_route(body),
                                                  follow: body["follow"] == true,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
