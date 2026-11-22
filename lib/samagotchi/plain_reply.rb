@@ -13,8 +13,10 @@ module Samagotchi
   # which read well aloud, and a fenced code block's content, byte for byte
   # (its fence lines go; one never closed runs to the end).
   module PlainReply
-    # A fence's opening line: its marker (``` or ~~~, three or more).
-    FENCE_OPEN = /\A[ \t]*(`{3,}|~{3,})/
+    # A fence's opening line: its marker (``` or ~~~, three or more). A
+    # backtick fence's info string holds no backtick (CommonMark), so a
+    # line like "```ls -la``` lists files" is inline code, not a fence.
+    FENCE_OPEN = /\A[ \t]*(`{3,}(?=[^`]*\z)|~{3,})/
     HEADING = /^([ \t]*)\#{1,6}[ \t]+/
     BULLET = /^([ \t]*)[-*+][ \t]+/
     QUOTE = /^([ \t]*)(?:>[ \t]?)+/

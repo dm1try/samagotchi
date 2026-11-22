@@ -36,6 +36,18 @@ RSpec.describe Samagotchi::PlainReply do
       "```\n  indented\n```\n~~~sh\n**x**\n~~~\n**y**\n```\n# open",
       "  indented\n**x**\ny\n# open"
     ],
+    "an inline triple-backtick span: inline code, not a fence (its info string can't hold a backtick)" => [
+      "```ls -la``` lists files.\n- **next**",
+      "ls -la lists files.\nnext"
+    ],
+    "a fence with an info string still leaves its content untouched" => [
+      "```ruby\n# **kept** `x`\n```\n- **after**",
+      "# **kept** `x`\nafter"
+    ],
+    "an unclosed fence after an inline span still runs to the end" => [
+      "```ls``` first.\n```sh\n- **raw**",
+      "ls first.\n- **raw**"
+    ],
     "headings, quotes and a rule" => [
       "## Status\n> quoted line\n>> nested\n---\nEnd.",
       "Status\nquoted line\nnested\nEnd."
