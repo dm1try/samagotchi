@@ -507,7 +507,8 @@ module Samagotchi
         if verdict
           kind, reason = verdict
           status = kind == :skip ? "skipped" : "failed"
-          updated = status == "skipped" ? skipped(current, reason) : failed(current, reason)
+          updated = status == "skipped" ? skipped(current, reason) : failed(current, reason) if current.enabled
+          updated ||= current.with(last_result: reason)
           file.entries[position] = updated
           outcome = Outcome.new(id: current.id, title: current.title, status: status, detail: reason, entry: updated)
           next
@@ -697,7 +698,7 @@ module Samagotchi
           file.entries[position] = nil
           file.entries.compact!
         else
-          changed = entry.with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
+          changed = file.entries[position].with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
           # Enabled again with a fresh budget: its next skip must not end it at once.
           file.entries[position] = enabled ? changed.with(skips: 0, failures: 0) : changed
         end
@@ -826,15 +827,17 @@ module Samagotchi
 
     def skipped(entry, reason)
       skips = entry.skips + 1
-      disabled = skips >= entry.max_skips
+      within_budget = skips < entry.max_skips
       entry.with(skips: skips, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
-                 last_result: disabled ? "disabled: #{reason}" : "skipped", enabled: !disabled)
+                 last_result: within_budget ? "skipped" : "disabled: #{reason}",
+                 enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
     end
 
     def failed(entry, reason)
       failures = entry.failures + 1
+      within_budget = failures < entry.max_failures
       entry.with(failures: failures, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
-                 last_result: reason, enabled: failures < entry.max_failures)
+                 last_result: reason, enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
     end
 
     def pending_detail(entry)
@@ -1192,8 +1195,8 @@ module Samagotchi
       Outcome.new(id: entry.id, title: entry.title, status: status, detail: message, entry: entry)
     end
 
-    # A run-now refused before anything was tried: the same counters a tick
-    # moves for a skip or a failure. `due_was` is untouched — run-now is not a
+    # A run-now refused before anything was tried: an enabled schedule moves
+    # the same counters a tick does. `due_was` is untouched — run-now is not a
     # scheduled occurrence, so there is no occurrence to put the clock back to.
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.
