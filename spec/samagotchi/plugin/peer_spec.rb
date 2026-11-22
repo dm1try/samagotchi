@@ -222,8 +222,8 @@ RSpec.describe Samagotchi::Plugin::Peer do
       result = chi.tools["echo_send"][:block].call(args, ctx)
 
       expect(plugin.posted.last.last.lines[1]).to eq("ref: #{id}\n")
-      expect(result).to eq("sent to Echo: question · a long title. Echo's answer comes as an update of the " \
-                           "echo-outbox context; don't wait or poll.")
+      expect(result).to eq("sent to Echo: question · a long title. Echo's answer comes as a note with its " \
+                           "text (echo-outbox); don't wait or poll.")
     end
   end
 

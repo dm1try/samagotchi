@@ -81,9 +81,9 @@ class Plugin < Samagotchi::Plugin::Peer
                      "context), for Codex to validate, to take as context, or to answer a " \
                      "question about. Only when the user asks for it, or to reply to its answer " \
                      "in a peer turn. Needs a paired Codex session: without one it fails, and the " \
-                     "user pairs from Codex. Codex's answer comes back later as the codex-outbox " \
-                     "context (a validate's wakes you): don't wait or poll. Never send secrets or " \
-                     "the whole conversation."
+                     "user pairs from Codex. Codex's answer comes back later as a codex-outbox " \
+                     "note with its text (a validate's wakes you): don't wait or poll. Never " \
+                     "send secrets or the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,
             description: "validate: check this part and answer with a verdict; context: for Codex to know, no " \

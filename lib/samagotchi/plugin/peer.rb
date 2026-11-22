@@ -261,8 +261,8 @@ module Samagotchi
       end
 
       def send_text(ctx, kind, text)
-        "#{deliver(ctx, kind: kind, title: text_title(text), text: text, by: "user", salt: command_salt)}; #{self.class::NAME}'s answer comes as the " \
-          "#{self.class::OUTBOX} context"
+        "#{deliver(ctx, kind: kind, title: text_title(text), text: text, by: "user", salt: command_salt)}; #{self.class::NAME}'s answer comes as a " \
+          "note with its text (#{self.class::OUTBOX})"
       rescue SendError => e
         "#{self.class::COMMAND}: #{e.message}"
       end
@@ -345,7 +345,10 @@ module Samagotchi
                    "#{peer::NAME} \"pair with chi #{id.to_s[0, 8]}\"."]
                 end
         lines << "last send: #{last_send_line(ctx)}" if id && last_send(ctx)
-        lines << "last answer (#{peer::OUTBOX}): #{outbox_line(outbox)}" if outbox
+        if outbox
+          lines << "last message from #{peer::NAME} (#{peer::OUTBOX}, its text in the conversation): " \
+                   "#{outbox_line(outbox)}"
+        end
         lines << "skill: **differs from this bundle's**: #{peer::COMMAND} install-skill (Replace), then pair again" if skill_differs?(ctx)
         lines << transport_line
         ctx.card(id: peer::STATUS_CARD, title: "#{peer::BUNDLE}: #{paired ? "paired" : "not paired"}",
@@ -462,7 +465,7 @@ module Samagotchi
       def follow_up(kind)
         case kind
         when "context" then "#{self.class::NAME} takes it in; it answers only if something in it is wrong."
-        else "#{self.class::NAME}'s answer comes as an update of the #{self.class::OUTBOX} context; don't wait or poll."
+        else "#{self.class::NAME}'s answer comes as a note with its text (#{self.class::OUTBOX}); don't wait or poll."
         end
       end
 

@@ -1,22 +1,25 @@
 ---
 name: codex-peer
-version: 0.4.0
+version: 0.5.0
 scope: system
-description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as the codex-outbox context; /codex install-skill installs Codex's chi-peer skill, which pairs"
+description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as a note with its text (codex-outbox); /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
 files:
   skill_codex_peer.md:
-    sha256: sha256:2f9c079a4d6911d935e14deadf7200791faa1044960a5b339e7cecc1a00b6680
-    description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as the codex-outbox context"
+    sha256: sha256:2ed3c1df4796de6d1e3d801eda0fe586d6bc10bc5e2e303ae618f55a0040f55d
+    description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as a note with its text (codex-outbox)"
 plugin:
   file: plugin.rb
-  sha256: sha256:a9cad05555a9152ec08ce3b507a190fc5c2d4864259898d45c1a9986d1635c47
+  sha256: sha256:d3ce9e57cc6d7118466686c29eff8b76fd773a45fad513d8c4c46271373c8f18
 scripts:
   pair: sha256:a61c3d311ce3f3e5386e90f0f867f649a39763a5883877e731e43d84dd9c85aa
-  chi-peer-SKILL.md: sha256:eacf5ecc986fbf40d8fd58c3c6a89510396883448cb9cbc2ed171d7fb9c5ffdb
+  chi-peer-SKILL.md: sha256:16ced6a3abec8d2b283817eeae0739ee3eb8dd82b8a3eaf27cb29ce244a731fa
 # The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
 # An agreeing answer's closing wake (the skills say an OK wakes chi once)
 # and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
 # The skill's `re` (the answered send) needs nothing newer: an older chi
 # ignores the unknown key, and sends no `ref:` line for the skill to echo.
 requires_chi: ">= 0.70.0"
+# The memory and the tool's words say a peer's note holds its text (chi's
+# ContextAbsorber peer block), which the next chi adds.
+requires_chi_next: true

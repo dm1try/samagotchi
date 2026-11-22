@@ -104,7 +104,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
 
     result, lines = received_lines(kind: "validate", title: "Step 2: the cache key", text: "Is the key stable?\nsee lib/a.rb")
 
-    expect(result).to start_with("sent to Claude: validate · Step 2: the cache key. Claude's answer comes as an update")
+    expect(result).to start_with("sent to Claude: validate · Step 2: the cache key. Claude's answer comes as a note with its text")
     expect(lines.size).to eq(1)
     expect(lines.first).to end_with("\n")
     expect(JSON.parse(lines.first)).to eq(
@@ -259,7 +259,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
         card = cards.last
         expect(card[:title]).to eq("claude-peer: paired")
         expect(card[:body]).to include("socket: `#{socket}` (there)", "last send: just now · validate · step 2 (8 chars, inline)",
-                                       "last answer (claude-outbox): validate step 2: VERDICT OK · just now")
+                                       "last message from Claude (claude-outbox, its text in the conversation): validate step 2: VERDICT OK · just now")
       ensure
         server&.close
       end
@@ -277,7 +277,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
       pair
 
       result, content = sent_content("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
-      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as the claude-outbox context")
+      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as a note with its text (claude-outbox)")
       text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
       expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{command_ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 
