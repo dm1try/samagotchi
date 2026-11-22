@@ -715,6 +715,18 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
           expect(Samagotchi::ArchiveStore).to have_received(:user_input).once
         end
 
+        it "names another session's refused question by its id8 in the owner's notice" do
+          max_wakes[0] = 1
+          start_worker(parent)
+          send_as("first?", "session:ab12cd34")
+          expect(next_turn[1][:opener_source]).to eq("session:ab12cd34")
+          refused = send_as("second?", "session:ab12cd34")
+          wait_for("the refused turn's record") { Samagotchi::TurnCheckpoint.settled_turn(parent_dir, refused) }
+          notice = nil
+          wait_for("the notice") { notice = drain.find { |e| e[:type] == :hook_notice } }
+          expect(notice[:text]).to start_with("session ab12cd34's message was not run: 1 turns ran in a row")
+        end
+
         it "from a visitor opens with its sender, counts, and is refused past the budget until the owner writes" do
           max_wakes[0] = 2
           drive_by("agent:claude")

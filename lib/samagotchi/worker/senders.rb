@@ -59,7 +59,8 @@ module Samagotchi
         refuse_queued_turn(origin, Visitor::CAP_REASON)
         return unless @wakes.notice_visitor!
 
-        name = ClientId.agent_name(origin.client_id)
+        # An agent's name, or another session's question by its id8.
+        name = ClientId.agent_name(origin.client_id) || "session #{ClientId.session_name(origin.client_id)}"
         @event_log.announce(type: :hook_notice, hook: "agent", level: :info, between_turns: true,
                             text: "#{name}'s message was not run: #{@wakes.max} turns ran in a row with no message " \
                                   "from you (#{ChildRing::MAX_WAKES_KEY}); agents' messages run again after your next one")
