@@ -463,3 +463,19 @@ test("an event's set (no parts) keeps by_chi: the row stays edited", async () =>
     assert.equal(p.start().querySelector('.ws-row.part[data-ws-part^="agents"] .st').textContent, "project instructions · edited");
   } finally { p.cleanup(); }
 });
+
+test("a prompt memory chi only wrote (no read): no read tab, its edited tab opens first", async () => {
+  const p = page({ states: [{ key: "preloads:style@system", state: "stale", by_chi: { tool_id: "t7", step: 1, op: "memory_write", current: true } }] });
+  try {
+    await withNow("preloads:style@system", styleNow({ rebuild: "restart" }), async () => {
+      const write = { tool: "memory_write", title: "style", status: "ok", tool_id: "t7" };
+      p.ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [write] }] }, 0), prompt: "go" }]);
+      p.ws.update({ items: [{ kind: "memory", key: "style", scope: "system", state: "live", tokens: 0 }], at: 4 });
+      await tick();
+      p.toggleOf('[data-ws-id="memory:style"]').click();
+      await tick();
+      assert.deepEqual(tabWords(p), ["preload · ~100", "edited · t1·s1"]);
+      assert.ok(p.start().querySelectorAll(".ws-tab")[1].classList.contains("on"));
+    });
+  } finally { p.cleanup(); }
+});
