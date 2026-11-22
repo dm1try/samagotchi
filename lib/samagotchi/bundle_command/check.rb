@@ -208,14 +208,18 @@ module Samagotchi
 
       # @return [Boolean] whether a listed file is missing
       def check_files(manifest)
-        listed = manifest.files.keys + manifest.plugin_files.map(&:first) +
-                 manifest.scripts.keys.map { |s| File.join("scripts", s) }
+        listed = listed_files(manifest)
         missing = listed.reject { |rel| File.file?(path(rel)) }
         missing.each do |rel|
           add(:error, :"missing-file", "manifest.yml", "lists #{rel}, which isn't in the bundle", line: manifest_line(rel),
                                                                                                 fix: "add the file or drop the entry")
         end
         !missing.empty?
+      end
+
+      def listed_files(manifest)
+        manifest.files.keys + manifest.plugin_files.map(&:first) +
+          manifest.scripts.keys.map { |s| File.join("scripts", s) }
       end
 
       # What an install leaves out: a memory files: doesn't list (by
@@ -231,12 +235,26 @@ module Samagotchi
           Dir.glob(path("*.rb")).map { |f| File.basename(f) }.sort.each do |name|
             unlisted(name, "plugin: parts:") unless plugin_files.include?(name)
           end
+          listed = listed_files(manifest)
+          Dir.glob(path("**/*.rb")).sort.each do |file|
+            rel = file.delete_prefix("#{@dir}/")
+            next unless rel.include?("/")
+            next if rel.start_with?("spec/", "test/") || listed.include?(rel)
+
+            unlisted_nested_plugin_part(rel, manifest.plugin[:file])
+          end
         elsif File.file?(path("plugin.rb"))
           unlisted("plugin.rb", "plugin:")
         end
         Dir.glob(path("scripts/*")).sort.each do |file|
           unlisted("scripts/#{File.basename(file)}", "scripts:") unless manifest.scripts.key?(File.basename(file))
         end
+      end
+
+      def unlisted_nested_plugin_part(rel, plugin_file)
+        add(:warn, :unlisted, rel,
+            "manifest.yml's plugin: parts: doesn't list it, so an install leaves it out; parts sit next to #{plugin_file}",
+            fix: "move it up as #{File.basename(rel)} and list it under plugin: parts:, then chi bundle check --fix")
       end
 
       def unlisted(rel, key)

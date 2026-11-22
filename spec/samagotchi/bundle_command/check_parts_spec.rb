@@ -50,6 +50,29 @@ RSpec.describe Samagotchi::BundleCommand::Check, "plugin parts" do
                                    "leaves it out (fix: list it under plugin: parts:, then chi bundle check --fix)"])
   end
 
+  it "warns for nested .rb files except tests and files the manifest lists" do
+    {
+      "lib/oauth.rb" => "# x\n",
+      "lib/listed.rb" => "# x\n",
+      "spec/plugin_spec.rb" => "# x\n",
+      "test/test_helper.rb" => "# x\n",
+      "scripts/kept.rb" => "# x\n"
+    }.each do |rel, text|
+      FileUtils.mkdir_p(File.dirname(File.join(dir, rel)))
+      File.write(File.join(dir, rel), text)
+    end
+    edit("manifest.yml") do |text|
+      text.sub("files: {}\n", "files:\n  lib/listed.rb: sha256:aa\n")
+          .sub("requires_chi:", "scripts:\n  kept.rb: sha256:aa\nrequires_chi:")
+    end
+    refresh!
+
+    expect(findings(:warn)).to eq([
+      "warn unlisted lib/oauth.rb: manifest.yml's plugin: parts: doesn't list it, so an install leaves it out; " \
+      "parts sit next to plugin.rb (fix: move it up as oauth.rb and list it under plugin: parts:, then chi bundle check --fix)"
+    ])
+  end
+
   it "sha: a stale part line" do
     edit("shout.rb") { |text| "#{text}# edited\n" }
     expect(findings(:error)).to include("error sha manifest.yml:10: a stale sha256 for shout.rb (fix: chi bundle check --fix)")
