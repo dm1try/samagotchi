@@ -115,30 +115,59 @@ module Samagotchi
       # saved head, or the line that says why not and, under a changed head,
       # the source now). +now+: with the slice, the source now and its diff
       # (a stale row's "now" tab). Owner only: participants see no prompt text. The parts and
-      # messages[0] come from one source: a live worker's snapshot frame
-      # (session_state_snapshot's prompt_parts, the snapshot's messages),
-      # else the session file. One session-file parse, no Bridge route.
+      # messages[0] come from one source: a live worker's complete snapshot
+      # frame, else the session file. The file is read only when the snapshot
+      # is missing or a source lookup needs the session's working directory.
       def handle_working_set_part(req, id)
         key = req.GET["key"].to_s
         return error_response(400, "invalid_part", WorkingSetPart::INVALID) if key.strip.empty?
 
-        session = @session_class.load(id, state_dir: default_state_dir)
         live = bridge_get_json(id, "snapshot")
-        parts, messages = prompt_source(live, session)
+        source = prompt_snapshot(live)
+        if source
+          parts, messages = source
+          cwd = live["working_directory"]
+          if cwd.nil? && prompt_part_needs_cwd?(parts, messages, key, req.GET["now"] == "1")
+            session = @session_class.load(id, state_dir: default_state_dir)
+            cwd = session.working_directory
+          end
+        else
+          session = @session_class.load(id, state_dir: default_state_dir)
+          parts = session.prompt_parts
+          messages = session.messages
+          cwd = session.working_directory
+        end
         body = WorkingSetPart.answer(parts: parts, messages: messages, key: key,
                                      older_worker: !live.nil? && WorkingSetPart.older_worker?(live.dig("snapshot", "chi_version")),
                                      running: !live&.dig("snapshot", "current_turn").nil?, root: MemoryPaths.system_dir,
-                                     cwd: session.working_directory, now: req.GET["now"] == "1")
+                                     cwd: cwd, now: req.GET["now"] == "1")
         return error_response(404, "unknown_part", WorkingSetPart::UNKNOWN) unless body
 
         json_response(200, body)
       end
 
-      # The prompt parts and the messages they slice (+live+: the worker's
-      # Bridge snapshot answer, nil without a worker), from one source: a
-      # live worker's snapshot frame (session_state_snapshot's prompt_parts,
-      # the snapshot's messages), else the session file.
-      # @return [Array(Array, Array)]
+      # A complete live snapshot source for the part route; otherwise nil.
+      def prompt_snapshot(live)
+        state = live.is_a?(Hash) ? live["session_state_snapshot"] : nil
+        snapshot = live.is_a?(Hash) ? live["snapshot"] : nil
+        return unless state.is_a?(Hash) && state["prompt_parts"].is_a?(Array) &&
+                      snapshot.is_a?(Hash) && snapshot["messages"].is_a?(Array)
+
+        [state["prompt_parts"], snapshot["messages"]]
+      end
+
+      def prompt_part_needs_cwd?(parts, messages, key, now)
+        parts = PromptPart.list(parts)
+        index = PromptPart.keys(parts).index(key)
+        part = parts[index]
+        return false unless part && part.at && WorkingSet::Locator::FETCHED.include?(part.kind)
+
+        head = Array(messages).first
+        text = head.is_a?(Hash) && ContextNote.system_head?(head) ? (head[:content] || head["content"]) : nil
+        text.is_a?(String) && (now || PromptPart.digest_of(text, 16) != part.head)
+      end
+
+      # Prompt data for the working-set list route, which already loads the session.
       def prompt_source(live, session)
         state = live.is_a?(Hash) ? live["session_state_snapshot"] : nil
         return [state["prompt_parts"], Array(live.dig("snapshot", "messages"))] if state.is_a?(Hash) && state["prompt_parts"].is_a?(Array)

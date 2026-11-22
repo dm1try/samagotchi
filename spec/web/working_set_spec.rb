@@ -364,6 +364,21 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       expect(part_call(session, " ").first).to eq(400)
     end
 
+    it "answers a live prompt part without loading the saved session" do
+      session = built_session
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => nil,
+                        "chi_version" => Samagotchi::VERSION },
+        "session_state_snapshot" => { "prompt_parts" => session.prompt_parts.map(&:to_h) }
+      )
+      expect(Samagotchi::Session).not_to receive(:load)
+
+      status, body = part_call(session, "identity:identity@system")
+
+      expect(status).to eq(200)
+      expect(body["sent"]["text"]).to eq("I am chi.\n\n\n---\n\nModel-specific guidance (m):\nOverlay for m.")
+    end
+
     it "opens tools as their names and sizes, whatever the head" do
       session = built_session(head: "not the head")
       expect(part_call(session, keys.first).last).to include("tools" => [])
