@@ -251,7 +251,12 @@ RSpec.describe Samagotchi::BundleManifest do
     it "refuses a part that isn't a top-level .rb name, the plugin file itself, a list, or more than 16" do
       error = described_class::ValidationError
       expect { described_class.new(path: write_manifest(plugin_with({ "lib/client.rb" => "aa" }))) }
-        .to raise_error(error, %(plugin parts: "lib/client.rb" isn't a .rb file name in the bundle's top directory))
+        .to raise_error(error, %(plugin parts: "lib/client.rb" isn't a .rb file name in the bundle's top directory: ) \
+                               "parts sit next to plugin.rb (move lib/client.rb up and list it as client.rb)")
+      nested_part = { "plugin" => { "file" => "entry.rb", "sha256" => "sha256:aa", "parts" => { "lib/oauth.rb" => "aa" } } }
+      expect { described_class.new(path: write_manifest(nested_part)) }
+        .to raise_error(error, %(plugin parts: "lib/oauth.rb" isn't a .rb file name in the bundle's top directory: ) \
+                               "parts sit next to entry.rb (move lib/oauth.rb up and list it as oauth.rb)")
       expect { described_class.new(path: write_manifest(plugin_with({ "client.py" => "aa" }))) }
         .to raise_error(error, /"client.py" isn't a .rb file name/)
       expect { described_class.new(path: write_manifest(plugin_with({ "plugin.rb" => "aa" }))) }
