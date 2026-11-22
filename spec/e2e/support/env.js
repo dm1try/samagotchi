@@ -181,6 +181,7 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
       XDG_STATE_HOME: dirs.state,
       SAMAGOTCHI_ENV: "test",
     });
+    env.childEnv = childEnv;
     // The check-in bundle (installed like a user would), for its scenario;
     // after: 3 leaves the other scripts' turns alone.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "check-in"],
@@ -265,6 +266,11 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
 
 // The fake serves <fake dir>/script.json to every request: pick a scenario's
 // script before its turn starts.
+// Runs `chi +args+` in the env (its project folder, its state); its stdout.
+export function chiCli(env, args) {
+  return execFileSync(path.join(CHECKOUT, "bin", "chi"), args, { cwd: env.dirs.project, env: env.childEnv, encoding: "utf8" });
+}
+
 export function useScript(env, name) {
   fs.copyFileSync(path.join(SCRIPTS, `${name}.json`), path.join(env.dirs.fake, "script.json"));
 }
