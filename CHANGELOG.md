@@ -25,6 +25,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Config-preloaded prompt memories no longer appear held twice or open on an empty read tab in the web's working set.
+- An owner's disable stays off after an in-flight skip or failure; a `date` one-off still returns after a skip.
 
 ## [0.184.0] - 2026-11-22
 

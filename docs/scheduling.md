@@ -197,6 +197,10 @@ tick is about an hour of patience, which is what the count really measures.
 `chi schedule enable` resets both counters too: a schedule turned back on gets its
 whole budget again, not one skip.
 
+A recurring schedule the owner has disabled stays off when an in-flight skip or
+failure is recorded. A `date` one-off is the exception: a skip or failure puts its
+moment back and re-enables it.
+
 The tick line that disabled an entry ends `(disabled)` (`chi schedule tick`,
 `run-now`), and `tick --format json` gives that outcome `"disabled": true`
 (`Schedules::Outcome#disabled`). When **chi web's** tick (`schedule.auto_tick`)

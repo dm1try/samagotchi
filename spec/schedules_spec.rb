@@ -834,6 +834,47 @@ RSpec.describe Samagotchi::Schedules do
       FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: dir))
     end
 
+    it "keeps an owner's disable through an in-flight skip and pending failure" do
+      Dir.mktmpdir("schedules-owner-disabled-outcome") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        skipped_entry = schedules.add(target: anchor, prompt: "Skip", recurrence: every("1m"))
+        firing = schedules.send(:advance, skipped_entry, Time.now)
+        schedules.send(:write_under_lock) { |file| file.entries[0] = firing }
+        schedules.disable(skipped_entry.id)
+        schedules.send(:record, firing, described_class::Outcome.new(id: firing.id, status: "skipped", detail: "busy"))
+        expect(schedules.lookup(skipped_entry.id)).to have_attributes(enabled: false, skips: 1)
+
+        failed_entry = schedules.add(target: anchor, prompt: "Fail", recurrence: every("1m"), mode: described_class::SAME)
+        pending = schedules.send(:advance, failed_entry, Time.now)
+                       .with(pending_session_id: anchor, pending_turn_id: "turn")
+        schedules.send(:write_under_lock) do |file|
+          position = file.entries.index { |candidate| candidate.is_a?(described_class::Entry) && candidate.id == failed_entry.id }
+          file.entries[position] = pending
+        end
+        schedules.disable(failed_entry.id)
+
+        updated = schedules.send(:finish_pending, schedules.lookup(failed_entry.id),
+                                 described_class::Outcome.new(id: pending.id, status: "failed", detail: "turn failed"))
+        expect(updated).to have_attributes(enabled: false, failures: 1)
+      end
+    end
+
+    it "re-enables a date one-off when a skip puts its advanced moment back" do
+      Dir.mktmpdir("schedules-date-skip") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Once", recurrence: described_class.recurrence(date: "2026-11-20T09:00"))
+
+        advanced = schedules.send(:advance, entry, Time.local(2026, 11, 20, 9))
+        skipped = schedules.send(:skipped, advanced, "busy")
+
+        expect([advanced.enabled, skipped.enabled, skipped.skips]).to eq([false, true, 1])
+      end
+    end
+
     def busy(dir, id)
       Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(id, state_dir: dir), prompt: "wait for me")
     end

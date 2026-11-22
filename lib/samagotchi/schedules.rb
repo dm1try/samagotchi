@@ -826,15 +826,17 @@ module Samagotchi
 
     def skipped(entry, reason)
       skips = entry.skips + 1
-      disabled = skips >= entry.max_skips
+      within_budget = skips < entry.max_skips
       entry.with(skips: skips, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
-                 last_result: disabled ? "disabled: #{reason}" : "skipped", enabled: !disabled)
+                 last_result: within_budget ? "skipped" : "disabled: #{reason}",
+                 enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
     end
 
     def failed(entry, reason)
       failures = entry.failures + 1
+      within_budget = failures < entry.max_failures
       entry.with(failures: failures, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
-                 last_result: reason, enabled: failures < entry.max_failures)
+                 last_result: reason, enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
     end
 
     def pending_detail(entry)
