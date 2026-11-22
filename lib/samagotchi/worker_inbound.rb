@@ -61,8 +61,10 @@ module Samagotchi
       # that agrees closes the round and counts toward session.max_wakes only.
       def peer_turn? = peer? && !delivery.agreed
       def origin = TurnOrigin.new(client_id: "#{ClientId::CONTEXT_PREFIX}#{name}")
-      # The plain note #unmark_wake puts back.
-      def note = delivery.note
+      # The plain note #unmark_wake puts back: with the wake note's text
+      # when only that held it (ContextAbsorber::Delivery#wake_plain), so a
+      # failed wake turn keeps the text it marked read.
+      def note = delivery.wake_plain || delivery.note
     end
 
     # A task finish wake turn to run (TaskWatch, TaskFinishNote): its wake
@@ -404,7 +406,10 @@ module Samagotchi
 
     # +batch+ with +waking+'s subscription recording the wake (the 10-minute window).
     def woken(batch, waking)
-      stamped = waking.with(subscription: waking.subscription.with(wakes_at: Time.now.iso8601))
+      # The wake note went in: its own read mark when it holds a text the
+      # plain note doesn't (ContextAbsorber::Delivery#wake_subscription).
+      subscription = waking.wake_subscription || waking.subscription
+      stamped = waking.with(subscription: subscription.with(wakes_at: Time.now.iso8601))
       batch.with(deliveries: batch.deliveries.map { |delivery| delivery == waking ? stamped : delivery })
     end
   end

@@ -352,6 +352,36 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(content).to include("Its answer is long (2001 characters): read it with context_read(name: \"codex-outbox\")")
       end
 
+      it "holds a text over PEER_HELD_CHARS in the wake note only: read once woken, unread while held" do
+        config["context.peer_turns"] = 1
+        start_worker
+        middle = "m" * (Samagotchi::ContextAbsorber::PEER_HELD_CHARS + 1)
+        answer(middle)
+        expect(wake_turn&.last&.dig(:content)).to include("[PEER MESSAGE from Codex]\n#{middle}\n[END PEER MESSAGE]")
+        expect(own.subscription("codex-outbox").read).to eq(Samagotchi::ContextSources.revision_of(middle))
+
+        held = "h" * (Samagotchi::ContextAbsorber::PEER_HELD_CHARS + 1)
+        answer(held)
+        loop_rounds
+        expect(wake_turns).to be_empty
+        expect(saved_context_notes.last[:content]).to include("Its message is long (2001 characters)")
+        expect(saved_context_notes.last[:content]).not_to include("[PEER MESSAGE")
+        expect(own.subscription("codex-outbox").read).to eq(Samagotchi::ContextSources.revision_of(middle))
+      end
+
+      it "puts back a failed wake turn's note with the text it held, as a plain note" do
+        start_worker
+        middle = "m" * (Samagotchi::ContextAbsorber::PEER_HELD_CHARS + 1)
+        @fail_next = true
+        answer(middle)
+        wake_turn
+        wait_for("the failed wake turn's turn note") { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" }
+        wait_for("the wake note, unmarked") { saved_context_notes.last.then { |m| m[:context_source] == "codex-outbox" && !m.key?(:turn_start) } }
+        note = saved_context_notes.last
+        expect(note[:content]).to include("[PEER MESSAGE from Codex]\n#{middle}\n[END PEER MESSAGE]", "Its message is above.")
+        expect(note[:content]).not_to include("chi started this turn")
+      end
+
       it "takes typed input in the web or a TUI as the reset, not chi send (which a peer can run)" do
         config["context.peer_turns"] = 1
         start_worker

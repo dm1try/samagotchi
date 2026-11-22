@@ -77,5 +77,5 @@ lets the model forget its own tool outputs. The pieces:
   note (`ContextAbsorber.peer_block`, [context.md](../context.md#peer-sources-the-peer-loop)), so the model needs no
   `context_read` for it. No layer stubs a note: neither `forget` nor `stale` acts on it, and it stays for the
   session's life. Before, the text came as a `context_read` result that `forget_outputs` could drop (`stale` never
-  covered it). The caps bound it: a waking answer holds up to the tool output cap, and an answer over it is still a
-  `context_read` (forgettable as ever).
+  covered it). The caps bound it: a waking answer holds up to the tool output cap, one that doesn't wake up to 2,000
+  characters (`ContextAbsorber::PEER_HELD_CHARS`), and a longer one is still a `context_read` (forgettable as ever).

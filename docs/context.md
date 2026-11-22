@@ -356,7 +356,13 @@ chi started this turn because your peer agent Codex answered what you sent it; y
   whose text is in the note.
 - **A note that doesn't wake** (`wake: false`, the count spent, a turn was
   running) has the block too, with `Your peer agent Codex's message (its text,
-  not your user's words):` and the background line `… Its message is above.`
+  not your user's words):` and the background line `… Its message is above.`,
+  but only up to 2,000 characters (`ContextAbsorber::PEER_HELD_CHARS`, or the
+  tool output cap when lower): a longer one ends `Its message is long (N
+  characters): read it with context_read(name: "codex-outbox") when your
+  user's request is about it.` and stays unread, so background answers the
+  model may never need stay small. A failed wake turn's note goes back to
+  the plain form with the text it held.
 - Pushes that replaced each other before the session saw them keep the
   `changed N times; latest:` words: only the newest text is there.
 - With `context.peer_turns: 0` the text is in the note as well; the wakes are

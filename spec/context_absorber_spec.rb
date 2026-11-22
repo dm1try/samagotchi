@@ -342,6 +342,69 @@ RSpec.describe Samagotchi::ContextAbsorber do
       expect(deliveries.first.wake_note[:text]).to include("[PEER MESSAGE from Codex]\n#{"x" * 10_000}\n[END PEER MESSAGE]")
     end
 
+    describe "a note that doesn't wake (held or nowake): its text up to PEER_HELD_CHARS" do
+      let(:middle) { "y" * (described_class::PEER_HELD_CHARS + 1) }
+
+      it "keeps a longer text out of the plain note, unread, while the wake note holds it and marks it read" do
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", middle, summary: "review: VERDICT CHANGES", re: "s-ab12cd")
+
+        delivery = deliveries.first
+
+        expect(delivery.note[:text]).not_to include("[PEER MESSAGE")
+        expect(delivery.note[:text]).to end_with("Its message is long (2001 characters): read it with " \
+                                                 "context_read(name: \"codex-outbox\") when your user's request is about it.")
+        expect(delivery.note[:peer]).not_to have_key("inline")
+        expect(delivery.subscription.read).to be_nil
+        expect(delivery.wake_note[:text]).to include("[PEER MESSAGE from Codex]\n#{middle}\n[END PEER MESSAGE]")
+        expect(delivery.wake_note[:text]).to include("Its answer is above;")
+        expect(delivery.wake_note[:peer]).to include("inline" => true)
+        expect(delivery.wake_subscription.read).to eq(delivery.subscription.seen)
+        expect(delivery.wake_plain[:text]).to eq(described_class.attached_text(name: "codex-outbox", hint: nil, why: nil,
+                                                                               summary: "review: VERDICT CHANGES",
+                                                                               from: "Codex", text: middle))
+        expect(delivery.wake_plain.except(:text)).to eq(delivery.note.except(:text).merge(peer: delivery.wake_note[:peer]))
+      end
+
+      it "holds a text up to it in both, with no second form" do
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", "y" * described_class::PEER_HELD_CHARS, summary: "review: VERDICT CHANGES", re: "s-ab12cd")
+
+        delivery = deliveries.first
+
+        expect(delivery.note[:text]).to include("[PEER MESSAGE from Codex]")
+        expect(delivery.subscription.read).to eq(delivery.subscription.seen)
+        expect(delivery.wake_subscription).to be_nil
+        expect(delivery.wake_plain).to be_nil
+      end
+
+      it "keeps a nowake answer's longer text out, unread, with no wake forms" do
+        add(own, "codex-outbox")
+        push_re(own, "codex-outbox", middle, summary: "review: VERDICT CHANGES", re: "s-ab12cd", wake: false)
+
+        delivery = deliveries.first
+
+        expect(delivery.note[:text]).to include("Its message is long (2001 characters)")
+        expect(delivery.wake_note).to be_nil
+        expect(delivery.wake_plain).to be_nil
+        expect(delivery.subscription.read).to be_nil
+      end
+
+      context "with a tool output cap under it" do
+        let(:cap) { 500 }
+
+        it "takes the lower cap for both" do
+          add(own, "codex-outbox")
+          push_re(own, "codex-outbox", "z" * 501, summary: "review: VERDICT CHANGES", re: "s-ab12cd")
+
+          delivery = deliveries.first
+
+          expect(delivery.note[:text]).to include("Its message is long (501 characters)")
+          expect(delivery.wake_note[:text]).to include("Its answer is long (501 characters)")
+        end
+      end
+    end
+
     it "keeps the changed N times words beside the newest text when pushes replaced each other" do
       add(own, "codex-outbox")
       push_re(own, "codex-outbox", "v1", summary: "one", re: "s-ab12cd", wake: false)

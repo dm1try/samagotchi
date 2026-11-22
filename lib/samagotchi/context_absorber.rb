@@ -22,9 +22,15 @@ module Samagotchi
     # it), else nil; +peer+: the peer's name when the source is a peer
     # agent's answers (#peer_label), else nil; +agreed+: a peer's answer
     # that agrees (.peer_agrees?): its wake closes the round, so it counts
-    # toward session.max_wakes but not context.peer_turns.
-    Delivery = Data.define(:name, :note, :subscription, :wake_note, :peer, :agreed) do
-      def initialize(name:, note:, subscription:, wake_note: nil, peer: nil, agreed: false) = super
+    # toward session.max_wakes but not context.peer_turns. A peer's wake
+    # note may hold its text where the plain note doesn't (PEER_HELD_CHARS):
+    # then +wake_subscription+ is the subscription once the wake note went
+    # in (it marks the text read) and +wake_plain+ the plain note with the
+    # wake note's text (what a failed wake turn puts back,
+    # WorkerInbound#unmark_wake); else both nil.
+    Delivery = Data.define(:name, :note, :subscription, :wake_note, :peer, :agreed, :wake_subscription, :wake_plain) do
+      def initialize(name:, note:, subscription:, wake_note: nil, peer: nil, agreed: false, wake_subscription: nil,
+                     wake_plain: nil) = super
     end
     # What #pending found: the deliveries, and the store's signature they
     # were made from (#commit keeps it, so an unchanged store isn't read again).
@@ -100,6 +106,13 @@ module Samagotchi
     # Either, after any spaces, format characters or markdown leads, at any
     # line start (Steer.forged_frames).
     PEER_FORGED = Steer.forged_frames(PEER_FORGED_OPENINGS, lines: PEER_FORGED_LINES)
+    # The most characters of a peer's text a note that doesn't wake holds
+    # (a held or nowake answer, which the model may never need): a longer
+    # one gets the long line and context_read, so background stays small.
+    # A wake note holds up to the tool output cap. History is never
+    # forgotten (docs/internals/llm-context-forget.md), so this bounds what
+    # background answers add for the session's life.
+    PEER_HELD_CHARS = 2_000
     # A peer's verdict in its answer's summary (`<title>: VERDICT OK`); a
     # copied template's `VERDICT OK|CHANGES` is none.
     VERDICT = /\bVERDICT:?\s*([A-Z]+)(?![A-Za-z|])/
@@ -266,38 +279,28 @@ module Samagotchi
     # text that asked when #first_text_wakes?; a peer's answer that agrees
     # (.peer_agrees?) ends it with the closing line, one that names no send
     # (no re) with the first-word line. A peer's text goes in its note
-    # (#peer_text), which then counts as read.
+    # (#peer_text: the wake note's up to the cap, the plain note's up to
+    # PEER_HELD_CHARS), which then counts as read.
     def delivery_for(attached, sub, now)
       snapshot = attached.snapshot
       return nil unless snapshot.text?
 
       name = attached.name
       hint = snapshot.hint || attached.source.hint
-      peer = peer_label(attached)
-      agreed = agreed?(peer, snapshot)
-      waking = { peer: peer, turns: peer && @peer_turns.call, agreed: agreed, first: !agreed && snapshot.re.nil? }
       from = peer_name(attached)
-      body = from ? peer_text(snapshot) : {}
-      about = peer_note(attached, inline: body.key?(:text))
-      mark = seen(sub, snapshot)
-      mark = mark.with(read: snapshot.revision) if body.key?(:text)
       if sub.seen.nil?
-        args = { name: name, hint: hint, why: attached.source.why, summary: snapshot.summary, from: from, **body }
-        found = delivery(name, text_note_id(name, snapshot), self.class.attached_text(**args), now, mark,
-                         peer: about).with(peer: peer, agreed: agreed)
-        return found unless first_text_wakes?(attached, sub)
-
-        return found.with(wake_note: found.note.merge(text: self.class.attached_text(**args, **waking, wake: true)))
+        args = { name: name, hint: hint, why: attached.source.why, summary: snapshot.summary, from: from }
+        return text_delivery(attached, sub, now, first_text_wakes?(attached, sub)) do |body, **wake|
+          self.class.attached_text(**args, **body, **wake)
+        end
       end
       if sub.seen != snapshot.revision
         args = { name: name, hint: hint, summary: snapshot.summary, changes: snapshot.serial - sub.seen_serial,
-                 from: from, **body }
-        found = delivery(name, text_note_id(name, snapshot), self.class.updated_text(**args), now, mark,
-                         peer: about).with(peer: peer, agreed: agreed)
+                 from: from }
         # Any revision since the one the session last saw may have asked.
-        return found unless snapshot.wake_serial.to_i > sub.seen_serial
-
-        return found.with(wake_note: found.note.merge(text: self.class.updated_text(**args, **waking, wake: true)))
+        return text_delivery(attached, sub, now, snapshot.wake_serial.to_i > sub.seen_serial) do |body, **wake|
+          self.class.updated_text(**args, **body, **wake)
+        end
       end
       return nil unless snapshot.error && sub.error_seen != snapshot.error_since
 
@@ -305,6 +308,32 @@ module Samagotchi
              "context_read(name: \"#{name}\") still returns the text from #{clock(snapshot_time(snapshot))}. #{BACKGROUND_LINE}"
       delivery(name, "ctx-#{name}-error-#{snapshot.error_since.to_s.delete("^0-9")}", text, now,
                sub.with(error_seen: snapshot.error_since))
+    end
+
+    # The attached or updated delivery of +attached+'s text, its note's
+    # text from the block (+body+: #peer_text's, +wake+: the wake kwargs),
+    # with a wake note when it +asks+. A peer's plain note and wake note
+    # each get their own body (#peer_text), peer hash (inline) and read mark.
+    def text_delivery(attached, sub, now, asks)
+      snapshot = attached.snapshot
+      peer = peer_label(attached)
+      agreed = agreed?(peer, snapshot)
+      from = peer_name(attached)
+      held = from ? peer_text(snapshot, held: true) : {}
+      mark = seen(sub, snapshot)
+      read = ->(body) { body.key?(:text) ? mark.with(read: snapshot.revision) : mark }
+      found = delivery(attached.name, text_note_id(attached.name, snapshot), yield(held), now, read.call(held),
+                       peer: peer_note(attached, inline: held.key?(:text))).with(peer: peer, agreed: agreed)
+      return found unless asks
+
+      woke = from ? peer_text(snapshot) : {}
+      waking = { peer: peer, turns: peer && @peer_turns.call, agreed: agreed, first: !agreed && snapshot.re.nil? }
+      wake_note = found.note.merge(text: yield(woke, **waking, wake: true), peer: peer_note(attached, inline: woke.key?(:text)))
+                       .compact
+      return found.with(wake_note: wake_note) if woke == held
+
+      found.with(wake_note: wake_note, wake_subscription: read.call(woke),
+                 wake_plain: found.note.merge(text: yield(woke), peer: wake_note[:peer]).compact)
     end
 
     # A first text may wake only for a session's pushed source (`chi context
@@ -331,10 +360,12 @@ module Samagotchi
     def agreed?(peer, snapshot) = !peer.nil? && self.class.peer_agrees?(snapshot.summary)
 
     # A peer's text for its note: { text: } up to the cap (one read of
-    # @cap per note, so the saved note is byte-stable), { long: <length> }
-    # over it, {} without a cap.
-    def peer_text(snapshot)
+    # @cap per note, so the saved note is byte-stable; +held+: a note that
+    # doesn't wake, up to PEER_HELD_CHARS when that is less), { long:
+    # <length> } over it, {} without a cap.
+    def peer_text(snapshot, held: false)
       cap = @cap&.call or return {}
+      cap = [cap, PEER_HELD_CHARS].min if held
       snapshot.text.length > cap ? { long: snapshot.text.length } : { text: snapshot.text }
     end
 
