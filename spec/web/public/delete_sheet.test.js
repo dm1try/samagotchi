@@ -442,6 +442,132 @@ test("the flow: a refusal shows in place; Stop then delete retries only once the
   assert.deepEqual(calls, ["delete", `stop ${C}`, `stop ${C}`, "delete", "done"]);
 });
 
+test("the flow: a close while Stop is waiting still sends the delete after release", async () => {
+  const host = fakeHost();
+  host.live = () => host.closed === 0;
+  const unmovable = Object.assign(new Error("can't go back"), { code: "delegate_unmovable", body: { ids: [C], stoppable: true } });
+  const calls = [];
+  const done = [];
+  let releaseStop;
+  const stop = new Promise((resolve) => { releaseStop = resolve; });
+  const api = {
+    deletePlan: async () => plain(),
+    deleteSession: async (id, opts) => {
+      calls.push(["delete", id, opts]);
+      if (calls.length === 1) throw unmovable;
+      return { deleted: [C] };
+    },
+    stopSession: () => stop,
+  };
+  const flow = flowOf({ id: C, session: { id: C }, host, api, done: (...args) => done.push(args) });
+  await tick();
+  flow.act("this");
+  await tick();
+  flow.act("stop");
+  host.close();
+  const drawn = host.shown.length;
+  releaseStop({ released: true });
+  await tick(); await tick();
+  assert.deepEqual(calls, [["delete", C, { expect: "d0" }], ["delete", C, { expect: "d0" }]]);
+  assert.deepEqual([done.length, host.shown.length], [1, drawn]);
+});
+
+test("the flow: closing while Stop is waiting reports a not-released stop and never deletes", async () => {
+  for (const stopAnswer of [{ released: false }, null, "throw"]) {
+    const host = fakeHost();
+    host.live = () => host.closed === 0;
+    const unmovable = Object.assign(new Error("can't go back"), { code: "delegate_unmovable", body: { ids: [C], stoppable: true } });
+    let releaseStop;
+    let rejectStop;
+    const stop = new Promise((resolve, reject) => { releaseStop = resolve; rejectStop = reject; });
+    const failed = [];
+    let deletes = 0;
+    const api = {
+      deletePlan: async () => plain(),
+      deleteSession: async () => {
+        deletes += 1;
+        if (deletes === 1) throw unmovable;
+        return { deleted: [C] };
+      },
+      stopSession: () => stop,
+    };
+    const flow = flowOf({ id: C, session: { id: C }, host, failed: (error) => failed.push(error), api });
+    await tick();
+    flow.act("this");
+    await tick();
+    flow.act("stop");
+    host.close();
+    const drawn = host.shown.length;
+    if (stopAnswer === "throw") rejectStop(new Error("stop route threw"));
+    else releaseStop(stopAnswer);
+    await tick();
+    assert.equal(deletes, 1);
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0].code, "still_stopping");
+    assert.equal(failed[0].message, "9d0e1f2a's worker is still running; try again in a moment.");
+    assert.equal(host.shown.length, drawn);
+  }
+});
+
+test("the flow: closing while Stop is waiting reports a released delete refusal", async () => {
+  const host = fakeHost();
+  host.live = () => host.closed === 0;
+  const unmovable = Object.assign(new Error("can't go back"), { code: "delegate_unmovable", body: { ids: [C], stoppable: true } });
+  const tuiOwned = Object.assign(new Error("a terminal chi has it open"), { code: "tui_owned" });
+  let releaseStop;
+  const stop = new Promise((resolve) => { releaseStop = resolve; });
+  const failed = [];
+  let deletes = 0;
+  const api = {
+    deletePlan: async () => plain(),
+    deleteSession: async () => {
+      deletes += 1;
+      if (deletes === 1) throw unmovable;
+      throw tuiOwned;
+    },
+    stopSession: () => stop,
+  };
+  const flow = flowOf({ id: C, session: { id: C }, host, failed: (error) => failed.push(error), api });
+  await tick();
+  flow.act("this");
+  await tick();
+  flow.act("stop");
+  host.close();
+  const drawn = host.shown.length;
+  releaseStop({ released: true });
+  await tick(); await tick();
+  assert.equal(deletes, 2);
+  assert.deepEqual(failed, [tuiOwned]);
+  assert.equal(host.shown.length, drawn);
+});
+
+test("the flow: Stop redraws a busy refusal and ignores a second Stop", async () => {
+  const host = fakeHost();
+  const unmovable = Object.assign(new Error("can't go back"), { code: "delegate_unmovable", body: { ids: [C], stoppable: true } });
+  let releaseStop;
+  const stop = new Promise((resolve) => { releaseStop = resolve; });
+  let stops = 0;
+  const api = {
+    deletePlan: async () => plain(),
+    deleteSession: async () => { throw unmovable; },
+    stopSession: async () => { stops += 1; return stop; },
+  };
+  const flow = flowOf({ id: C, session: { id: C }, host, api });
+  await tick();
+  flow.act("this");
+  await tick();
+  flow.act("stop");
+  flow.act("stop");
+  await tick();
+  const markup = host.shown.at(-1);
+  assert.equal(stops, 1);
+  assert.match(markup, /class="ds-choice primary"[^]*Stopping…/);
+  assert.match(markup, /data-act="del:stop"[^]*disabled/);
+  assert.match(markup, /data-act="del:cancel"[^>]*disabled/);
+  releaseStop({ released: false });
+  await tick();
+});
+
 test("the archive flow: its 409's sheet, the tap archives with the named ids; a new task re-shows it; another refusal is Can't", async () => {
   const host = fakeHost();
   const calls = [];

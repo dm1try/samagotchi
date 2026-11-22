@@ -422,7 +422,9 @@ it says what goes, what is stopped first and what stays, with one button that na
   A `409 plan_changed` and a `409 tasks_running` (a task that started since) both re-read the plan and show it with
   "What this deletes changed; check again." Any other refusal `runDeleteFlow` shows in the sheet (`refusalModel`: a
   moved delegate that can't go back offers "Stop its worker, then delete" only when the 409 says `stoppable`; it stops
-  each, retries only once the stop answers `released`, and says so otherwise, never looping, one stop at a time).
+  each, retries only once the stop answers `released`, and says so otherwise, never looping, one stop at a time). While
+  it stops, the refusal view says `Stopping…` with the stop choice and Cancel off; if the sheet closes meanwhile, it
+  goes on with the delete and puts the delete toast or a sticky `failed` refusal in a toast.
 - **Archive** stays one tap and the Undo toast when nothing is in the way. Its 409 opens the same sheet
   (`session_actions.js setArchived` → `runDeleteFlow` with `archive: {refusal}`): `tasks_running` is
   `archiveSheetModel` (Hidden: it and the 409's `sessions` − 1 delegates; Stopped first: the tasks; `Stop them and
