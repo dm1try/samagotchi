@@ -131,6 +131,37 @@ RSpec.describe Samagotchi::McpServer::Protocol do
     end
   end
 
+  it "refuses object, array and boolean ids, finite string and number ids are echoed" do
+    [{}, [1], true].each do |id|
+      answer = protocol.handle({ "jsonrpc" => "2.0", "id" => id, "method" => "tools/list" })
+      expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, nil, -32_600]), id.inspect
+    end
+
+    ["call-id", 7, 1.5, nil].each do |id|
+      answer = protocol.handle({ "jsonrpc" => "2.0", "id" => id, "method" => "tools/list" })
+      expect(body(answer)["id"]).to eq(id), id.inspect
+    end
+
+    expect(protocol.handle({ "jsonrpc" => "2.0", "method" => "tools/list" })).to be_nil
+  end
+
+  it "refuses a non-finite raw JSON id and dump can write the null-id answer" do
+    answer = protocol.handle_text(%({"jsonrpc":"2.0","id":1e400,"method":"tools/list"}))
+    expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, nil, -32_600])
+    expect { described_class.dump(answer.body) }.not_to raise_error
+  end
+
+  it "refuses messages that have an id but no method, but ignores JSON-RPC responses" do
+    answer = protocol.handle({ "jsonrpc" => "2.0", "id" => 7 })
+    expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, 7, -32_600])
+
+    answer = protocol.handle({ "jsonrpc" => "2.0" })
+    expect([answer.status, body(answer)["id"], body(answer)["error"]["code"]]).to eq([400, nil, -32_600])
+
+    expect(protocol.handle({ "jsonrpc" => "2.0", "id" => 7, "result" => {} })).to be_nil
+    expect(protocol.handle({ "jsonrpc" => "2.0", "id" => 7, "error" => { "code" => 1, "message" => "x" } })).to be_nil
+  end
+
   it "answers -32700 for text that isn't UTF-8 or has a lone surrogate, with the id when exactly one can be read" do
     surrogate = protocol.handle_text(%({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"arguments":{"text":"\\udc00"}}}))
     expect([surrogate.status, body(surrogate)["id"], body(surrogate)["error"]["code"]]).to eq([400, 7, -32_700])

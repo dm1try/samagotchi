@@ -101,6 +101,22 @@ RSpec.describe Samagotchi::McpServer::Stdio do
     expect(out.map { |a| a.dig("error", "code") || a["result"] }).to eq([-32_700, {}])
   end
 
+  it "does not lock the era for a modern tools/list with an object id" do
+    bad = JSON.generate({ jsonrpc: "2.0", id: { bad: true }, method: "tools/list", params: meta }) + "\n"
+    out = run(bad + line(2, "initialize", { protocolVersion: "2025-06-18" }))
+    expect(out[0]["id"]).to be_nil
+    expect(out[0]["error"]["code"]).to eq(-32_600)
+    expect(out[1]["result"]["protocolVersion"]).to eq("2025-06-18")
+  end
+
+  it "locks the era for a modern tools/list with a null id" do
+    null = JSON.generate({ jsonrpc: "2.0", id: nil, method: "tools/list", params: meta }) + "\n"
+    out = run(null + line(2, "initialize", { protocolVersion: "2025-06-18" }))
+    expect(out[0]["id"]).to be_nil
+    expect(out[0]["result"]["tools"]).to be_an(Array)
+    expect(out[1]["error"]["code"]).to eq(-32_601)
+  end
+
   it "answers a line that isn't valid UTF-8 with -32700 (its id when it can be read) and goes on" do
     out = run("\xff\n" + %({"jsonrpc":"2.0","id":4,"method":"ping","params":{"x":"\xff"}}\n) + line(2, "ping"))
     expect(out.map { |a| [a["id"], a.dig("error", "code") || a["result"]] }).to eq([[nil, -32_700], [4, -32_700], [2, {}]])

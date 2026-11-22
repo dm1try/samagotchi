@@ -130,6 +130,18 @@ module Samagotchi
         { jsonrpc: "2.0", id: id, error: error }
       end
 
+      def self.valid_id?(message)
+        return false unless message.is_a?(Hash)
+        return true unless message.key?("id")
+
+        id = message["id"]
+        id.is_a?(String) || id.nil? || id.is_a?(Integer) || (id.is_a?(Float) && id.finite?)
+      end
+
+      def self.request_id(message)
+        valid_id?(message) && message.key?("id") ? message["id"] : nil
+      end
+
       # @param tools [#list, #call]
       # @param instructions [String, nil] what the server says it is
       # @param name [String] serverInfo's name
@@ -156,16 +168,23 @@ module Samagotchi
       def handle(message, era: nil)
         era ||= self.class.era_of(message)
         unless message.is_a?(Hash) && message["jsonrpc"] == "2.0"
-          return error(message.is_a?(Hash) ? message["id"] : nil, INVALID_REQUEST, "Invalid Request", era)
+          return error(self.class.request_id(message), INVALID_REQUEST, "Invalid Request", era)
         end
-        return nil unless message.key?("id") && message.key?("method")
+        return nil if message.key?("result") || message.key?("error")
+        unless message.key?("method")
+          return error(self.class.request_id(message), INVALID_REQUEST, "Invalid Request", era)
+        end
+        return nil unless message.key?("id")
 
-        id = message["id"]
+        id = self.class.request_id(message)
         method = message["method"]
         params = message.fetch("params", {})
         return error(id, INVALID_REQUEST, "Invalid Request", era) unless method.is_a?(String) && params.is_a?(Hash)
         if params.key?("_meta") && !params["_meta"].is_a?(Hash)
           return error(id, INVALID_REQUEST, "Invalid Request: params._meta is an object", era)
+        end
+        unless self.class.valid_id?(message)
+          return error(nil, INVALID_REQUEST, "Invalid Request: id is a string, a number or null", era)
         end
 
         # A modern connection's initialize is -32601 whatever it names.
@@ -175,7 +194,7 @@ module Samagotchi
 
         dispatch(id, method, params, era)
       rescue StandardError => e
-        error(message.is_a?(Hash) ? message["id"] : nil, INTERNAL_ERROR, "Internal error: #{e.message}", era)
+        error(self.class.request_id(message), INTERNAL_ERROR, "Internal error: #{e.message}", era)
       end
 
       private

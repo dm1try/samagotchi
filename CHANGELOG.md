@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
   with "the session expired (404)" or sending a half-initialized request.
 - The web's delete sheet: closing it while "Stop its worker, then delete" runs no longer leaves the worker stopped and
   the session in place; the delete goes on and says how it went in a toast.
+- chi as an MCP server refuses a request whose id is an object, an array or a boolean (JSON-RPC -32600 with a null
+  id) instead of echoing it back.
+- chi as an MCP server answers a message that has an id but no method with JSON-RPC -32600, so the host isn't left
+  waiting on it.
 
 ## [0.183.0] - 2026-11-22
 
