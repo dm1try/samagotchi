@@ -611,6 +611,289 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       expect(agents).not_to have_key("now")
     end
 
+    # chi's own change of a stale part's source (by_chi, WorkingSetPart.states' rule table).
+    describe "a stale part chi changed itself (by_chi)" do
+      def memory_file(scope, name) = File.join(Samagotchi::MemoryPaths.scope_dir(scope, cwd: repo), "#{name}.md")
+
+      def preload_key = keys[@built.prompt_parts.index(part_of("preloads"))]
+
+      # A memory_write chi ran: the file written as the tool writes it, the call and its output in the session.
+      def chi_writes(session, name, content, scope: "system", id: "w1", key: nil, output: nil)
+        file = memory_file(scope, key ? "#{name}.#{key}" : name)
+        FileUtils.mkdir_p(File.dirname(file))
+        File.binwrite(file, content)
+        output ||= if key
+                     "Model overlay '#{name}' for #{key} saved to #{scope} scope (#{content.bytesize} bytes). File written: #{file}"
+                   else
+                     "Memory '#{name}' saved to #{scope} scope (#{content.bytesize} bytes). File written: #{file} Index line refreshed automatically."
+                   end
+        args = { "name" => name, "content" => content, "scope" => scope }
+        args["current_model_only"] = true if key
+        ran(session, id, "memory_write", args, output)
+      end
+
+      def ran(session, id, name, args, output, stamp: nil)
+        session.messages.concat([{ role: "model", content: "", tool_calls: [{ id: id, name: name, arguments: args }] },
+                                 { role: "tool_response", content: "[#{name}]\n#{output}", tool_call_id: id, tool_ids: ["t#{id}"],
+                                   tool_stamps: stamp && [stamp] }.compact])
+        session.save(state_dir: state_dir)
+      end
+
+      def parts_of(session) = call("/api/sessions/#{session.id}/working_set").last.fetch("parts", [])
+
+      def part_state(session, key) = parts_of(session).find { |state| state["key"] == key }
+
+      # Someone else's change: always a new size (coarse timestamps can't hide it).
+      def outside_write(file, text) = File.write(file, text)
+
+      def live(session, running:)
+        { "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => running ? { "id" => "t" } : nil,
+                          "chi_version" => Samagotchi::VERSION },
+          "session_state_snapshot" => { "prompt_parts" => JSON.parse(JSON.generate(session.prompt_parts.map(&:to_h))) } }
+      end
+
+      before { File.delete(memory_file("system", "style.fb")) }
+
+      it "row 1: chi's memory_write of a no-overlay preload is current: the state stays stale, by_chi says chi did it" do
+        session = built_session
+        chi_writes(session, "style", "be terse\n")
+        expect(part_state(session, preload_key)).to eq(
+          "key" => preload_key, "state" => "stale", "by_chi" => { "tool_id" => "tw1", "step" => 1, "op" => "memory_write", "current" => true }
+        )
+      end
+
+      it "row 1 on a live idle worker's snapshot (string keys)" do
+        session = built_session
+        chi_writes(session, "style", "be terse\n")
+        allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live(session, running: false))
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => true, "tool_id" => "tw1")
+      end
+
+      it "row 2: chi wrote it, then it changed again: not current; mid-turn (M2) no by_chi at all" do
+        session = built_session
+        chi_writes(session, "style", "be terse\n")
+        outside_write(memory_file("system", "style"), "be terse, and kind\n")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => false, "tool_id" => "tw1")
+
+        allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live(session, running: true))
+        expect(part_state(session, preload_key)).to eq("key" => preload_key, "state" => "stale")
+        allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live(session, running: false))
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => false)
+      end
+
+      it "row 4: without the head the parts were built with, never current" do
+        session = built_session(head: "an older head")
+        chi_writes(session, "style", "be terse\n")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => false, "op" => "memory_write")
+      end
+
+      it "row 5: chi's remove of the preload, current while the file stays gone; 5b: a remove of the other scope's is not chi's" do
+        session = built_session
+        File.delete(memory_file("system", "style"))
+        ran(session, "w1", "memory_write", { "name" => "style", "remove" => true, "scope" => "system" },
+            "Memory 'style' removed from system scope: moved to /trash (`chi bundle trash` lists and empties it).")
+        expect(part_state(session, preload_key)["by_chi"]).to eq("tool_id" => "tw1", "step" => 1, "op" => "remove", "current" => true)
+
+        write_memory("system", "style.md", "be brief\n")
+        other = built_session
+        File.delete(memory_file("system", "style"))
+        ran(other, "w1", "memory_write", { "name" => "style", "remove" => true, "scope" => "project" },
+            "Memory 'style' removed from project scope: moved to /trash.")
+        expect(part_state(other, preload_key)).to eq("key" => preload_key, "state" => "stale")
+      end
+
+      it "row 6: chi wrote a project x that a bare system preload x now answers from (no overlay before or now)" do
+        session = built_session
+        chi_writes(session, "style", "project style\n", scope: "project")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => true)
+      end
+
+      it "row 7: as row 6, but the system preload was sent with an overlay: not current" do
+        write_memory("system", "style.fb.md", "Fallback overlay.")
+        session = built_session
+        chi_writes(session, "style", "project style\n", scope: "project")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => false)
+      end
+
+      it "row 9: chi wrote the base, someone changed the overlay: not current; row 10: only the overlay written: current" do
+        write_memory("system", "style.fb.md", "Fallback overlay.")
+        session = built_session
+        chi_writes(session, "style", "be terse\n")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => true)
+        outside_write(memory_file("system", "style.fb"), "Another fallback overlay.")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => false)
+
+        write_memory("system", "style.md", "be brief\n")
+        write_memory("system", "style.fb.md", "Fallback overlay.")
+        overlay = built_session
+        chi_writes(overlay, "style", "A new overlay.", key: "fb")
+        expect(part_state(overlay, preload_key)["by_chi"]).to include("current" => true, "op" => "memory_write")
+      end
+
+      it "row 13: chi's edit of AGENTS.md, current by its stamp; changed after: not current" do
+        session = built_session
+        agents = File.join(repo, "AGENTS.md")
+        File.write(agents, "Widgets and gadgets.\n")
+        stat = File.stat(agents)
+        ran(session, "e1", "edit", { "path" => agents, "old_text" => "Widgets only.", "new_text" => "Widgets and gadgets." },
+            "Edited #{agents}", stamp: { path: agents, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size })
+        key = keys[@built.prompt_parts.index(part_of("agents"))]
+        expect(part_state(session, key)["by_chi"]).to eq("tool_id" => "te1", "step" => 1, "op" => "edit", "current" => true)
+        outside_write(agents, "Widgets, gadgets and more.\n")
+        expect(part_state(session, key)["by_chi"]).to include("current" => false)
+      end
+
+      # chi's edit of AGENTS.md: the file changed as the tool changes it, the call stamped after it.
+      def chi_edits_agents(session, id, old_text, new_text, extra: {}, stamp: true)
+        agents = File.join(repo, "AGENTS.md")
+        text = File.read(agents)
+        File.write(agents, extra.key?("start_line") ? new_text : text.sub(old_text) { new_text })
+        stat = File.stat(agents)
+        ran(session, id, "edit", { "path" => agents, "old_text" => old_text, "new_text" => new_text }.merge(extra), "Edited #{agents}",
+            stamp: stamp ? { path: agents, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size } : nil)
+      end
+
+      def agents_key = keys[@built.prompt_parts.index(part_of("agents"))]
+
+      it "M2: chi's edits of AGENTS.md read edited only when undoing them gives back what was sent" do
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha\n\n# B\nbeta\n")
+        single = built_session
+        chi_edits_agents(single, "e1", "beta", "beta, gamma")
+        expect(part_state(single, agents_key)["by_chi"]).to include("current" => true, "op" => "edit")
+
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha\n\n# B\nbeta\n")
+        multiple = built_session
+        chi_edits_agents(multiple, "e1", "beta", "beta, gamma")
+        chi_edits_agents(multiple, "e2", "alpha", "alpha, delta")
+        expect(part_state(multiple, agents_key)["by_chi"]).to include("current" => true, "tool_id" => "te2")
+
+        # You change section A; chi edits section B (its old_text still there): chi never saw yours.
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha\n\n# B\nbeta\n")
+        unseen = built_session
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha, yours\n\n# B\nbeta\n")
+        chi_edits_agents(unseen, "e1", "beta", "beta, gamma")
+        expect(part_state(unseen, agents_key)).to eq("key" => agents_key, "state" => "stale")
+      end
+
+      it "M2: chi's memory_write of a preload, then its edit of the file: edited (the edit undoes to chi's write)" do
+        session = built_session
+        chi_writes(session, "style", "be terse\n")
+        file = memory_file("system", "style")
+        File.write(file, "be terse and kind\n")
+        stat = File.stat(file)
+        ran(session, "e1", "edit", { "path" => file, "old_text" => "be terse", "new_text" => "be terse and kind" }, "Edited #{file}",
+            stamp: { path: file, mtime_ns: (stat.mtime.to_i * 1_000_000_000) + stat.mtime.nsec, size: stat.size })
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => true, "op" => "edit", "tool_id" => "te1")
+      end
+
+      it "M2: a range edit, an empty new_text or an edit with no stamp (L4) gives no by_chi" do
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha\n\n# B\nbeta\n")
+        range = built_session
+        chi_edits_agents(range, "e1", nil, "# A\nalpha\n\n# B\nzeta\n", extra: { "start_line" => 1, "end_line" => 5 })
+        expect(part_state(range, agents_key)).to eq("key" => agents_key, "state" => "stale")
+
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha\n\n# B\nbeta\n")
+        emptied = built_session
+        chi_edits_agents(emptied, "e1", "\n# B\nbeta", "")
+        expect(part_state(emptied, agents_key)).to eq("key" => agents_key, "state" => "stale")
+
+        File.write(File.join(repo, "AGENTS.md"), "# A\nalpha\n\n# B\nbeta\n")
+        unstamped = built_session
+        chi_edits_agents(unstamped, "e1", "beta", "beta, gamma", stamp: false)
+        expect(part_state(unstamped, agents_key)).to eq("key" => agents_key, "state" => "stale")
+      end
+
+      it "row 14 and a note chi rewrote (models line and body), its overlay untouched: each part current" do
+        session = built_session(memories: %w[model_notes_tips])
+        chi_writes(session, "model_notes_tips", "models: *\nA new note body\n")
+        note = keys[@built.prompt_parts.index(part_of("notes"))]
+        preload = keys[@built.prompt_parts.index(part_of("preloads"))]
+        expect(parts_of(session).map { |state| [state["key"], state.dig("by_chi", "current")] }).to contain_exactly([note, true], [preload, true])
+      end
+
+      it "guards (as before this change): someone else's change, a rolled-back or interrupted write, row 11's writes: stale, no by_chi" do
+        session = built_session
+        outside_write(memory_file("system", "style"), "be terse\n") # row 3, and a rolled-back write: the file chi's, no entry
+        expect(part_state(session, preload_key)).to eq("key" => preload_key, "state" => "stale")
+
+        session.messages.concat([{ role: "model", content: "", tool_calls: [{ id: "i1", name: "memory_write",
+                                                                              arguments: { "name" => "style", "content" => "be terse\n", "scope" => "system" } }] },
+                                 { role: "tool_response", content: Samagotchi::ToolResponse.interrupted_text("memory_write"), tool_call_id: "i1",
+                                   tool_ids: ["ti1"] }])
+        session.save(state_dir: state_dir)
+        ran(session, "d1", "memory_write", { "name" => "style", "description" => "d", "scope" => "system" },
+            "Memory 'style' description updated in system scope (file unchanged).")
+        ran(session, "x1", "memory_write", { "name" => "index", "content" => "be terse\n", "scope" => "system" },
+            "Memory 'index' saved to system scope (9 bytes). File written: #{memory_file("system", "index")}")
+        ran(session, "r1", "memory_write", { "name" => "style", "remove" => true, "scope" => "system" },
+            "Memory 'style' had no file in system scope; its dangling index line was dropped.")
+        expect(part_state(session, preload_key)).to eq("key" => preload_key, "state" => "stale")
+      end
+
+      it "guard: row 8, chi wrote system x while a project x was sent: not stale" do
+        write_memory("project", "style.md", "project style\n")
+        session = built_session
+        chi_writes(session, "style", "system style\n")
+        expect(parts_of(session)).to eq([])
+      end
+
+      it "guard: row 12, the write only in the running turn (the snapshot's messages lag it): stale, no by_chi" do
+        session = built_session
+        snapshot = live(session, running: true)
+        chi_writes(session, "style", "be terse\n")
+        allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(snapshot)
+        expect(part_state(session, preload_key)).to eq("key" => preload_key, "state" => "stale")
+      end
+
+      it "reads no file a call or an output names: a crafted name and overlay key" do
+        session = built_session
+        chi_writes(session, "../x", "secret\n", output: "Memory '../x' saved to system scope (7 bytes). File written: /etc/x.md")
+        ran(session, "w2", "memory_write", { "name" => "style", "content" => "o", "scope" => "system", "current_model_only" => true },
+            "Model overlay 'style' for ../../etc saved to system scope (1 bytes). File written: /etc/x")
+        outside_write(memory_file("system", "style"), "be terse\n")
+        read = []
+        allow(File).to(receive(:binread).and_wrap_original { |original, path, *rest| (read << path) && original.call(path, *rest) })
+        expect(part_state(session, preload_key)).to eq("key" => preload_key, "state" => "stale")
+        expect(read).to all(eq(memory_file("system", "style")))
+
+        # The positive control: chi's real write of style is read, and only that file.
+        chi_writes(session, "style", "be terse, really\n", id: "w3")
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => true, "tool_id" => "tw3")
+        expect(read).not_to be_empty
+        expect(read.uniq).to eq([memory_file("system", "style")])
+      end
+
+      it "N-1: a 0.183.0 worker's parts (no digest) give no state, so no by_chi, whatever chi wrote (L8)" do
+        session = built_session
+        chi_writes(session, "style", "be terse\n")
+        older = session.prompt_parts.map { |part| Samagotchi::PromptPart.from_h(part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope)) }
+        allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+          "snapshot" => { "messages" => JSON.parse(JSON.generate(session.messages)), "current_turn" => nil },
+          "session_state_snapshot" => { "prompt_parts" => JSON.parse(JSON.generate(older.map(&:to_h))) }
+        )
+        body = call("/api/sessions/#{session.id}/working_set").last
+        expect(body).not_to have_key("parts")
+        allow(app).to receive(:bridge_get_json).and_return(nil)
+        expect(part_state(session, preload_key)["by_chi"]).to include("current" => true) # the same session, this chi's parts
+      end
+
+      it "costs little: 500 entries, one stale part, under 50 ms" do
+        session = built_session
+        250.times do |n|
+          session.messages.concat([{ role: "model", content: "", tool_calls: [{ id: "r#{n}", name: "read", arguments: { "path" => "cart.rb" } }] },
+                                   { role: "tool_response", content: "[read]\none", tool_call_id: "r#{n}", tool_ids: ["tr#{n}"] }])
+        end
+        chi_writes(session, "style", "be terse\n")
+        messages = session.messages
+        parts = session.prompt_parts
+        root = Samagotchi::MemoryPaths.system_dir
+        Samagotchi::WorkingSetPart.states(parts, root: root, cwd: repo, messages: messages) # warm
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        Samagotchi::WorkingSetPart.states(parts, root: root, cwd: repo, messages: messages)
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(0.05)
+      end
+    end
+
     it "never fetches an appended file" do
       extra = File.join(repo, "extra.md").tap { |file| File.write(file, "Extra.\n") }
       prompt_files = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },

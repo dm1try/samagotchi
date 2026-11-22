@@ -48,13 +48,17 @@ module Samagotchi
       # whichever of the
       # three answered, with the parts the part route reads (#prompt_source):
       # so a live idle worker's and an older worker's sessions get them too.
-      # Never a participant's (no prompt text, D4).
+      # A stale part chi changed itself carries by_chi (the same source's
+      # messages; while a turn runs only a current one). Never a
+      # participant's (no prompt text, D4).
       def handle_working_set(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         live = bridge_get_json(id, "snapshot")
         set = working_set_payload(session, live)
         if principal(req).owner?
-          parts = WorkingSetPart.states(prompt_source(live, session).first, root: MemoryPaths.system_dir, cwd: session.working_directory)
+          parts, messages = prompt_source(live, session)
+          parts = WorkingSetPart.states(parts, root: MemoryPaths.system_dir, cwd: session.working_directory, messages: messages,
+                                               running: set[:running] == true)
           return json_response(200, parts.empty? ? set : set.merge(parts: parts))
         end
 
@@ -197,7 +201,7 @@ module Samagotchi
       def working_set_source(live, session)
         messages = live_or_saved(live && live["snapshot"], "messages") { session.messages }
         # A snapshot's entries have string keys (paired_runs reads symbols).
-        messages = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
+        messages = WorkingSetPart.symbolized(messages)
         llm_context = SessionSetting::LLM_CONTEXT.snapshot_value(live && live["session_state_snapshot"]) do
           SessionSetting::LLM_CONTEXT.saved_summary(session, registry: host_registry)
         end

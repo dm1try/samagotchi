@@ -5,6 +5,7 @@ require_relative "prompt_part"
 require_relative "text_diff"
 require_relative "version"
 require_relative "working_set_locator"
+require_relative "working_set_own_changes"
 
 module Samagotchi
   # One prompt part as chi sent it: what chi web's GET
@@ -94,19 +95,43 @@ module Samagotchi
     # only: a note newly applying, a new AGENTS.md in the chain, a memory
     # muted since change which parts exist, and say nothing here. +root+,
     # +cwd+: as #answer's.
+    #
+    # +messages+ (the same source's, top-level keys either way): a stale
+    # part chi changed itself also gets +by_chi+ ({tool_id, step, op,
+    # current}, #by_chi): current when the files it was read from hold
+    # chi's own change, or what was sent, and one holds chi's (the row's
+    # "edited"); not current when chi changed one and it changed again (or
+    # the head the parts were built with is gone). The state stays "stale"
+    # (an older page draws that). +running+: a turn runs, its own writes
+    # not in +messages+ yet, so only a current by_chi goes out (a "changed
+    # again" could be chi's own newest write).
     # @return [Array<Hash>]
-    def states(parts, root:, cwd:)
+    def states(parts, root:, cwd:, messages: nil, running: false)
       parts = PromptPart.list(parts)
       keys = PromptPart.keys(parts)
+      own = nil
       parts.each_with_index.filter_map do |part, index|
         next unless part.digest && WorkingSet::Locator::FETCHED.include?(part.kind)
 
-        now = WorkingSet::Locator.of_part(part).fetch(root: root, cwd: cwd)
+        composed = WorkingSet::Locator.of_part(part).composed(root: root, cwd: cwd)
+        now = composed&.now
         next unless now
         next unless now.gone || PromptPart.digest_of(now.text) != part.digest
 
-        { key: keys[index], state: STALE }
+        state = { key: keys[index], state: STALE }
+        next state unless messages
+
+        messages = symbolized(messages) unless own
+        own ||= WorkingSet::OwnChanges.of(messages, cwd: cwd)
+        found = by_chi(part, parts, composed, own, messages)
+        found && (found[:current] || !running) ? state.merge(by_chi: found) : state
       end
+    end
+
+    # The top-level keys of +messages+ as symbols (a live snapshot's are
+    # strings; paired_runs reads symbols). Shared with chi web's builds.
+    def symbolized(messages)
+      Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
     end
 
     # Whether a worker that says it runs +version+ (its Bridge snapshot's
@@ -142,6 +167,111 @@ module Samagotchi
       now && { text: now.text && TextDiff.clean(now.text), gone: now.gone }
     end
 
-    private_class_method :sent_of, :now_of
+    # A stale +part+'s own change ({tool_id, step, op, current}), or nil
+    # (the plan's rule): each file the part was read from (+composed+'s,
+    # the base and its overlay; a gone memory's base as sent) mapped to
+    # chi's latest change of it (+own+). Current (the row's "edited") when
+    # each file holds chi's change or what was sent (the sent slice split
+    # at the overlay's prefix: a part is the base's text with its overlay
+    # appended) and one holds chi's; else, when chi changed one, not
+    # current. Without the head the parts were built with nothing proves
+    # the other file unchanged: never current.
+    def by_chi(part, parts, composed, own, messages)
+      return nil if own.empty?
+
+      dirs = memory_dirs(part)
+      changes = composed.files.to_h do |file|
+        change = own.for_file(file.path, role: file.role, key: file.key, dirs: dirs)
+        [file, change && { change: change, current: own.current?(change, file.path) }]
+      end
+      latest = changes.values.compact.max_by { |found| found[:change].order }
+      return nil unless latest
+      # A file tool's change without a stamp can't say whether it still holds (an older session's): no word (L4).
+      return nil if changes.values.compact.any? { |found| WorkingSet::OwnChanges::FILE_TOOLS.include?(found[:change].op) && !found[:change].stamp }
+
+      sent = sent_text(part, parts, messages)
+      current = changes.values.compact.select { |found| found[:current] }
+      if sent && current.any? && unchanged_but_own?(composed, changes, sent, part)
+        # An edit is current only when undoing chi's edits gives back what was sent (D2, stricter): else no word.
+        return nil unless edits_undo?(composed, changes, sent, part, own)
+
+        return current.max_by { |found| found[:change].order }[:change].to_h.merge(current: true)
+      end
+
+      latest[:change].to_h.merge(current: false)
+    end
+
+    # Whether every file of +composed+ holds chi's change or what was sent.
+    def unchanged_but_own?(composed, changes, sent, part)
+      return composed.files.all? { |file| changes[file]&.dig(:current) } if composed.now.gone
+
+      sides = sides(composed, sent, part)
+      composed.files.all? do |file|
+        next true if changes[file]&.dig(:current)
+
+        now_side, sent_side = sides[file.role]
+        now_side == sent_side
+      end && (composed.files.any? { |file| file.role == :overlay } || sides[:overlay][0] == sides[:overlay][1])
+    end
+
+    # Each current edit of a file of +composed+ undone back to its sent side
+    # (OwnChanges.undoes_to?, over the file's edits and writes); true when
+    # none is an edit.
+    def edits_undo?(composed, changes, sent, part, own)
+      edited = composed.files.select { |file| changes[file]&.dig(:current) && changes[file][:change].op == "edit" }
+      return true if edited.empty?
+      return false if composed.now.gone
+
+      sides = sides(composed, sent, part)
+      edited.all? do |file|
+        now_side, sent_side = sides[file.role]
+        written = own.memory_of_file(file.path, role: file.role, key: file.key, dirs: memory_dirs(part))
+        written = nil unless written&.op == WorkingSet::OwnChanges::MEMORY_WRITE
+        WorkingSet::OwnChanges.undoes_to?(now_side, sent_side, own.file_history(file.path), written: written)
+      end
+    end
+
+    # The text now and the sent text split at the overlay's prefix:
+    # {base: [now body, sent body], overlay: [now tail, sent tail]}.
+    def sides(composed, sent, part)
+      overlay = composed.files.find { |file| file.role == :overlay }
+      now_body, now_tail = overlay ? split(composed.now.text, [overlay.key]) : [composed.now.text, ""]
+      keys = [overlay&.key, *%i[model_key fallback_model_key].map { |key| param(part, key) }]
+      sent_body, sent_tail = split(sent, keys)
+      { base: [now_body, sent_body], overlay: [now_tail, sent_tail] }
+    end
+
+    # +text+ split at the overlay prefix of the first of +keys+ found:
+    # [body, tail], the tail "" without one.
+    def split(text, keys)
+      keys.compact.uniq.each do |key|
+        tail = Tools::MemoryRead.overlay_tail(text, key)
+        return [text.delete_suffix(tail), tail] unless tail.empty?
+      end
+      [text, ""]
+    end
+
+    # The part's sent text when +messages+' head is the one the parts were
+    # built with, else nil.
+    def sent_text(part, parts, messages)
+      head = Array(messages).first
+      text = head.is_a?(Hash) && ContextNote.system_head?(head) ? (head[:content] || head["content"]) : nil
+      return nil unless text.is_a?(String) && part.at && PromptPart.digest_of(text, 16) == part.head
+
+      sent_of(part, parts, text)[:text]
+    end
+
+    # A memory part's saved folders by scope (none for an AGENTS.md).
+    def memory_dirs(part)
+      return {} unless WorkingSet::Locator::MEMORY_KINDS.include?(part.kind)
+
+      { "project" => param(part, :project_dir), "system" => param(part, :system_dir) }
+    end
+
+    def param(part, key)
+      part.params.is_a?(Hash) ? WorkingSet::MemoryGuard.field(part.params, key) : nil
+    end
+
+    private_class_method :sent_of, :now_of, :by_chi, :unchanged_but_own?, :edits_undo?, :sides, :split, :sent_text, :memory_dirs, :param
   end
 end

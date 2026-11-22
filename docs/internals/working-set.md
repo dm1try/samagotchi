@@ -573,6 +573,38 @@ after the build. Only fetchable kinds get a state (identity, preloads, notes, AG
 every memory write), an appended file, chi's own text, or a part an older chi built (no digest). Cost: about 0.8 ms per
 GET for 11 fetchable parts (the Studio, warm cache; `find_dot_git` is stat-only).
 
+**chi's own change of a stale part (`by_chi`).** Given the same source's `messages` (and `running`),
+`WorkingSetPart.states` adds `by_chi: {tool_id, step, op, current}` to a stale part chi changed itself; the state
+stays `"stale"`. The own changes are `WorkingSet::OwnChanges` (`working_set_own_changes.rb`): the latest successful
+change per file still in the stored conversation, so its text is still sent in the call's arguments (`op`
+`memory_write`, `remove`, `write`, `edit`; `step` is `PairedRun#step`). A `memory_write` counts by its output: "saved
+to SCOPE scope" (keyed scope + name), "Model overlay 'x' for KEY saved" (+ the key: the handler's model key, never an
+argument), "removed from" (a remove; "its dangling index line was dropped" is none); never a description-only write
+("(file unchanged)"), the index, or a failed, denied or interrupted run (`WorkingSet.failed?`). An `edit` or `write`
+counts by its `FileRef` path and stamp. Each file the part was read from (`Locator#composed`, at most two) maps to its
+latest own change: a memory's by the saved folder it sits in (`File.dirname(path) == dir`: a project's folder is
+inside the system one), a file tool's by basename then `realpath`. A change is current while the file holds what it
+left: a `memory_write`'s content byte for byte (`File.binread`; a model note's or an overlaid memory's text never
+digests to its file, so the compare is per file), a remove's absence, an edit's stamp (`WorkingSet.differs?`).
+
+`current: true` (the row's `✎ edited`) when every file holds chi's change or what was sent, and one holds chi's. "What
+was sent" is the part's sent slice (`sent_of`, only when `messages[0]` is the head the parts were built with), split
+with the text now at `Tools::MemoryRead.overlay_tail` (the overlay's key now, else the build's `model_key`, then
+`fallback_model_key`): the base's text against the body, the overlay's against the tail, and no overlay now must mean
+no tail sent (a project `x` chi wrote now answering a bare preload that was sent with a system overlay is stale). A
+gone part is current only by chi's current remove of the base it was sent from. Otherwise, when chi changed one of the
+files, `current: false` (it changed again after chi's change; or the head is not the build's, case C 4–5, where
+nothing proves the other file unchanged). Rolled back (the call's entries gone, the file still chi's text), interrupted,
+or someone else's change: no `by_chi`. A merged row (a note also preloaded) gets an answer per part.
+
+While a turn runs (`running`), only a `current: true` goes out: the GET's messages lag the turn, so chi's newest write
+is not in them, and "changed again" could name chi's own change. A row chi changes in the running turn stays `stale`
+until the hand-off's GET (D5). Guard: only the Locator's files are read (`binread`, `stat`); no path a call or an
+output names is read, and an overlay key is `[a-z0-9-]+`. Cost: nothing new for a GET with no stale part; with one,
+one `paired_runs` walk (about 3 ms at 600–750 messages on the Studio, about twice on the laptop), the messages'
+top-level keys symbolized (`WorkingSetPart.symbolized`, shared with `working_set_source`), and at most two reads or
+stats per stale part. A stale part stays stale for the worker's life, so each GET of such a session pays it.
+
 The carrier is chi web's `GET …/working_set` alone: `handle_working_set` adds `parts:` for the owner whichever of its
 three sources answered (the running turn's set, an idle worker's, a build from the file), from the parts the part
 route reads (`#prompt_source`: the live snapshot frame's, else the file's), so a stopped session, a live idle worker
@@ -608,7 +640,8 @@ the `&now=1` answer, drawn as "<label> changed after chi's prompt was built" wit
 `diff_view.js`'s diff ("no change" once it was edited back), or "Its source is gone now." It opens first unless the row
 has a read. No new export: an older `ws_sections.js` ignores `states`, and the 0.183.0 page ignores the field.
 
-**Compat.** An older page ignores the fields and the route; an older chi reading a newer file drops the fields
+**Compat.** An older page ignores the fields and the route; a build-2 page maps any state but `"stale"` to none, so
+`by_chi` rides beside `state: "stale"` (no new state value) and such a page draws today's `stale`; an older chi reading a newer file drops the fields
 (`PromptPart.from_h`), and its own save drops them (cases 1–2). The corpus's `compat-prompt` session has a head and
 placed parts (`ReleaseTools.write_compat_corpus!`, read in `spec/compat/readers_spec.rb`); in the wire samples the head
 is `CompatWire::SYSTEM_PROMPT`, so the digest never matches and a wire reader asserts the fallback.
