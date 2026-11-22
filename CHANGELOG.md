@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The web's working set: every "From the start" row now has a ▸ that shows the text chi was sent for that part of
+  its prompt (a memory, AGENTS.md, the base prompt, the tools' names and sizes), with a tab per hold when a memory is
+  in the prompt twice or was also read. The list is 520 wide always, so opening a row no longer moves the others.
+
 ### Changed
 
 - For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted

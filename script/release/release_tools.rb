@@ -8,6 +8,7 @@ require "tmpdir"
 require "yaml"
 require_relative "../../lib/samagotchi/memory_bundle/shas"
 require_relative "compat_wire"
+require_relative "compat_prompt"
 
 # The logic behind the Rakefile's `bundles:` and `release:` tasks, kept out of
 # lib/ (it isn't shipped) and free of Rake so the specs can call it. Every
@@ -25,6 +26,9 @@ module ReleaseTools
   # A session whose one turn a Bridge drew (turn_drawings.jsonl); the other
   # has none (a turn from before drawings).
   COMPAT_DRAWN_ID = "compat-drawn"
+  # A session whose prompt parts say where each sits in its saved head
+  # (CompatPrompt).
+  COMPAT_PROMPT_ID = CompatPrompt::ID
   COMPAT_STAMP = "2026-01-01T00:00:00Z"
   # The queued input's ids, and the successor a continue intent names.
   COMPAT_ENQUEUED_ID = "00000000-0000-4000-8000-000000000001"
@@ -122,6 +126,7 @@ module ReleaseTools
                                            between_turns: true)
 
         drawn_path = write_compat_drawn_session!(sessions_dir, version, at)
+        prompt_path = CompatPrompt.write!(sessions_dir, version, at)
         live_paths = write_compat_live_files!(sessions_dir, session_dir, at)
         store_paths = write_compat_store_files!(sessions_dir, at)
         wire_paths = write_compat_wire!(staged, version)
@@ -165,6 +170,7 @@ module ReleaseTools
           File.join(session_dir, Samagotchi::WorkerSidecar::FILE),
           File.join(session_dir, Samagotchi::Bridge::CardStore::FILE),
           drawn_path,
+          prompt_path,
           schedules.path,
           bundle_record,
           bundle_journal,

@@ -4,6 +4,7 @@ require "spec_helper"
 require "json"
 require "rack/mock"
 require "tmpdir"
+require "uri"
 require "samagotchi/bridge_client"
 require "samagotchi/plugin/context"
 require "samagotchi/session"
@@ -155,6 +156,20 @@ RSpec.describe "the recorded wire samples" do
     set = show(app_on(dir), idle, "/working_set")
     expect(set).to include("running" => false)
     expect(set["items"]).to match([include("kind" => "file", "key" => file)])
+
+    # A prompt part: the samples' head is CompatWire::SYSTEM_PROMPT, so it
+    # never matches the parts' head digest (the route's fallback); an
+    # older worker's parts have no place at all.
+    parts = recorded(dir, "snapshot.json").dig("body", "session_state_snapshot", "prompt_parts")
+    return unless parts.is_a?(Array) && parts.any? { |part| part["kind"] == "base" }
+
+    answer = show(app_on(dir), idle, "/working_set/part?key=#{URI.encode_www_form_component("base:base prompt")}")
+    expect(answer["part"]).to include("kind" => "base")
+    expect(answer).not_to have_key("sent")
+    older = Samagotchi::WorkingSetPart.older_worker?(recorded(dir, "snapshot.json").dig("body", "snapshot", "chi_version"))
+    expect(answer["reason"]).to eq(if parts.any? { |part| part.key?("at") } then "idle"
+                                   else older ? "older_worker" : "older_chi"
+                                   end)
   end
 
   # (e) BridgeClient#event_seq (GET state) and the attached terminal's /stats

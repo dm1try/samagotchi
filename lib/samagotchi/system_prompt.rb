@@ -31,6 +31,13 @@ module Samagotchi
   # What changes during a session (the profile after a model switch, the
   # tools a plugin replaces, the attached session, the thinking level) is
   # read at build time through the lookups; the memory lists are fixed.
+  #
+  # Each builder returns its Section with its Items (a memory, a file, a
+  # plugin's section, an index: chi's lead before it and its own text),
+  # recorded where it renders them; the prompt_parts derive from the items
+  # with each one's place in the prompt (PromptLayout), so the saved head
+  # (messages[0]) can be sliced back into them (docs/internals/working-set.md,
+  # Prompt parts as sent). #built_for answers the whole Built.
   class SystemPrompt
     # The model a session runs on, as the prompt names it: the resolved
     # ref, its host ("name, host:port" or url), the memory overlay key, and

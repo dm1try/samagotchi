@@ -31,6 +31,7 @@ require "samagotchi/tools/delegate_cursor"
 require "samagotchi/archive_store"
 require "samagotchi/web/message_display"
 require "samagotchi/worker_sidecar"
+require "samagotchi/working_set_part"
 require_relative "../../script/release/release_tools"
 
 RSpec.describe "the recorded compatibility corpus" do
@@ -52,6 +53,9 @@ RSpec.describe "the recorded compatibility corpus" do
   # The last release whose corpus has no continued_from.json (ContinuedFrom):
   # a later one must hold it.
   let(:continued_from_after) { Gem::Version.new("0.173.0") }
+  # The last release whose corpus has no compat-prompt session (prompt parts
+  # with their place in the head): a later one must hold it.
+  let(:prompt_place_after) { Gem::Version.new("0.183.0") }
 
   def corpus_version
     versions = Dir.children(compat_root).select do |name|
@@ -121,6 +125,17 @@ RSpec.describe "the recorded compatibility corpus" do
     if Samagotchi::Session.exist?("compat-drawn", state_dir: sessions_dir)
       lines = expect_every_turn_drawn(sessions_dir, "compat-drawn")
       expect(lines.map { |line| [line.turn_id, line.end["record_id"]] }).to eq([["compat-turn", nil]])
+    end
+
+    # Recorded since prompt parts said where they sit in the saved head: the
+    # part route's slice of it.
+    if recorded?(File.join(sessions_dir, "#{ReleaseTools::COMPAT_PROMPT_ID}.json"), version, prompt_place_after)
+      prompt = Samagotchi::Session.load(ReleaseTools::COMPAT_PROMPT_ID, state_dir: sessions_dir)
+      expect(prompt.prompt_parts.map(&:at)).to eq([nil, 0, 6])
+      answer = Samagotchi::WorkingSetPart.answer(parts: prompt.prompt_parts, messages: prompt.messages, key: "identity:identity@system",
+                                                 older_worker: false, running: false, root: "/compat-fixture/memories", cwd: prompt.working_directory)
+      expect(answer[:sent]).to eq(text: "I am chi.", lead: "System identity (auto-loaded, scope=system):\n")
+      expect(prompt.prompt_parts.last.params).to include("system_dir" => "/compat-fixture/memories")
     end
 
     manifest_path = File.join(root, ".bundles", "compat", "manifest.json")
