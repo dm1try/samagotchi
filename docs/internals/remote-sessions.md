@@ -297,7 +297,9 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   `cross_site?` lets CLI clients through because they send no `Origin` or `Sec-Fetch-Site`.
 - **`client_id` only tightens.** `handle_question_answer` (`Web::SessionControl`) forwards `client_id` only when it is `ClientId::CLI_ANSWER`
   and drops any other value, so a remote answer is held to the parent rules and can't pass for the user's own. On
-  create and turn, a `cli:send` / `cli:answer` id adds checks (`CLI_SEND_IDS`) and never removes any.
+  create and turn, a `cli:send` / `cli:answer` / `agent:` id adds checks (`ClientId.parent_line?`) and never removes
+  any. An agent's id goes to a chi web without `agent_sender` in its `/api/info` features as `cli:send`
+  (`Remote#sent_id`, compat shim agent_client_id), for a turn and a create.
 - **A remote attach's `client_id`** (`tui:<pid>@<host>`, P4-D6) is forwarded as given on `/turn` and `/command`, as
   the page's is: the token is the owner. Only the cli ids (`cli:send`, `cli:answer`) add checks there; a parent
   agent driving the TUI from a pipe answers as `cli:answer`, held to that machine's `guardrails.parent_answers`.

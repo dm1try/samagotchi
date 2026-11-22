@@ -131,8 +131,10 @@ EOF
   keeps only the latest push, so start the summary with the title you are
   answering, and end it with your verdict (`VERDICT OK`, `VERDICT CHANGES` or
   `VERDICT UNSURE`): an OK wakes chi once to close the round.
-- Never answer a chi message with `chi send`: it counts as the user typing,
-  outside the round's limit. Use it only when the user asks you to.
+- Never answer a chi message with `chi send`: it goes in as an agent's
+  message (yours, not the user's) and counts toward the session's wake
+  budget (`session.max_wakes`), outside the round's limit. Use it only when
+  the user asks you to.
 
 ### A message you start
 

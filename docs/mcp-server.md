@@ -67,10 +67,14 @@ with `isError: true` and chi's own words; only an unknown tool is a protocol err
 ## Who the caller is
 
 The host is an agent driving a session, as `chi send --wait` and `chi answer` are (see [chi as a
-sub-agent](sub-agent.md)): its messages go in as `chi send`'s, its answers and a `/continue yes` as `chi answer`'s.
+sub-agent](sub-agent.md)): its messages go in as an agent's, its answers and a `/continue yes` as `chi answer`'s.
 So `guardrails.parent_answers` holds it (see [Guardrails](guardrails.md#answers-from-a-parent-agent)): what it may
 pick on an approval or a step-limit question, and whether it may continue a turn that ran out of iterations. The
-page shows its turns with the "chi send" label.
+page shows its turns as an agent's: on stdio (`chi mcp serve`) named by the host's marker in its environment
+(`CLAUDECODE` gives "agent claude", see [driver and visitor](sub-agent.md#an-agents-messages-driver-and-visitor)),
+else "agent mcp"; over HTTP (`POST /api/mcp`) always "agent mcp". Whether Claude Code exports `CLAUDECODE` to the
+stdio servers it starts is up to Claude Code: without it the host is "agent mcp". A session the host didn't create
+takes its messages as a visitor's (one header line, counted toward `session.max_wakes`).
 
 `chi_ask` takes a message for the model, not a command: a line starting with `!` (a shell line) or with `/` (a
 session command; `/continue …` is the one exception) is refused. That is narrower than `chi send` on purpose: a

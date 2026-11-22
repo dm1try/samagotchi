@@ -480,8 +480,10 @@ The Bridge exposes:
   `/continue`) for the worker loop (`{line, client_id, card?, deadline?}`); `202` with a `command_id` its
   `:command_ran` names, `400` when the line isn't one. `client_id` is required: without one (or a blank one) `400
   missing_client_id` (`Bridge::UNNAMED_COMMAND`); from a sender that may not send commands (`CommandIntake.allowed?`:
-  only the owner's senders, `web:`, `tui:`, `cli:send`, and chi answer's `cli:answer`) `403 command_not_permitted`, its
-  detail `CommandIntake::COMMAND_REFUSED` (`CommandIntake::REFUSED` for a `!` line), nothing queued. A `:command_ran`'s `output` is the command's, up to `Worker::CommandQueuePart::COMMAND_OUTPUT_LIMIT` (64 KiB of chars; past it
+  only the owner's senders, `web:`, `tui:`, `cli:send`, an agent's `agent:`, and chi answer's `cli:answer`), or a `!`
+  line from an agent (`CommandIntake.refused?`, asked first, as at `POST /turn` and `WorkerInbound#queue_as_command`)
+  `403 command_not_permitted`, its detail `CommandIntake::COMMAND_REFUSED` (`CommandIntake::REFUSED` for a `!` line),
+  nothing queued. A `:command_ran`'s `output` is the command's, up to `Worker::CommandQueuePart::COMMAND_OUTPUT_LIMIT` (64 KiB of chars; past it
   the text ends with a `[cut: N of M chars: …]` line, which the UIs print as they print the rest). It carries `thinking`, `reasoning_history` and `llm_context`
   (the summaries the next turn runs under) when the command changed them or the model, and
   `confirm: {line, text}` when a `/thinking` or `/reasoning-history` change from a `web:` or `tui:`
@@ -685,6 +687,8 @@ compatibility from its version. `Bridge::FEATURES` advertises:
 | `participant_client_id` | chi web can identify a participant as `participant:<id>` instead of using the legacy `review:<id>`. |
 | `block_fix` | `POST /session/:id/blocks/fix` asks again for a block the page couldn't draw; the owner's page without it says "restart this session to fix". |
 | `working_set_item` | `GET /session/:id/working_set/item` answers one item's timeline (the running turn's mid-turn), so chi web asks for it instead of the whole snapshot. |
+| `agent_sender` | The worker reads an agent's id (`agent:<name>`: a driver's or a visitor's turn, `Visitor`). Without it `SessionManager#deliver_turn_now` sends `cli:send` instead (compat shim agent_client_id), also on the file path while a worker holds the session; chi web lists it in `/api/info` too, for `SessionAccess::Remote#sent_id`. |
+| `ask_session` | The worker runs another session's question (`session:<id8>`) as a visitor's turn. Without it the question is refused (409 `ask_unavailable`), and its file is not written while a worker may hold the session. |
 
 `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` for no worker, a leaving or stuck worker, or an unreachable Bridge; 502 `worker_newer` for skew and

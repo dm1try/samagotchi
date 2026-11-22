@@ -295,7 +295,10 @@ agent marker is set: `CLAUDECODE` (Claude Code), `AI_AGENT`, `CODEX_THREAD_ID`
 (Codex CLI), or `SAMAGOTCHI_PARENT_SESSION`,
 which chi's own `execute` and `task_create` export (the session's id) into the
 commands they run. The markers survive a PTY wrapper (`script`, `expect`). A
-person at a terminal with no marker keeps every scope.
+person at a terminal with no marker keeps every scope. The same list names an
+agent's `chi send` (`agent:claude`: [driver and
+visitor](sub-agent.md#an-agents-messages-driver-and-visitor)), whose `/continue yes`
+goes in as `chi answer`'s.
 
 This guards an honest but eager parent, not a hostile one: it is not a
 security boundary. The worker's Bridge and the web's answer route on localhost

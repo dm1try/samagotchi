@@ -13,13 +13,27 @@ and commands may change between minor versions. How releases are made:
 - claude-peer's `pair-remote`: Claude pairs with a chi on another machine over SSH in one call (the socket forward in
   the background, ended by the next run or the command it prints); when ssh needs a password or 2FA it prints the
   commands to run instead.
+- `ask_session`: chi's model can ask another chi session a question and get its answer as the tool's result (a turn
+  of its own there, labelled `session <id8>`; a token when it takes longer than 35 s).
+- `chi send --as NAME`, `chi send --new --driver NAME` and `/driver NAME|none`: name the agent that sends, and the
+  agent that drives a session.
 
 ### Changed
 
+- An agent's `chi send` (Claude Code, Codex, an MCP host, another chi session's shell: `CLAUDECODE`, `CODEX_THREAD_ID`,
+  `AI_AGENT`, chi's own marker, or `--as`) goes in as that agent (`agent:claude`, labelled "agent claude"), not as you:
+  it no longer restarts a stopped session, brings back an archived one or runs a `!` line. In a session it created (or
+  you named it the driver) its messages are as before; anywhere else they are a visitor's: one header line for the
+  model, counted toward `session.max_wakes` and refused past it (`--wait` says why) until your next message. Also for
+  every agent, driver included: its prompts skip the objectives audit, its turns count as automatic in the metrics, a
+  participant no longer sees its prompts as a person's, and its message into a delegate child rings that child's
+  parent. A session an agent started before this upgrade has no driver: `/driver claude` once (sessions are kept 14
+  days). `chi mcp serve` sends as the host's marker or `mcp`; an older worker or chi web gets `chi send`'s id. The
+  chi-peer skills (claude-peer 0.6.1, codex-peer 0.5.1) say why a peer never answers with `chi send`.
 - A paired Claude's or Codex's answer is in chi's conversation with its whole text (up to the tool output cap,
   10,000 characters by default, for one that wakes chi; up to 2,000 for one that doesn't), so chi no longer reads the
   outbox for it and every answer keeps its text; the web's answer bubble shows it. A message the peer starts by itself
-  wakes chi when it asks, under the same `context.peer_turns` count (claude-peer 0.6.0, codex-peer 0.5.0: their
+  wakes chi when it asks, under the same `context.peer_turns` count (claude-peer 0.6.1, codex-peer 0.5.1: their
   skills say when to wake).
 
 ### Fixed
