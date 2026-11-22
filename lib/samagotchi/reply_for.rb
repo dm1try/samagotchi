@@ -130,15 +130,18 @@ module Samagotchi
       end
 
       # The latest message in +history+ that opened a turn from a sender
-      # (Engine#turn_messages' user message): a user message with no kind
-      # that is not a !shell line. A wake's note or report, a steer and
-      # merged input have a kind (or are a system message), so they never
-      # hide the turn before them.
+      # (Engine#turn_messages' user message, and the worker's checkpoint
+      # copy of it): a user message with a turn_id and no kind that is not
+      # a !shell line. A wake's note or report, a steer and merged input
+      # have a kind (or are a system message), and a step-limit Stop's
+      # reason (TurnFlow#abort_continue!) has an opening_id but no turn_id,
+      # so none of them hides the turn before them.
       # @return [Hash, nil]
       def latest_opener(history)
         Array(history).reverse_each.find do |message|
           next false unless message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user"
           next false unless (message[:kind] || message["kind"]).to_s.empty?
+          next false if (message[:turn_id] || message["turn_id"]).to_s.empty?
 
           !Steer.shell_line?(message)
         end

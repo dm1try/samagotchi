@@ -182,7 +182,8 @@ right-hand column happens.
   the line's lead, `Steer::REPLY_LEAD`, in the text is quoted). The wire reads `reply_line` only, never the values,
   so a later release that rewords a value never changes an old turn's bytes. The first undeclared opener after a
   declared one gets the baked return line (`ReplyFor::RETURN_LINE`), found from the history alone
-  (`ReplyFor.opener_fields`: the latest user message with no kind that is not a `!` line), and none after it.
+  (`ReplyFor.opener_fields`: the latest user message with a `turn_id`, no kind and not a `!` line; a step-limit
+  Stop's reason has none), and none after it.
   All three copies of that message carry both fields: `ChatLoop#plain` lists them, `ChatLoop#wire_messages` calls
   `Steer.wire_text` for an opener with a header or a reply line, and the worker's checkpoint copy
   (`TurnCheckpoint#begin_turn`, what a kill before the first boundary leaves) gets the same `opener_fields`. About

@@ -118,12 +118,14 @@ RSpec.describe Samagotchi::ReplyFor do
       expect(described_class.opener_fields([voice_opener], declared)).to eq(reply_for: voice, reply_line: declared.line)
     end
 
-    it "looks past a wake's note, a report, a steer, merged input and a !shell line to the turn before them" do
+    it "looks past a wake's note, a report, a steer, merged input, a !shell line and a Stop's reason to the turn before them" do
       between = [
         { role: "system", content: "[CONTEXT NOTE]", turn_start: true, turn_id: "w1" },
         { role: "user", kind: "input", content: "[Delegate report] done", turn_start: true },
         { role: "user", kind: "steer", source: "user", content: "and also" },
-        { role: "user", content: "!(ls)\na.rb" }
+        { role: "user", content: "!(ls)\na.rb" },
+        # A step-limit Stop's reason (TurnFlow#abort_continue!): it opens no turn.
+        { role: "user", content: "[Stopped at the step limit] too long", opening_id: "o1" }
       ]
       history = [voice_opener, { role: "model", content: "ok" }, *between]
 
