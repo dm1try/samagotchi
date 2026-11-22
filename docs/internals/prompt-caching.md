@@ -175,6 +175,20 @@ right-hand column happens.
   first participant joins and when the last leaves or expires: one history re-read each, then stable. Under D3(a)
   the declared tools stay the session's, so an author switch costs nothing: the participant boundary is a gate
   on the calls, not a toolkit switch. The forged-header mark (`(quoted) `) is a pure function of the text too.
+- **A reply line** (an ask's `reply_for`, [thin-clients.md](../thin-clients.md#replies-that-fit-the-surface)).
+  The turn's opening user message is saved with the surface's values (`reply_for`) and the line baked from them
+  when the message is made (`reply_line`, `ReplyFor#line`); `content` stays the user's text. On the wire the
+  opener is: its header (a visitor's), then the `reply_line`, then the text (`Steer.wire_text`; a forged copy of
+  the line's lead, `Steer::REPLY_LEAD`, in the text is quoted). The wire reads `reply_line` only, never the values,
+  so a later release that rewords a value never changes an old turn's bytes. The first undeclared opener after a
+  declared one gets the baked return line (`ReplyFor::RETURN_LINE`), found from the history alone
+  (`ReplyFor.opener_fields`: the latest user message with a `turn_id`, no kind and not a `!` line; a step-limit
+  Stop's reason has none), and none after it.
+  All three copies of that message carry both fields: `ChatLoop#plain` lists them, `ChatLoop#wire_messages` calls
+  `Steer.wire_text` for an opener with a header or a reply line, and the worker's checkpoint copy
+  (`TurnCheckpoint#begin_turn`, what a kill before the first boundary leaves) gets the same `opener_fields`. About
+  20 tokens per restricted message and per return; a session that never declares one sends its bytes as before
+  (`spec/reply_for_history_spec.rb`: voice, web, voice, restart, voice, web on native, `openai` and `anthropic`).
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt (the recap's also
   asks for its auto title line, `RecapPrompt::TITLE`: static text, still that one request). On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.

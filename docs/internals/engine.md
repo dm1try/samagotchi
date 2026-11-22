@@ -22,7 +22,7 @@ ivars.
 The skeleton is `Engine#run_turn` in `engine.rb`; read it for the order. Each step and what it owns:
 
 ```
-Engine#run_turn(session, prompt, on_event:, …, origin:, continue:, resumed:, resume_from:, verify:, revises:, …)
+Engine#run_turn(session, prompt, on_event:, …, origin:, continue:, resumed:, resume_from:, verify:, revises:, reply_for:, …)
   ├── begin_turn                 → Turn (the TurnContext published with the running flag)
   ├── Client.swap_probe_cancel   (a Stop cuts this turn's /props probes)
   ├── prepare_turn               → false at a STOP CHECK (stopped_before_model), else true
@@ -651,6 +651,20 @@ is the model's. `AnswerDisplay::DISPLAY_ONLY` (`display`, `empty_answer`, `displ
 model-facing copy (`strip` / `strip_all`: hooks' `messages:`, the recap, `ctx.messages`, after_generation), while
 `KernelLoop#sanitize_history` and `ChatLoop#plain` copy them so the stored conversation keeps them across turns.
 `Web::App#messages_for_display` re-validates `display_refs` (`AnswerRefs.for_display`).
+
+**The saved-keys rule.** `ChatLoop#plain` rebuilds every kept message from fixed key lists, earlier turns'
+included: a saved message field the wire needs must be listed there (or in `ContextNote::KEYS`,
+`Steer::AUTHOR_KEYS`, `ToolResponse::SAVED_KEYS`), or it is gone after its turn and the chat wires' prefix breaks.
+`spec/llm/chat_loop_saved_keys_spec.rb` fails on such a field; its first turn carries a visitor's `source` and an
+ask's `reply_for` / `reply_line`.
+
+**A turn's anchors** (`TurnAnchors`: `verify`, `revises`, `reply_for`) ride from chi web to `run_turn`'s keywords
+(`#kwargs`), each a flat key in the Bridge body and the input file. What a layer does with a member is its rule
+(`TurnAnchors::RULES`): `holds` (an input file naming it waits for the running turn's end, never merged into it),
+`participant` (shown to a participant), `turn_route` (chi web's `POST …/turn` takes it from a body: `reply_for`
+is set by `POST …/ask` alone) and `vouched` (with no Bridge, its input file goes only to a worker whose sidecar
+lists its feature). `reply_for` (`ReplyFor`) is saved on the opening user message with its baked `reply_line`
+(`ReplyFor.opener_fields`, also the return line; prompt-caching.md, "A reply line").
 
 **History stamps.** User prompts, merged input and steers, reminders, context and task notes and the model's replies
 carry `at` (`MessageTime::KEY`, `message_time.rb`). A turn reads the wall clock once (`Turn#wall`): `:turn_started`'s

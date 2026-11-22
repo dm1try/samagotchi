@@ -59,9 +59,73 @@ another link ran it. Body fields:
   prompt gets that turn's answer and nothing is sent; otherwise a worker that
   remembers the key answers 409 `enqueued_id_conflict`. An answer that echoes
   `request_id` means chi web used it (an older chi web ignores the field).
+- `reply_for`: what your surface can show, so the reply fits it. See
+  [Replies that fit the surface](#replies-that-fit-the-surface).
 
 A question that is waiting for an answer refuses the ask with 409 `waiting` and
 the `question`. Answer it first (below).
+
+## Replies that fit the surface
+
+A voice Shortcut can't show a table, and a widget has room for one line. Say so
+with `reply_for` on the ask: a name, or the values themselves.
+
+```sh
+curl -s -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -X POST http://192.168.1.29:4567/api/sessions/3fa2/ask -d '{"prompt": "status?", "reply_for": "voice"}'
+# {"status": "done", "text": "Three commits are in. The rm command works, …", …}
+```
+
+The values (a missing one is the full value, as the web has):
+
+| value | full | restricted |
+|---|---|---|
+| `formatting` | `markdown` | `plain`: no markdown, no emoji, no links |
+| `room` | `long` | `short` (at most 60 words), `one_line` (at most 80 characters, one sentence of 15 words or fewer) |
+| `choices` | `many` | `0` to `9`: how many options a question may offer |
+| `detail` | `true` | `false`: no commands, code or diffs, and no approvals (below) |
+
+`"reply_for": "voice"` is `{"formatting": "plain", "room": "short", "choices": 3,
+"detail": false}`. Name your own in config.yml's
+[`surfaces:`](configuration.md#surfaces-names-for-reply_for), for example
+`"reply_for": "watch"`. A name is read when the ask comes in, and the session
+saves its values, so a later config edit doesn't change old turns. An unknown
+name, key or value is 400 `invalid_ask`.
+
+What happens:
+
+- chi tells the model in a line with your message, and the reply is written
+  for the surface. The session keeps one answer per turn: the web shows this
+  short one too. Ask again on the web for the long one.
+- With `formatting: plain` the answer you get has its markdown taken out (list
+  bullets, bold, code marks, headings, tables, link URLs, emoji; a numbered
+  list keeps its numbers). So does a question's text and header; its options
+  stay exactly as they are, since you answer by label. Only your answer: the
+  session, the web and the terminal keep the model's text. A `token` you wait
+  on keeps doing this.
+- The next message from the web or the terminal gets full formatting again: chi
+  tells the model once.
+- Each message declares its own: send `reply_for` on every ask from that
+  surface. A message with it always runs as its own turn (with `queue: false`,
+  a running session is 409 `busy` as usual).
+
+**Questions.** A surface with `detail: false` gets the model's own questions and
+the "continue or stop?" question as usual. An approval, a spending question
+(cost-cap, work-cap) or a question whose options only you may pick answers
+`"status": "waiting_for_answer"` with `"needs": "detail"`, a `text` to speak
+("chi needs an approval: open it on a full screen.") and the question's `id` and
+`kind` only. Open it in chi web (the phone notification takes you there). The 409
+`waiting` of a later ask says the same. `POST …/answer` takes `reply_for` too:
+with `detail: false` such a question is 403 `needs_detail`, nothing answered.
+Like `client_id`, this is a convention for an honest client: the token itself
+can still answer anything.
+
+**Older chi.** Check `GET /api/info` lists `"reply_for"` in its `features`. An
+older chi web ignores the field and answers 200 with a full reply. A chi web
+that has it refuses a session whose worker is older with 409
+`reply_for_unavailable`, and nothing is sent: update chi if needed, then
+restart the session (`chi sessions restart ID`). A session restarts on the chi
+that made it, so a restart alone may not be enough.
 
 ## When the answer takes longer
 
@@ -157,14 +221,15 @@ answers the first turn.
 1. **Dictate Text** (or **Ask for Input**).
 2. **Get Contents of URL**: `https://<your chi web>/api/sessions/<id>/ask`,
    method POST, header `Authorization: Bearer <token>`, JSON body `prompt` =
-   the dictated text. To survive a dropped connection, first **Set Variable**
+   the dictated text and `reply_for` = `voice`. To survive a dropped connection, first **Set Variable**
    `key` to **Current Date** formatted with seconds, send `request_id` = `key`,
    and if the step fails (no `status` in the answer) run it again with the same
    `key`: the retry answers the first one's turn instead of sending it twice.
 3. **Repeat** while the answer's `status` is `timeout`: **Get Contents of URL**
    for `…/api/sessions/<session_id>/wait` with the JSON body `token` = the
    answer's `token`.
-4. **Get Dictionary Value** `text`, then **Speak Text**.
+4. **Get Dictionary Value** `text`, then **Speak Text**. With `needs` =
+   `detail` the text says to open chi on a full screen: an approval waits.
 
 For running chi from another agent instead (`chi send --wait`, `chi answer`),
 see [chi as a sub-agent](sub-agent.md). The routes in full are in

@@ -102,6 +102,13 @@ command, on an idle session with its offer standing and a live worker, is bound 
 instead, the offer's turn id from `ReplyWait.own_turn`, as chi answer follows it; the worker's ack is not read): chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and `McpServer::Tools` reuses `SessionAccess::Ask` / `Exchange` through the MCP server without chi web.
+The ask chain carries a turn's anchors (`Ask#call` → `Exchange#attempt` → `Local#deliver_turn` → the manager's
+`deliver_turn`, `anchors:` passed only when given): chi web's `/ask` puts a message's `reply_for` there
+(`TurnAnchors`). `SessionAccess::Remote#deliver_turn` refuses a non-empty one (local only, exit 2), and neither
+`chi send`, `--remote` nor the MCP tools send one. The capabilities in hand shape the answer in
+`Web::SessionAccessRoutes#wait_result_json` (`PlainReply`, `needs: "detail"`): the request's for `/ask`, the
+token's (`Exchange::Token`'s `f`, `Token.reply_for`) for `/wait`, the pending turn's saved opener's
+(`ReplyFor.of_latest_turn`, read before the answer is relayed) for `/answer`'s reply.
 An ask's `request_id` becomes its turn's enqueued id (`SessionInbox.enqueued_id_for("ask:" + it)`, a UUID v5 shape a
 Bridge keeps): `Ask#call` first reads `prepare_wait(turn: E)`, and a `known_turn` (running, a queued input file, the
 last to end, a reply file, settled, merged) is waited on again with `Target.wait_only(start, requested: E).with(queued:)`, nothing

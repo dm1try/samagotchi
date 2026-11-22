@@ -17,6 +17,7 @@ require_relative "turn_endings"
 require_relative "turn_origin"
 require_relative "revise_anchor"
 require_relative "verify_anchor"
+require_relative "reply_for"
 require_relative "redact"
 require_relative "verdict"
 require_relative "model_profile"
@@ -860,9 +861,10 @@ module Samagotchi
     # messages start in what it keeps (the end event's kept_from).
     # +opener_source+: the sender its prompt is saved with (the opener's
     # source, Steer::OPENER_HEADERS), nil for the owner's (no source).
+    # +reply_for+: the surface its reply is for (ReplyFor), nil for full.
     Turn = Struct.new(:context, :prompt, :continue, :on_event, :started_at, :messages, :ended, :prepared_settings,
                       :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome, :history_size,
-                      :opener_source) do
+                      :opener_source, :reply_for) do
       # The turn's id (:turn_started's turn_id, its metrics record's id and
       # its saved prompt's), session, origin and controller: its context's.
       def id = context.id
@@ -941,6 +943,8 @@ module Samagotchi
     # @param verify [VerifyAnchor, nil] a Verify turn's claim (its verdict)
     # @param revises [ReviseAnchor, nil] a Revise turn's draft: stamped on
     #   the prompt at the turn's end, metadata only (TurnStages::VerifyAnchors#stamp_opening)
+    # @param reply_for [ReplyFor, Hash, nil] what the asking surface shows:
+    #   saved on the prompt with its baked line (ReplyFor.opener_fields)
     #
     # An Interrupt (SIGINT) cancels the turn: what it got to is kept in the
     # session as after a Stop (the prompt, the loop's finished tool
@@ -953,11 +957,12 @@ module Samagotchi
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false,
                  origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil, revises: nil,
-                 input_waiting: nil, opener_source: nil)
+                 input_waiting: nil, opener_source: nil, reply_for: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
                                          continue: continue, id: id, verify: verify, revises: revises,
                                          input_waiting: input_waiting)
       turn.opener_source = opener_source.to_s unless opener_source.to_s.empty?
+      turn.reply_for = ReplyFor.from(reply_for)
       if continue
         turn.resumed = resumed
         turn.resume_from = resume_from
@@ -1212,6 +1217,8 @@ module Samagotchi
         # Only an opener from a sender the model reads a header for
         # (Steer::OPENER_HEADERS): the owner's keeps its bytes.
         user_message[:source] = turn.opener_source if turn.opener_source
+        # The surface's values and the line the model reads (none: its bytes as they were).
+        user_message.merge!(ReplyFor.opener_fields(session.messages, turn.reply_for))
         turn.messages << user_message
         session.last_prompt = turn.prompt
       end

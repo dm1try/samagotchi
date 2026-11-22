@@ -103,6 +103,11 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     expect(audit.map { |line| line["reason"] }).to eq(%w[session_stopped])
   end
 
+  it "never takes reply_for from a participant's body" do
+    expect(turn({ prompt: "check", reply_for: { formatting: "plain" } }).first).to eq(202)
+    expect(delivered.last[:anchors]).to be_empty
+  end
+
   it "passes a valid verify anchor but silently drops a malformed one" do
     verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
 

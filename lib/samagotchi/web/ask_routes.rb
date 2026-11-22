@@ -4,6 +4,7 @@ require "delegate"
 require_relative "../bridge_client"
 require_relative "../agent_caller"
 require_relative "../client_id"
+require_relative "../command_intake"
 require_relative "../reply_wait"
 require_relative "../session"
 require_relative "../session_command_catalog"
@@ -12,6 +13,8 @@ require_relative "../turn_flow"
 require_relative "../session_access/ask"
 require_relative "../session_access/exchange"
 require_relative "../session_access/exchange/token"
+require_relative "../reply_for"
+require_relative "../turn_anchors"
 require_relative "request_body"
 
 module Samagotchi
@@ -82,12 +85,14 @@ module Samagotchi
       private
 
       # POST /api/sessions/:id/ask {prompt, timeout, queue, client_id,
-      # request_id}: the message delivered (to a chain's newest link; a
+      # request_id, reply_for}: the message delivered (to a chain's newest link; a
       # running session queues it as its own turn unless queue is false) and
       # its answer waited for, all within ASK_MAX_SECONDS. A request_id (a
       # message's, not a command's) names its turn: a retry whose turn the
       # session knows waits on it again, nothing sent and no second history
-      # line (SessionAccess::Ask#call). 200 wait_result_json's fields +
+      # line (SessionAccess::Ask#call). A reply_for (ReplyFor.parse: a name
+      # or the values) rides a message's turn as its anchor (a line the
+      # Bridge runs as a command, #runs_as_command?: kept in hand only). 200 wait_result_json's fields +
       # session_id (+ asked, the id given, when another link ran it; +
       # token when the status is timeout: POST …/wait {token} goes on; +
       # request_id when one was given); 200 {status: command} for a session
@@ -103,6 +108,11 @@ module Samagotchi
         prompt, client_id, options, error = ask_request(id, body)
         return error if error
 
+        reply_for, error = ask_reply_for(body)
+        return error if error
+
+        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !runs_as_command?(prompt, client_id)
+
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
 
@@ -116,7 +126,7 @@ module Samagotchi
                                               cancelled: stopping, **options)
         rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
-        ask_response(id, outcome, request_id: options[:request_id])
+        ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end
@@ -153,6 +163,34 @@ module Samagotchi
         [nil, nil, nil, error_response(400, "invalid_prompt", e.message)]
       end
 
+      # The body's reply_for: [nil or a ReplyFor, nil] or [nil, a 400
+      # invalid_ask]. A name is resolved here (config.yml's surfaces:, read
+      # now), so the session saves values: a later config edit leaves old
+      # turns as they were.
+      def ask_reply_for(body)
+        [ReplyFor.parse(body["reply_for"]), nil]
+      rescue ReplyFor::Invalid => e
+        [nil, error_response(400, "invalid_ask", e.message)]
+      end
+
+      # Whether the Bridge runs +prompt+ from +sender+ as a session command
+      # or a shell line (Bridge#handle_post_turn's rule: the registry's
+      # command? and CommandIntake.allowed?), so a turn's anchor would be
+      # dropped: an unknown /word ("/tmp is full, what now?") is a message
+      # and keeps it. chi web knows the built-ins only, so a bundle's command
+      # carries the anchor too, which the worker ignores as it runs it.
+      def runs_as_command?(prompt, sender)
+        SessionCommandCatalog.builtin_registry.command?(prompt) && CommandIntake.allowed?(sender)
+      end
+
+      # A line a worker may run as a session command or a shell line, by its
+      # shape (COMMAND_SHAPE): a request_id is refused for it (#ask_request_id),
+      # a bundle's command included.
+      def command_line?(prompt)
+        line = prompt.strip
+        line.start_with?("!") || COMMAND_SHAPE.match?(line)
+      end
+
       # The body's request_id: [nil or it, nil] or [nil, a 400]. A session
       # command never runs as a turn of that id (the Bridge's command path
       # takes none), so a retry would run it again: refused. Any line the
@@ -165,8 +203,7 @@ module Samagotchi
           return [nil, error_response(400, "invalid_ask", "request_id is 1 to 128 printable ASCII characters")]
         end
 
-        line = prompt.strip
-        if line.start_with?("!") || COMMAND_SHAPE.match?(line)
+        if command_line?(prompt)
           return [nil, error_response(400, "invalid_ask", "request_id is for messages, not session commands")]
         end
 
@@ -203,18 +240,21 @@ module Samagotchi
       end
 
       # The ask's answer for an Ask value (+request_id+ echoed when given:
-      # the client sees this chi web used it).
-      def ask_response(id, outcome, request_id: nil)
+      # the client sees this chi web used it), shaped for +reply_for+ (the
+      # request's: a /continue yes's too, which opens no message), its token
+      # carrying it for the next wait.
+      def ask_response(id, outcome, request_id: nil, reply_for: nil)
         case outcome
         when SessionAccess::Ask::Ran then json_response(200, { status: "command", session_id: outcome.session_id })
-        when SessionAccess::Ask::Refused then ask_refused(id, outcome)
+        when SessionAccess::Ask::Refused then ask_refused(id, outcome, reply_for: reply_for)
         else
           result = outcome.result
           return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
 
-          json = wait_result_json(result, session_access.parent_strategy(outcome.session_id)).merge(session_id: outcome.session_id)
+          json = wait_result_json(result, session_access.parent_strategy(outcome.session_id), reply_for: reply_for)
+                 .merge(session_id: outcome.session_id)
           json[:asked] = outcome.asked if outcome.asked && outcome.asked != outcome.session_id
-          json[:token] = outcome.token if outcome.token
+          json[:token] = SessionAccess::Exchange::Token.carrying(outcome.token, reply_for) if outcome.token
           json[:request_id] = request_id if request_id
           json_response(200, json)
         end
@@ -224,7 +264,7 @@ module Samagotchi
       ASK_BUSY_WORDS = { "busy" => "a turn is running: ask with queue, or wait for it",
                          "waiting" => "a question waits for an answer" }.freeze
 
-      def ask_refused(id, refused)
+      def ask_refused(id, refused, reply_for: nil)
         case refused.kind
         when :canceled then error_response(503, "server_stopping", "chi web is stopping; ask again")
         when :unknown
@@ -235,7 +275,9 @@ module Samagotchi
         when :continuing then refusal(409, "continuing", refused.message, session_id: refused.session_id)
         when :busy
           words = ASK_BUSY_WORDS.fetch(refused.busy.error)
-          json_response(409, busy_json(refused.busy).merge(detail: words, message: words))
+          json = busy_json(refused.busy).merge(detail: words, message: words)
+          json[:question] = question_json(refused.busy.question, reply_for) if refused.busy.question
+          json_response(409, json.merge(needs_detail_fields(reply_for, refused.busy.question)))
         else refused_delivery(refused.result)
         end
       end
@@ -258,6 +300,7 @@ module Samagotchi
         end
 
         session_id, target = SessionAccess::Exchange::Token.load(body["token"])
+        reply_for = SessionAccess::Exchange::Token.reply_for(body["token"])
         # The URL's id may be a prefix (as the ask's): resolved first (no
         # such session, or several: session_route's 404).
         full = session_access.resolve(id)
@@ -267,7 +310,7 @@ module Samagotchi
                                                    **wait_extras)
         return error_response(503, "server_stopping", "chi web is stopping; wait again") if result.status == :canceled
 
-        json = wait_result_json(result, session_access.parent_strategy(full)).merge(session_id: full)
+        json = wait_result_json(result, session_access.parent_strategy(full), reply_for: reply_for).merge(session_id: full)
         json[:token] = body["token"] if result.status == :timeout
         json_response(200, json)
       rescue SessionAccess::Exchange::Token::Invalid => e
@@ -301,8 +344,10 @@ module Samagotchi
       # went in before the wait, so a wait that fails (chi web stopping, the
       # session deleted, its files unreadable) is still a 200: wait_error
       # {error: server_stopping | not_found | wait_failed, detail} in place
-      # of reply (an answer retried would be 409).
-      def answered_wait(id, question_id, start, seconds, answered:)
+      # of reply (an answer retried would be 409). +reply_for+: the pending
+      # turn's (its saved opener's, read before the answer went in), which
+      # shapes the reply and rides its token.
+      def answered_wait(id, question_id, start, seconds, answered:, reply_for: nil)
         head = answered ? { status: "answered" } : { status: "not_pending", answered_here: false }
         head = { **head, session_id: id, id: question_id }
         target = ReplyWait::Target.answer(start)
@@ -311,8 +356,8 @@ module Samagotchi
           return answer_wait_error(head, "server_stopping", "chi web is stopping; the answer went in")
         end
 
-        reply = wait_result_json(result, session_access.parent_strategy(id))
-        reply[:token] = SessionAccess::Exchange::Token.dump(id, target) if result.status == :timeout
+        reply = wait_result_json(result, session_access.parent_strategy(id), reply_for: reply_for)
+        reply[:token] = SessionAccess::Exchange::Token.dump(id, target, reply_for: reply_for) if result.status == :timeout
         json_response(200, { **head, reply: reply })
       rescue ArgumentError => e # deleted while waiting
         answer_wait_error(head, "not_found", e.message)

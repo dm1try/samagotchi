@@ -326,7 +326,7 @@ module Samagotchi
         prompt = body["prompt"].to_s
         return error_response(400, "missing_fields", "prompt is required") if prompt.strip.empty?
 
-        anchors = TurnAnchors.from(body)
+        anchors = TurnAnchors.from_turn_route(body)
         revises = anchors.revises&.turn_id
         reason = participant_turn_refusal(grant, prompt, body) || participant_revise_refusal(grant, id, anchors)
         return participant_turn_refused(grant, prompt, *reason, revises: revises) if reason

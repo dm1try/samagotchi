@@ -103,13 +103,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop, "#plain's saved keys (a turn's user me
       engine.session = session
 
       server.enqueue(spec[:path], sse: reply_events(wire, "first answer"))
-      engine.run_turn(session, "look at this", opener_source: "agent:codex")
+      engine.run_turn(session, "look at this", opener_source: "agent:codex",
+                                               reply_for: { "formatting" => "plain", "room" => "short" })
       server.enqueue(spec[:path], sse: reply_events(wire, "second answer"))
       engine.run_turn(session, "and again")
 
       expect(handed.size).to eq(2)
       sent = handed.first.find { |message| message[:role].to_s == "user" && message[:turn_id] }
-      expect(sent).to include(source: "agent:codex")
+      expect(sent).to include(source: "agent:codex", reply_for: hash_including("formatting" => "plain"),
+                              reply_line: start_with("[Reply for this message"))
       kept = handed.last.find { |message| message[:turn_id] == sent[:turn_id] && message[:role].to_s == "user" }
       expect(kept).not_to be_nil, "turn 1's user message (turn_id #{sent[:turn_id]}) is missing from turn 2's messages"
       missing = sent.keys.reject { |key| kept.key?(key) && kept[key] == sent[key] }
@@ -120,7 +122,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop, "#plain's saved keys (a turn's user me
 
       first, second = server.requests.select { |r| (r[:path] || r["path"]).to_s.start_with?(spec[:path]) }
                             .map { |request| wire_messages(request) }
-      expect(JSON.generate(first)).to include("[From the agent codex, sent with chi send")
+      expect(JSON.generate(first)).to include("[From the agent codex, sent with chi send").and include("[Reply for this message")
       expect(second[0, first.size]).to eq(first), "turn 2's request doesn't extend turn 1's on #{wire}: the prefix broke"
     end
   end

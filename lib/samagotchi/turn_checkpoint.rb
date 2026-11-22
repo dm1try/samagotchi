@@ -200,8 +200,10 @@ module Samagotchi
     #   it theirs; {} for the owner's
     # +source+: a visitor's opener's sender (Steer::OPENER_HEADERS), saved
     # on it as the Engine saves it (a turn killed before its first boundary
-    # keeps its header); nil for the owner's and the driver's.
-    def begin_turn(prompt: nil, turn_id: nil, enqueued_id: nil, author: {}, source: nil)
+    # keeps its header); nil for the owner's and the driver's. +reply+:
+    # the opener's ReplyFor.opener_fields, saved on it as the Engine saves
+    # them (its line is on the wire after a kill too); {} for none.
+    def begin_turn(prompt: nil, turn_id: nil, enqueued_id: nil, author: {}, source: nil, reply: {})
       @boundaries = 0
       @enqueued_id = enqueued_id.to_s.empty? ? nil : enqueued_id.to_s
       @author = author[:author]
@@ -212,7 +214,7 @@ module Samagotchi
       # stamp (Engine's Turn#wall), which the turn's first boundary saves.
       unless prompt.to_s.empty?
         messages << { role: "user", content: prompt, **(turn_id ? { turn_id: turn_id } : {}), **author,
-                      **(source ? { source: source } : {}), MessageTime::KEY => MessageTime.iso(MessageTime.now) }
+                      **(source ? { source: source } : {}), MessageTime::KEY => MessageTime.iso(MessageTime.now), **reply }
       end
       @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0,
                                                                                    enqueued_id: @enqueued_id, author: @author) }

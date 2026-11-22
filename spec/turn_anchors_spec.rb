@@ -38,12 +38,52 @@ RSpec.describe Samagotchi::TurnAnchors do
 
   it "has one rule per member, in the members' order; verify and revises are held and shown" do
     expect(described_class::RULES.keys).to eq(described_class.members)
-    expect(described_class::RULES.values).to all(have_attributes(holds: true, participant: true))
+    expect(described_class::RULES.values_at(:verify, :revises))
+      .to all(have_attributes(holds: true, participant: true, turn_route: true, vouched: false))
+  end
+
+  describe "reply_for (an ask's ReplyFor)" do
+    let(:voice) { { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false } }
+
+    it "is held for the turn's end, never shown to a participant, set by the ask alone, and vouched for" do
+      expect(described_class::RULES[:reply_for]).to have_attributes(holds: true, participant: false, turn_route: false,
+                                                                    vouched: true)
+    end
+
+    it "rides the body and the input file by its own key, the restore event and run_turn's keywords" do
+      anchors = described_class.from("reply_for" => voice, "prompt" => "x")
+
+      expect(anchors.reply_for).to eq(Samagotchi::ReplyFor.from(voice))
+      expect(anchors.to_file).to eq("reply_for" => voice)
+      expect(anchors.to_h).to eq(reply_for: voice)
+      expect(anchors.kwargs).to eq(reply_for: anchors.reply_for)
+      expect(anchors.present.map { |anchor| anchor.class::FEATURE }).to eq(%w[reply_for])
+      expect(anchors.vouched).to eq([anchors.reply_for])
+      expect(anchors.participant_view).to eq({})
+      expect(described_class.named_in?("reply_for" => voice)).to be(true)
+    end
+
+    it "drops a malformed or full one (full is no value: the bytes of no ask)" do
+      expect(described_class.from("reply_for" => { "formatting" => "rtf" })).to be_empty
+      expect(described_class.from("reply_for" => "voice")).to be_empty
+      expect(described_class.from("reply_for" => { "detail" => true })).to be_empty
+    end
+
+    it "is not taken from a POST …/turn body (the composer's, a participant's): only the ask sets it" do
+      anchors = described_class.from_turn_route("reply_for" => voice, "verify" => verify)
+
+      expect(anchors.reply_for).to be_nil
+      expect(anchors.verify).to eq(Samagotchi::VerifyAnchor.from(verify))
+    end
+
+    it "leaves verify and revises out of the vouched ones" do
+      expect(described_class.new(verify: verify, revises: { turn_id: v1 }).vouched).to eq([])
+    end
   end
 
   it "shows a participant only the members whose rule shows them, leaving the others out" do
     stub_const("#{described_class}::RULES", described_class::RULES.merge(
-      revises: described_class::Rule.new(holds: true, participant: false)
+      revises: described_class::RULES[:revises].with(participant: false)
     ))
     anchors = described_class.new(verify: verify, revises: { turn_id: v1 })
 
@@ -58,7 +98,7 @@ RSpec.describe Samagotchi::TurnAnchors do
 
   it "holds an input file only for a member whose rule holds it" do
     stub_const("#{described_class}::RULES", described_class::RULES.merge(
-      verify: described_class::Rule.new(holds: false, participant: true)
+      verify: described_class::RULES[:verify].with(holds: false)
     ))
 
     expect(described_class.named_in?("verify" => verify)).to be(false)

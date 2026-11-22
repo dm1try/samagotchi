@@ -3846,6 +3846,19 @@ RSpec.describe Samagotchi::Web::App do
       expect(bridge).to have_received(:post_turn).with(hash_excluding(:anchors)).once
     end
 
+    it "never takes reply_for from its body: only POST …/ask declares one" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                        body: JSON.generate(prompt: "hi", reply_for: { formatting: "plain" })))
+      expect(status).to eq(202)
+      expect(bridge).to have_received(:post_turn).with(hash_excluding(:anchors)).once
+    end
+
     it "forwards a valid Revise draft and drops a malformed one" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
@@ -4399,6 +4412,8 @@ RSpec.describe Samagotchi::Web::App do
         _status, _headers, info = app.call(env_for("/api/info"))
         expect(JSON.parse(info.first)["features"]).to include(Samagotchi::Web::App::DELETE_PLAN_FEATURE)
         expect(Samagotchi::Web::App::DELETE_PLAN_FEATURE).to eq("delete_plan_all")
+        # A thin client tells an older chi web (which ignores reply_for) by this.
+        expect(JSON.parse(info.first)["features"]).to include("reply_for")
       end
 
       it "previews a folder whose session file is gone, which the delete still takes" do

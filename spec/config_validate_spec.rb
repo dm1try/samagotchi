@@ -20,6 +20,12 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
     expect(problems("append_system_prompt:\n  - CLAUDE.md\nmemories:\n  - notes\n")).to eq([])
   end
 
+  it "knows surfaces: (a thin client's reply_for names) and its entries' keys" do
+    expect(problems("surfaces:\n  watch: {formatting: plain, room: one_line, choices: 2, detail: false}\n")).to eq([])
+    expect(problems("surfaces:\n  watch: {rooom: short}\n"))
+      .to eq(["config: unknown key 'surfaces.watch.rooom' (did you mean 'surfaces.watch.room'?)"])
+  end
+
   it "warns about an unknown key, with a close known key as a suggestion" do
     expect(problems(<<~YAML)).to eq([
       default: {modle: m}

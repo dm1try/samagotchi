@@ -5,6 +5,8 @@ require_relative "../session_access/local"
 require_relative "../session_inbox"
 require_relative "../reply_wait"
 require_relative "../pending_question"
+require_relative "../plain_reply"
+require_relative "../reply_for"
 require_relative "../context_sources"
 require_relative "../peer_exchanges"
 require_relative "../context_command"
@@ -183,6 +185,25 @@ module Samagotchi
           question: busy.question&.to_file, parent_strategy: (strategy_json(busy.strategy) if busy.strategy) }.compact
       end
 
+      # A question +reply_for+'s surface may not answer (ReplyFor#answers?):
+      # needs: "detail", the words to say in its text, the question's id and
+      # kind only (no options, no approval's facts); {} for any other.
+      def needs_detail_fields(reply_for, question)
+        return {} if reply_for.nil? || question.nil? || reply_for.answers?(question)
+
+        { needs: "detail", text: reply_for.needs_detail_text(question), question: question.to_file.slice("id", "kind") }
+      end
+
+      # The question as +reply_for+'s surface gets it: a plain one's text and
+      # header made plain (PlainReply), its options byte-exact (they are
+      # answered by label); the saved question is never touched.
+      def question_json(question, reply_for)
+        json = question&.to_file
+        return json unless json && reply_for&.plain?
+
+        json.merge(%w[question header].to_h { |key| [key, PlainReply.strip(json[key])] }.compact)
+      end
+
       def strategy_json(strategy) = { name: strategy.name, allowed: strategy.allowed, origin: strategy.origin.to_s }
 
       def wait_start_json(id, start)
@@ -249,11 +270,18 @@ module Samagotchi
 
       RESULT_FIELDS = %i[text file outcome limit error_kind retryable cancel_reason stopped_by kept_steps turn_id origin].freeze
 
-      def wait_result_json(result, strategy)
+      # +reply_for+: the asking surface's (ReplyFor), passed in by the route
+      # (an ask's from its request, a token's from the token, an answer's
+      # from the pending turn's saved opener), never looked up after the
+      # turn: a plain one gets the reply and its question's words made plain
+      # (PlainReply, #question_json), here only.
+      def wait_result_json(result, strategy, reply_for: nil)
         json = { status: result.status.to_s }
         RESULT_FIELDS.each { |key| json[key] = result[key] }
         json[:text] = json[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
-        json[:question] = result.question&.to_file
+        json[:text] = PlainReply.strip(json[:text]) if reply_for&.plain?
+        json[:question] = question_json(result.question, reply_for)
+        json.merge!(needs_detail_fields(reply_for, result.question)) if result.status == :waiting_for_answer
         json[:parent_strategy] = strategy_json(strategy)
         json
       end

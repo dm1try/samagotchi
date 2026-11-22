@@ -323,11 +323,23 @@ module Samagotchi
         # the file reads the agent's id.
         if ClientId.agent?(client_id) && agent_reader.nil? &&
            (holder = delivery_presence(manager, session_id, state_dir)).owned? && !holder.tui_owned?
-          case sidecar_agent_reader(session_dir)
+          case sidecar_names(session_dir, Delivery::AGENT_FEATURE)
           when false then client_id = ClientId::CLI_SEND
           when nil then return exiting_refused
           end
         end
+        # A vouched anchor's file (an ask's reply_for: TurnAnchors::Rule) only
+        # for a worker whose sidecar lists its feature, when no Bridge
+        # answered: a worker that starts for the file may be an older chi
+        # (a session restarts on the chi home that made it), which would
+        # drop the anchor and run the turn without it. One that doesn't
+        # list it is refused as the Bridge refuses (its UNAVAILABLE); no
+        # sidecar to read (a worker starting, leaving, or none) is a retry,
+        # and so is a sidecar no worker holds (a dead worker's leftover:
+        # whatever starts next may be older), as the agent rule's owned?.
+        refused = unvouched_refused(anchors, session_dir, -> { delivery_presence(manager, session_id, state_dir).owned? }) unless client
+        return refused if refused
+
         input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
         input[:images] = images unless images.empty?
         input[:delivery] = delivery unless Delivery.next_step?(delivery)
@@ -461,13 +473,31 @@ module Samagotchi
                                  "detail" => "the session's worker is exiting, so the message was not sent; send it again" })
       end
 
-      # Whether the worker whose sidecar is in +session_dir+ reads an agent:
-      # id (Delivery::AGENT_FEATURE): true, false, or nil when there is no
-      # sidecar to read (a worker leaving, starting, or gone).
-      private def sidecar_agent_reader(session_dir)
+      # Whether the worker whose sidecar is in +session_dir+ names
+      # +feature+ (an agent: id's reader, Delivery::AGENT_FEATURE; a vouched
+      # anchor's): true, false, or nil when there is no sidecar to read (a
+      # worker leaving, starting, or gone).
+      private def sidecar_names(session_dir, feature)
         link = WorkerLink.resolve(session_dir, unlink: false)
         sidecar = link.respond_to?(:sidecar) ? link.sidecar : nil
-        sidecar ? Array(sidecar.features).include?(Delivery::AGENT_FEATURE) : nil
+        sidecar ? Array(sidecar.features).include?(feature) : nil
+      end
+
+      # The refusal of a file for +anchors+' vouched members (#deliver_turn_now):
+      # nil when there are none or the sidecar of a worker holding the
+      # session (+owned+, read only when needed) lists each one's feature.
+      private def unvouched_refused(anchors, session_dir, owned)
+        vouched = anchors.vouched
+        return nil if vouched.empty?
+
+        names = owned.call ? ->(feature) { sidecar_names(session_dir, feature) } : ->(_feature) {}
+        missing = vouched.find { |anchor| names.call(anchor.class::FEATURE) != true }
+        return nil unless missing
+        return DeliverResult.new(status: :refused, code: 409, ack: missing.class::UNAVAILABLE) if names.call(missing.class::FEATURE) == false
+
+        DeliverResult.new(status: :timeout, via: :file,
+                          ack: { "error" => "worker_timeout",
+                                 "detail" => "the session's worker isn't up yet, so the message was not sent; send it again" })
       end
 
       private def ask_unavailable = DeliverResult.new(status: :refused, code: 409, ack: Delivery::ASK_UNAVAILABLE)

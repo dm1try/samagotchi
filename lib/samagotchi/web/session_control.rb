@@ -5,6 +5,7 @@ require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../image_store"
 require_relative "../prompt_history"
+require_relative "../reply_for"
 require_relative "../session"
 require_relative "../session_command_catalog"
 require_relative "../session_manager"
@@ -57,6 +58,19 @@ module Samagotchi
         qid = body["id"]
         return error_response(400, "missing_fields", "id is required") if qid.to_s.strip.empty?
 
+        # reply_for: the answering surface's (a thin client's, ReplyFor). One
+        # without detail may not answer an approval, a spending question or
+        # a user-only option (ReplyFor#answers?): 403, nothing relayed.
+        begin
+          answering = ReplyFor.parse(body["reply_for"])
+        rescue ReplyFor::Invalid => e
+          return error_response(400, "invalid_answer", e.message)
+        end
+        pending = session.pending_question
+        if answering && pending && pending.id.to_s == qid.to_s && !answering.answers?(pending)
+          return json_response(403, ReplyFor::NEEDS_DETAIL)
+        end
+
         # wait: a thin client's answer that also waits for what comes next
         # (AskRoutes#answered_wait), its start read before the answer goes in.
         wait, error = answer_wait_option(body)
@@ -64,6 +78,11 @@ module Samagotchi
 
         start = answer_wait_start(id, session, qid) if wait
         return session_not_found(id) if wait && !start
+
+        # The pending turn's surface, from its saved opener (the running
+        # turn's checkpoint copy until its first boundary), read before the
+        # answer goes in: its reply is shaped for it (#answered_wait).
+        reply_for = ReplyFor.of_latest_turn(session.messages) if wait
 
         # client_id: only chi answer's (a parent agent's answer, which the
         # worker holds to its guardrails.parent_answers) is passed on; any
@@ -93,7 +112,7 @@ module Samagotchi
                                              detail: reply_detail(reply, "the worker refused that option") })
           end
         end
-        relayed.is_a?(Symbol) ? answered_wait(id, qid, start, wait, answered: relayed == :answered) : relayed
+        relayed.is_a?(Symbol) ? answered_wait(id, qid, start, wait, answered: relayed == :answered, reply_for: reply_for) : relayed
       end
 
       # A request to the worker sent once more when the worker dropped it as
@@ -235,7 +254,7 @@ module Samagotchi
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, no_interrupt: body["no_interrupt"] == true,
                                                  author: principal(req).author,
-                                                 anchors: TurnAnchors.from(body),
+                                                 anchors: TurnAnchors.from_turn_route(body),
                                                  follow: body["follow"] == true,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })

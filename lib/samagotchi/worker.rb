@@ -26,6 +26,7 @@ require_relative "reminder_carry"
 require_relative "log"
 require_relative "turn_flow"
 require_relative "turn_checkpoint"
+require_relative "reply_for"
 require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
@@ -763,7 +764,7 @@ module Samagotchi
       restores = @turn_flow.restores
       begin
         @checkpoint.begin_turn(prompt: prompt, turn_id: turn_args[:id], enqueued_id: origin.enqueued_id, author: turn_author_fields(origin),
-                               source: turn_args[:opener_source])
+                               source: turn_args[:opener_source], reply: ReplyFor.opener_fields(@session.messages, turn_args[:reply_for]))
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's

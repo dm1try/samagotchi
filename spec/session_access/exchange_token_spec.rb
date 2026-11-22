@@ -87,4 +87,31 @@ RSpec.describe Samagotchi::SessionAccess::Exchange::Token do
     expect { described_class.baseline({ "messages" => 2.5 }) }
       .to raise_error(described_class::Invalid, "baseline is {messages, question_id, last_turn}")
   end
+
+  describe "the asking surface (reply_for)" do
+    let(:target) { Samagotchi::ReplyWait::Target.message(start, delivered, queue: true) }
+    let(:voice) { Samagotchi::ReplyFor.parse("voice", names: Samagotchi::ReplyFor::DEFAULT_NAMES) }
+
+    it "is left out without one: the token's bytes are as before, and it carries none" do
+      token = described_class.dump(id, target)
+      expect(JSON.parse(token.delete_prefix("w1.").tr("-_", "+/").unpack1("m"))).not_to have_key("f")
+      expect(described_class.reply_for(token)).to be_nil
+      expect(described_class.carrying(token, nil)).to eq(token)
+    end
+
+    it "rides as f, dumped or carried onto a token, and the wait loads as without it" do
+      token = described_class.dump(id, target, reply_for: voice)
+      carried = described_class.carrying(described_class.dump(id, target), voice)
+
+      [token, carried].each do |with|
+        expect(described_class.reply_for(with)).to eq(voice)
+        expect(described_class.load(with)).to eq(described_class.load(described_class.dump(id, target)))
+      end
+    end
+
+    it "refuses a malformed one" do
+      expect { described_class.load(raw(s: id, f: { formatting: "rtf" })) }
+        .to raise_error(described_class::Invalid, "a wait token's f is reply_for's values")
+    end
+  end
 end
