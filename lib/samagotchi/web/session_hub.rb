@@ -152,7 +152,7 @@ module Samagotchi
       # +full_probe_interval+ it also probes every session's owner and
       # gives the retention sweep its chance (it used to run on
       # GET /api/sessions, which the page no longer calls).
-      def scan
+      def scan(tick: true)
         full = @monitor.synchronize do
           full = full_probe_due?
           SessionContinue.repair_interrupted(state_dir: @state_dir)
@@ -165,7 +165,7 @@ module Samagotchi
         end
         sweep_if_due if full
         # Outside the projection's lock: a firing can wait for a recap.
-        schedule_tick
+        schedule_tick if tick
         nil
       end
 

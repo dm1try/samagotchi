@@ -58,6 +58,14 @@ RSpec.describe Samagotchi::Web::SessionHub do
   end
 
   describe "#scan" do
+    it "can seed the projection without launching a schedule tick" do
+      allow(hub).to receive(:schedule_tick)
+
+      hub.scan(tick: false)
+
+      expect(hub).not_to have_received(:schedule_tick)
+    end
+
     it "runs at most one retention sweep outside the projection lock" do
       entered = Queue.new
       release = Queue.new
