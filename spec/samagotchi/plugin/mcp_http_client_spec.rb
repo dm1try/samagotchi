@@ -122,6 +122,30 @@ RSpec.describe "The mcp bundle's HTTP client" do
         .to raise_error(errors::Unavailable, "speaks MCP 2099-01-01, not 2026-07-28 or 2025-11-25 (HTTP 400)")
     end
 
+    it "includes server/discover's 503 when legacy fails" do
+      server.enqueue("/mcp", status: 503, body: "")
+      server.enqueue("/mcp", status: 400, body: "")
+
+      expect { client.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "HTTP 400 (server/discover: HTTP 503)")
+    end
+
+    it "includes server/discover's 405 when legacy fails" do
+      server.enqueue("/mcp", status: 405, body: "")
+      server.enqueue("/mcp", status: 400, body: "")
+
+      expect { client.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "HTTP 400 (server/discover: HTTP 405)")
+    end
+
+    it "includes a JSON-RPC server/discover error when legacy fails" do
+      server.enqueue("/mcp", json: rpc_error(1, -32_601, "not found"))
+      server.enqueue("/mcp", json: rpc_error(2, -32_602, "bad initialize"))
+
+      expect { client.handshake(timeout: 5, cancelled: nil) }
+        .to raise_error(errors::Unavailable, "bad initialize (-32602) (server/discover: not found (-32601))")
+    end
+
     it "speaks stateless legacy: no session id, the negotiated version, no _meta" do
       server.enqueue("/mcp", status: 404, body: "")
       legacy_answers(2)
@@ -173,6 +197,120 @@ RSpec.describe "The mcp bundle's HTTP client" do
       expect(client.era).to eq(:legacy)
       expect(methods_sent.drop(3)).to eq(%w[tools/list initialize initialize initialize notifications/initialized tools/list])
       expect(server.requests.last.header("mcp-session-id")).to eq("s2")
+    end
+
+    it "keeps a request's snapshot while another request renews the session" do
+      fake = Samagotchi::Testing::FakeHttp.new
+      first_call = true
+      faked = nil
+      fake.stub(:post, %r{/mcp}) do |request|
+        case request.json["method"]
+        when "server/discover" then { status: 405 }
+        when "initialize"
+          { json: json_rpc(request.json["id"], { protocolVersion: "2025-11-25" }),
+            headers: { "Mcp-Session-Id" => "s#{first_call ? 1 : 2}" } }
+        when "notifications/initialized" then { status: 202 }
+        when "tools/call"
+          if request.headers["Mcp-Session-Id"] == "s1" && first_call
+            first_call = false
+            expect { faked.request("tools/list", nil, timeout: 5) }.not_to raise_error
+            { status: 404 }
+          elsif request.headers["Mcp-Session-Id"] == "s1"
+            { status: 404 }
+          else
+            { json: json_rpc(request.json["id"], { content: [] }) }
+          end
+        when "tools/list"
+          if request.headers["Mcp-Session-Id"] == "s1"
+            { status: 404 }
+          else
+            { json: json_rpc(request.json["id"], { tools: [] }) }
+          end
+        end
+      end
+      faked = client_class.new(url, headers: {}, token: client_class::StaticToken.new { nil }, log: ->(*) {},
+                               http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake))
+      faked.handshake(timeout: 5, cancelled: nil)
+
+      expect(faked.request("tools/call", { name: "x" }, timeout: 5)).to eq("content" => [])
+      expect(fake.requests.map { |request| request.json["method"] }).to eq(
+        %w[server/discover initialize notifications/initialized tools/call tools/list initialize
+           notifications/initialized tools/list tools/call]
+      )
+      expect(fake.requests.last(2).map { |request| request.headers["Mcp-Session-Id"] }).to eq(%w[s2 s2])
+    end
+
+    it "keeps the old complete state visible while a re-handshake initializes" do
+      fake = Samagotchi::Testing::FakeHttp.new
+      observed_era = nil
+      initialized = false
+      faked = nil
+      fake.stub(:post, %r{/mcp}) do |request|
+        case request.json["method"]
+        when "server/discover" then { status: 405 }
+        when "initialize"
+          if initialized
+            nested = faked.request("tools/list", nil, timeout: 5)
+            observed_era = faked.era
+            expect(nested).to eq("tools" => [])
+            { json: json_rpc(request.json["id"], { protocolVersion: "2025-11-25" }),
+              headers: { "Mcp-Session-Id" => "s2" } }
+          else
+            initialized = true
+            { json: json_rpc(request.json["id"], { protocolVersion: "2025-11-25" }),
+              headers: { "Mcp-Session-Id" => "s1" } }
+          end
+        when "notifications/initialized" then { status: 202 }
+        when "tools/call"
+          request.headers["Mcp-Session-Id"] == "s1" ? { status: 404 } : { json: json_rpc(request.json["id"], { tools: [] }) }
+        when "tools/list"
+          expect(request.headers["Mcp-Session-Id"]).to eq("s1")
+          expect(request.headers["MCP-Protocol-Version"]).to eq("2025-11-25")
+          { json: json_rpc(request.json["id"], { tools: [] }) }
+        end
+      end
+      faked = client_class.new(url, headers: {}, token: client_class::StaticToken.new { nil }, log: ->(*) {},
+                               http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake))
+      faked.handshake(timeout: 5, cancelled: nil)
+      expect(faked.era).to eq(:legacy)
+
+      expect(faked.request("tools/call", { name: "x" }, timeout: 5)).to eq("tools" => [])
+      expect(observed_era).to eq(:legacy)
+    end
+
+    it "raises an immediate expiration on same-thread re-entry during renewal" do
+      fake = Samagotchi::Testing::FakeHttp.new
+      faked = nil
+      initialized = false
+      fake.stub(:post, %r{/mcp}) do |request|
+        case request.json["method"]
+        when "server/discover" then { status: 405 }
+        when "initialize"
+          if initialized
+            begin
+              faked.request("tools/list", nil, timeout: 5)
+            rescue errors::Unavailable => e
+              expect(e.message).to eq("the session expired (404)")
+            end
+            { json: json_rpc(request.json["id"], { protocolVersion: "2025-11-25" }),
+              headers: { "Mcp-Session-Id" => "s2" } }
+          else
+            initialized = true
+            { json: json_rpc(request.json["id"], { protocolVersion: "2025-11-25" }),
+              headers: { "Mcp-Session-Id" => "s1" } }
+          end
+        when "notifications/initialized" then { status: 202 }
+        when "tools/call"
+          request.headers["Mcp-Session-Id"] == "s1" ? { status: 404 } : { json: json_rpc(request.json["id"], { tools: [] }) }
+        when "tools/list"
+          request.headers["Mcp-Session-Id"] == "s1" ? { status: 404 } : { json: json_rpc(request.json["id"], { tools: [] }) }
+        end
+      end
+      faked = client_class.new(url, headers: {}, token: client_class::StaticToken.new { nil }, log: ->(*) {},
+                               http: Samagotchi::Plugin::Http.new(bundle: "mcp", transport: fake))
+      faked.handshake(timeout: 5, cancelled: nil)
+
+      expect(faked.request("tools/call", { name: "x" }, timeout: 5)).to eq("tools" => [])
     end
 
     it "DELETEs a legacy session at close, best effort" do

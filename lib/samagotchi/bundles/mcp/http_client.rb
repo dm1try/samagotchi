@@ -68,6 +68,8 @@ class Plugin
       def later(seconds) = with(deadline: deadline + seconds)
     end
 
+    State = Data.define(:era, :session_id, :protocol)
+
     # HttpClient's token: for a server with no token (nil) or a static one
     # (bearer_token_env: the block looks it up at each request and raises
     # Refused when its variable is unset): there is nothing to refresh.
@@ -85,8 +87,6 @@ class Plugin
       def inspect = "#<#{self.class.name.split("::").last}>"
     end
 
-    attr_reader :era
-
     # @param url [String] http(s)
     # @param headers [Hash{String=>String}] sent as given
     # @param token [#call, #refresh_token!] #call → the bearer token, or nil
@@ -102,9 +102,8 @@ class Plugin
       @log = log
       @next_id = 0
       @mutex = Mutex.new
-      @era = nil
-      @session_id = nil
-      @protocol = nil
+      @renewal = Mutex.new
+      @state = State.new(nil, nil, nil)
     end
 
     # scheme://host, and the port when it isn't the scheme's: never the
@@ -119,7 +118,9 @@ class Plugin
       "(not a URL)"
     end
 
-    def inspect = "#<HttpClient #{label} era=#{@era || "none"}>"
+    def era = @mutex.synchronize { @state.era }
+
+    def inspect = "#<HttpClient #{label} era=#{era || "none"}>"
 
     def pretty_print(printer) = printer.text(inspect)
 
@@ -133,55 +134,64 @@ class Plugin
     #   cancel: (Plugin#stop_of; not stdio's poll), for #request too
     # @return [Hash] what Plugin#info_of reads ("instructions")
     def handshake(timeout:, cancelled:)
-      @era = :discover
-      @session_id = nil
+      # Nothing else runs on a client before its first handshake returns.
+      publish(State.new(:discover, nil, nil))
+      discover_error = nil
       begin
-        result = post("server/discover", {}, Budget.for(timeout), cancelled)
+        result = post("server/discover", {}, Budget.for(timeout), cancelled, state: state)
         offered = Array(result["supportedVersions"])
-        return result.tap { @era = :modern } if offered.include?(MODERN)
+        return result.tap { publish(State.new(:modern, nil, nil)) } if offered.include?(MODERN)
       rescue Refused, Client::Timeout, Client::Cancelled, Client::Dead
         raise
       rescue RpcError => e
         offered = Array(e.data.is_a?(Hash) ? e.data["supported"] : nil) if e.code == -32_022
-      rescue Client::Error
+        discover_error = e if offered.nil? || offered.empty?
+      rescue Client::Error => e
         offered = nil
+        discover_error = e
       end
-      legacy(Budget.for(timeout), cancelled, offered)
+      legacy(Budget.for(timeout), cancelled, offered, initial: true, discover_error: discover_error)
     end
 
     # @param timeout [Numeric] the whole call's, a re-handshake included
     # @return [Hash] the result
     def request(method, params = nil, timeout:, cancelled: nil)
       budget = Budget.for(timeout)
-      renew(budget, cancelled) if @era == :expired
-      raise Client::Error, "#{method} before the handshake" unless %i[modern legacy].include?(@era)
+      if state.era == :expired
+        @renewal.synchronize { renew(budget, cancelled) if state.era == :expired }
+      end
+      sent_state = state
+      raise Client::Error, "#{method} before the handshake" unless %i[modern legacy].include?(sent_state.era)
 
-      post(method, params, budget, cancelled)
+      post(method, params, budget, cancelled, state: sent_state)
     rescue Expired
-      raise if @era != :legacy || @renewing
+      raise if @renewal.owned?
 
-      @renewing = true
-      begin
-        renew(budget, cancelled)
-        post(method, params, budget, cancelled)
-      ensure
-        @renewing = false
+      @renewal.synchronize do
+        current = state
+        if current.era == :legacy && !current.equal?(sent_state)
+          sent_state = current
+        else
+          renew(budget, cancelled)
+        end
+        post(method, params, budget, cancelled, state: state)
       end
     end
 
     # A legacy session's best-effort DELETE; nothing for the modern era.
     def close
-      return nil unless @era == :legacy && @session_id
+      snapshot = state
+      return nil unless snapshot.era == :legacy && snapshot.session_id
 
       # A controller of its own: a cancelled turn's (ctx.http's default) would skip it.
-      @http.request("DELETE", @url, headers: headers_for("DELETE", nil), timeout: CLOSE_TIMEOUT,
+      @http.request("DELETE", @url, headers: headers_for("DELETE", nil, snapshot), timeout: CLOSE_TIMEOUT,
                                     cancel: Samagotchi::CancellationController.new)
       nil
     rescue Samagotchi::Plugin::HttpError, Client::Error => e
       @log.call("close_failed", error: e.class.name)
       nil
     ensure
-      @session_id = nil
+      publish(snapshot.with(session_id: nil)) if snapshot
     end
 
     private
@@ -190,32 +200,42 @@ class Plugin
     # the era :expired, so the next request tries again; its error is the
     # server's state, never the tool's (Unavailable, no schema note).
     def renew(budget, cancelled)
-      legacy(budget, cancelled, nil)
+      legacy(budget, cancelled, nil, initial: false, discover_error: nil)
     rescue Client::Timeout, Client::Cancelled, Client::Dead, Client::Unavailable
       raise
     rescue Client::Error => e
       raise Client::Unavailable, e.message
     ensure
-      @era = :expired unless @era == :legacy
+      publish(State.new(:expired, nil, nil)) unless state.era == :legacy
     end
 
     # initialize, then notifications/initialized, in one +budget+.
-    def legacy(budget, cancelled, offered)
-      @era = :initialize
-      @session_id = nil
-      result = post("initialize", { protocolVersion: LEGACY, capabilities: {},
-                                    clientInfo: { name: "chi", version: Samagotchi::VERSION } },
-                    budget, cancelled, session: true)
-      @protocol = result["protocolVersion"].is_a?(String) ? result["protocolVersion"] : LEGACY
-      @era = :legacy
-      post("notifications/initialized", nil, budget, cancelled, notification: true)
+    def legacy(budget, cancelled, offered, initial:, discover_error:)
+      in_flight = State.new(:initialize, nil, nil)
+      publish(in_flight) if initial
+      initialized = false
+      result, session_id = post("initialize", { protocolVersion: LEGACY, capabilities: {},
+                                                clientInfo: { name: "chi", version: Samagotchi::VERSION } },
+                                budget, cancelled, state: in_flight, session: true)
+      initialized = true
+      in_flight = State.new(:legacy, session_id,
+                            result["protocolVersion"].is_a?(String) ? result["protocolVersion"] : LEGACY)
+      publish(in_flight)
+      post("notifications/initialized", nil, budget, cancelled, state: in_flight, notification: true)
       result
     rescue Client::Timeout, Client::Cancelled, Client::Dead, Refused
       raise
     rescue Client::Error => e
-      raise if offered.nil? || offered.empty?
+      publish(State.new(:expired, nil, nil)) unless initial || initialized
+      if offered && !offered.empty?
+        raise Client::Unavailable, "speaks MCP #{offered.join(", ")}, not #{MODERN} or #{LEGACY} (#{e.message})"
+      end
+      raise if discover_error.nil? || discover_error.message == e.message
 
-      raise Client::Unavailable, "speaks MCP #{offered.join(", ")}, not #{MODERN} or #{LEGACY} (#{e.message})"
+      message = "#{e.message} (server/discover: #{discover_error.message})"
+      raise e.class, message if [Client::Error, Client::Unavailable].include?(e.class)
+
+      raise Client::Unavailable, message
     end
 
     # One message on the wire, and its answer, in what is left of +budget+.
@@ -223,20 +243,20 @@ class Plugin
     # sends the message again; the time a renew takes, before the message or
     # after its 401, isn't the budget's.
     # @return [Hash, nil] the result (nil for a notification)
-    def post(method, params, budget, cancelled, notification: false, session: false, renewed: false)
+    def post(method, params, budget, cancelled, state:, notification: false, session: false, renewed: false)
       id = notification ? nil : @mutex.synchronize { @next_id += 1 }
-      message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params) }.compact
+      message = { jsonrpc: "2.0", id: id, method: method, params: params_for(params, state) }.compact
       asked = monotonic
-      headers = headers_for(method, params)
+      headers = headers_for(method, params, state)
       budget = budget.later(monotonic - asked)
       raise Client::Timeout, timed_out(method, budget) if (left = budget.left) <= 0
 
       timer = Samagotchi::CancellationController.new
       budgeted(cancelled, timer, left) do
         @http.stream("POST", @url, body: JSON.generate(message), headers: headers, timeout: [left, 0.05].max, cancel: timer) do |res|
-          @session_id = res.headers["mcp-session-id"] if session && res.ok? && res.headers["mcp-session-id"]
-          refuse(res, headers.keys.any? { |name| name.casecmp?("authorization") }) unless res.ok?
-          answer(res, id)
+          refuse(res, headers.keys.any? { |name| name.casecmp?("authorization") }, state) unless res.ok?
+          result = answer(res, id)
+          session ? [result, res.headers["mcp-session-id"]] : result
         end
       end
     rescue Refused => e
@@ -248,7 +268,8 @@ class Plugin
       raise unless @token.refresh_token!(sent)
 
       @log.call("token_renewed")
-      post(method, params, budget.later(monotonic - asked), cancelled, notification: notification, session: session, renewed: true)
+      post(method, params, budget.later(monotonic - asked), cancelled, state: state,
+           notification: notification, session: session, renewed: true)
     rescue Samagotchi::Plugin::HttpCancelled
       raise Client::Timeout, timed_out(method, budget) if timer&.reason == :budget
 
@@ -330,14 +351,18 @@ class Plugin
       result
     end
 
+    def state = @mutex.synchronize { @state }
+
+    def publish(value) = @mutex.synchronize { @state = value }
+
     # A status that isn't 2xx, in words; never its body unless it is a
     # JSON-RPC error.
-    def refuse(res, token_sent)
+    def refuse(res, token_sent, state)
       status = res.status
       raise Client::Unavailable, "redirected (#{status})#{redirect_to(res)}: set url: to the new address" if status.between?(300, 399)
       raise Refused.new(token_sent ? "refused the token (401)" : "needs a token or sign-in (401)", status: 401) if status == 401
       raise Refused.new("refused (403)", status: 403) if status == 403
-      raise Expired, "the session expired (404)" if status == 404 && @era == :legacy && @session_id
+      raise Expired, "the session expired (404)" if status == 404 && state.era == :legacy && state.session_id
 
       message = error_body(res) if content_type(res) == "application/json"
       raise RpcError, message["error"] if message.is_a?(Hash) && message["error"].is_a?(Hash) && message["error"].key?("code")
@@ -367,8 +392,8 @@ class Plugin
       nil
     end
 
-    def params_for(params)
-      return params unless %i[discover modern].include?(@era)
+    def params_for(params, state)
+      return params unless %i[discover modern].include?(state.era)
 
       given = (params || {}).transform_keys(&:to_s)
       given.merge("_meta" => meta.merge(given["_meta"].is_a?(Hash) ? given["_meta"] : {}))
@@ -381,19 +406,19 @@ class Plugin
     end
 
     # The config's headers, then chi's own (the config can't name them).
-    def headers_for(method, params)
+    def headers_for(method, params, state)
       headers = @headers.merge("Accept" => ACCEPT, "Content-Type" => "application/json")
       token = @token.call
       headers["Authorization"] = "Bearer #{token}" if token
-      case @era
+      case state.era
       when :discover, :modern
         headers["MCP-Protocol-Version"] = MODERN
         headers["Mcp-Method"] = method
         name = params.is_a?(Hash) ? (params[:name] || params["name"]) : nil
         headers["Mcp-Name"] = name.to_s if method == "tools/call" && name
       when :legacy
-        headers["MCP-Protocol-Version"] = @protocol
-        headers["Mcp-Session-Id"] = @session_id if @session_id
+        headers["MCP-Protocol-Version"] = state.protocol
+        headers["Mcp-Session-Id"] = state.session_id if state.session_id
       end
       headers
     end
