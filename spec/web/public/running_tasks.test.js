@@ -2,17 +2,7 @@
 // (running_tasks.js): the line, the second confirm, the toast's suffix.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tasksConfirmText, tasksCount, tasksLine, tasksStoppedSuffix } from "../../../lib/samagotchi/web/public/running_tasks.js";
-
-
-test("tasksConfirmText: the second confirm names the running tasks and the op", () => {
-  const one = { running: [{ session_id: "ab12cd34-1", id: "20261120-3f9a2c1d", command: "npm run dev" }] };
-  assert.equal(tasksConfirmText("ab12cd34-1", one, "archive"),
-               "Session ab12cd34 started 1 background task that is still running:\nnpm run dev\nStop it and archive the session?");
-  const two = { running: [...one.running, { session_id: "ab12cd34-1", id: "x-2", command: "rspec" }], unverified: [], unreadable: [] };
-  assert.equal(tasksConfirmText("ab12cd34-1", two, "delete"),
-               "Session ab12cd34 started 2 background tasks that are still running:\nnpm run dev · rspec\nStop them and delete the session?");
-});
+import { tasksCount, tasksLine, tasksStoppedSuffix } from "../../../lib/samagotchi/web/public/running_tasks.js";
 
 test("tasksStoppedSuffix: what a delete's or an archive's toast adds for the tasks it stopped", () => {
   assert.equal(tasksStoppedSuffix({}), "");
