@@ -334,8 +334,10 @@ module Samagotchi
         # (a session restarts on the chi home that made it), which would
         # drop the anchor and run the turn without it. One that doesn't
         # list it is refused as the Bridge refuses (its UNAVAILABLE); no
-        # sidecar to read (a worker starting, leaving, or none) is a retry.
-        refused = unvouched_refused(anchors, session_dir) unless client
+        # sidecar to read (a worker starting, leaving, or none) is a retry,
+        # and so is a sidecar no worker holds (a dead worker's leftover:
+        # whatever starts next may be older), as the agent rule's owned?.
+        refused = unvouched_refused(anchors, session_dir, -> { delivery_presence(manager, session_id, state_dir).owned? }) unless client
         return refused if refused
 
         input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
@@ -482,14 +484,16 @@ module Samagotchi
       end
 
       # The refusal of a file for +anchors+' vouched members (#deliver_turn_now):
-      # nil when there are none or the sidecar lists each one's feature.
-      private def unvouched_refused(anchors, session_dir)
+      # nil when there are none or the sidecar of a worker holding the
+      # session (+owned+, read only when needed) lists each one's feature.
+      private def unvouched_refused(anchors, session_dir, owned)
         vouched = anchors.vouched
         return nil if vouched.empty?
 
-        missing = vouched.find { |anchor| sidecar_names(session_dir, anchor.class::FEATURE) != true }
+        names = owned.call ? ->(feature) { sidecar_names(session_dir, feature) } : ->(_feature) {}
+        missing = vouched.find { |anchor| names.call(anchor.class::FEATURE) != true }
         return nil unless missing
-        return DeliverResult.new(status: :refused, code: 409, ack: missing.class::UNAVAILABLE) if sidecar_names(session_dir, missing.class::FEATURE) == false
+        return DeliverResult.new(status: :refused, code: 409, ack: missing.class::UNAVAILABLE) if names.call(missing.class::FEATURE) == false
 
         DeliverResult.new(status: :timeout, via: :file,
                           ack: { "error" => "worker_timeout",

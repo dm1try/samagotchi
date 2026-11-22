@@ -462,6 +462,7 @@ RSpec.describe Samagotchi::SessionManager do
 
         it "writes no file with no Bridge unless the sidecar vouches: none is a retry, one without it the 409" do
           allow(described_class).to receive(:resume_session)
+          own("worker")
           expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "a", anchors: voice, state_dir: tmpdir,
                                                           bridge: -> {}))
             .to have_attributes(status: :timeout, ack: include("error" => "worker_timeout"))
@@ -476,6 +477,20 @@ RSpec.describe Samagotchi::SessionManager do
                                                           bridge: -> {}).status).to eq(:accepted)
           expect(input_files.map { |path| JSON.parse(File.read(path)).values_at("prompt", "reply_for") })
             .to eq([["c", voice[:reply_for]]])
+        end
+
+        it "never takes a leftover sidecar no worker holds (a dead worker's) as vouching: a retry, no file" do
+          allow(described_class).to receive(:resume_session)
+          Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid, features: Samagotchi::Bridge::FEATURES).write(session_dir)
+
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "a", anchors: voice, state_dir: tmpdir,
+                                                          bridge: -> {}))
+            .to have_attributes(status: :timeout, ack: include("error" => "worker_timeout"))
+          Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid, features: Samagotchi::Bridge::FEATURES - %w[reply_for]).write(session_dir)
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "b", anchors: voice, state_dir: tmpdir,
+                                                          bridge: -> {}))
+            .to have_attributes(status: :timeout, ack: include("error" => "worker_timeout"))
+          expect(input_files).to be_empty
         end
 
         it "leaves a message without one as it was: the file goes with no sidecar" do

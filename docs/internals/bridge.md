@@ -675,7 +675,7 @@ compatibility from its version. `Bridge::FEATURES` advertises:
 | `turn_ids` | A client can wait for a particular enqueued turn across running, continued and stopped turns. |
 | `verify` | The worker accepts and validates Verify anchors on turns. |
 | `revise` | The worker accepts and validates Revise anchors on turns. |
-| `reply_for` | The worker saves an ask's `reply_for` (`ReplyFor`) on the turn's opener with its baked line. Without it chi web refuses the turn (409 `reply_for_unavailable`, `SessionManager#deliver_turn_now`), and with no Bridge up writes no input file unless the sidecar lists it (no sidecar: a retry); chi web lists it in `/api/info` too. |
+| `reply_for` | The worker saves an ask's `reply_for` (`ReplyFor`) on the turn's opener with its baked line. Without it chi web refuses the turn (409 `reply_for_unavailable`, `SessionManager#deliver_turn_now`), and with no Bridge up writes no input file unless the sidecar of a worker holding the session lists it (no sidecar, or a dead worker's leftover one: a retry); chi web lists it in `/api/info` too. |
 | `unqueue` | A client can take back a queued turn before it starts (`POST /session/:id/turn/dequeue`). |
 | `review_turns` | An older chi web checks this before sending legacy participant turns; it is not a read-only mode on current workers. |
 | `pair_turns` | The worker runs participant turns under the owner's guardrails, so chi web may invite participants. |
