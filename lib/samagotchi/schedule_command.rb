@@ -246,7 +246,17 @@ module Samagotchi
     def entry_line(entry)
       note = ""
       note += " skips #{entry.skips} of #{entry.max_skips} (#{skip_window(entry)})" if entry.skips.positive?
-      note += " disabled after #{entry.failures} failures" unless entry.enabled
+      unless entry.enabled
+        note += if entry.last_result == "disabled"
+                  " disabled"
+                elsif entry.skips >= entry.max_skips
+                  " disabled after #{entry.skips} #{entry.skips == 1 ? "skip" : "skips"}"
+                elsif entry.failures >= entry.max_failures
+                  " disabled after #{entry.failures} #{entry.failures == 1 ? "failure" : "failures"}"
+                else
+                  " disabled"
+                end
+      end
       note += " last: #{entry.last_result}" if entry.last_result
       "#{entry.id}  #{entry.mode}  #{entry.recurrence_words}  #{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
     end

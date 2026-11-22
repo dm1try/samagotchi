@@ -179,7 +179,31 @@ RSpec.describe Samagotchi::ScheduleCommand do
 
       status, printed, error = run("list", "--all")
       expect(status).to eq(0), error
-      expect(printed).to include("disabled after 0 failures")
+      expect(printed).to include(" disabled\n")
+      expect(printed).not_to include("disabled after")
+    end
+
+    it "says when skips disabled an entry" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every, max_skips: 1)
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(id, state_dir: @dir), prompt: "busy")
+      schedules.tick(now: @clock + 120)
+
+      status, printed, error = run("list", "--all")
+      expect(status).to eq(0), error
+      expect(printed).to include("#{entry.id} ", "disabled after 1 skip")
+    end
+
+    it "says when failures disabled an entry" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every, max_failures: 1)
+      FileUtils.rm_f(Samagotchi::Session.session_file(id, state_dir: @dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: @dir))
+      schedules.tick(now: @clock + 120)
+
+      status, printed, error = run("list", "--all")
+      expect(status).to eq(0), error
+      expect(printed).to include("#{entry.id} ", "disabled after 1 failure")
     end
 
     it "--format json gives the entries for scripts" do
