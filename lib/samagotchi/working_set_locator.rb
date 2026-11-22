@@ -163,6 +163,9 @@ module Samagotchi
 
         text = PromptFiles.content(path)
         Now.new(text: text, diff: nil, gone: text.nil?)
+      rescue SystemCallError, ArgumentError
+        # A path or folder a session file names that no file call takes (a NUL byte): nothing to fetch.
+        nil
       end
 
       # The same file however it's spelled (/tmp vs /private/tmp on macOS).

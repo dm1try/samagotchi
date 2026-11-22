@@ -483,6 +483,18 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       expect(stale_keys(session)).to contain_exactly("identity:identity@system", preload, keys[@built.prompt_parts.index(part_of("agents"))])
     end
 
+    it "answers the list for a session whose AGENTS part or folder holds a NUL byte (no state, no 500)" do
+      session = built_session
+      session.prompt_parts = session.prompt_parts.map do |part|
+        part.kind == "agents" ? part.with(params: { "path" => "/x\u0000y/AGENTS.md" }) : part
+      end
+      session.working_directory = "#{repo}\u0000y"
+      session.save(state_dir: state_dir)
+      status, body = call("/api/sessions/#{session.id}/working_set")
+      expect(status).to eq(200)
+      expect(body).not_to have_key("parts")
+    end
+
     it "never says an index, an appended file or an older chi's part is stale" do
       extra = File.join(repo, "extra.md").tap { |file| File.write(file, "Extra.\n") }
       prompt = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
