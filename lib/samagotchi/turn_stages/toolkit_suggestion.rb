@@ -7,6 +7,7 @@ require_relative "../system_one/client"
 require_relative "../toolkit"
 require_relative "../toolkit_suggest"
 require_relative "../tools/tool_index"
+require_relative "../visitor"
 
 module Samagotchi
   # The steps of a turn that keep state across its preparation, each a
@@ -162,6 +163,8 @@ module Samagotchi
         # read from disk) and the log (read whole) only when it gets there.
         kits = nil
         candidates = nil
+        # A visitor's prompt (Visitor) is not the owner's, as a participant's isn't.
+        return if Visitor.of?(turn.origin.client_id, session)
         return unless ToolkitSuggest.eligible?(
           session: session, prompt: turn.prompt, author: turn.origin.author,
           candidate_count: lambda {

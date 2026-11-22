@@ -2475,6 +2475,19 @@ RSpec.describe Samagotchi::Worker do
           expect(turns).to be_empty
         end
 
+        it "names the driver (/driver) only from a user at a UI: chi send's and an agent's are refused" do
+          start_worker(poll_interval: 5)
+          [["cli:send", "/driver claude"], ["agent:claude", "/driver codex"]].each do |client_id, line|
+            expect(turn_from(line, client_id).code).to eq("202")
+            wait_for("#{line} to run") { events_seen.any? { |e| e[:type] == :command_ran && e[:line] == line } }
+            expect(seen.find { |e| e[:type] == :command_ran && e[:line] == line })
+              .to include(status: "error", output: Samagotchi::DriverCommand::REFUSED)
+          end
+          done = ran(JSON.parse(post_command("/driver claude").body)["command_id"])
+          expect(done).to include(status: "ok", changed: ["driver"])
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).driver).to eq("agent:claude")
+        end
+
         it "runs its session command (/parent-answers hard) as a command" do
           start_worker(poll_interval: 5)
           expect(turn_from("/parent-answers hard", "agent:claude").code).to eq("202")

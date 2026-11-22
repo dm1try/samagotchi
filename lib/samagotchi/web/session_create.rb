@@ -87,11 +87,19 @@ module Samagotchi
         parent_answers, error = request_parent_answers(body["parent_answers"])
         return error if error
 
+        # driver: the agent (agent:<name>) the owner names its driver (chi
+        # send --new --driver); none: its creator when that is an agent.
+        driver = body["driver"]
+        unless driver.nil? || (ClientId.agent?(driver) && ClientId.agent(ClientId.agent_name(driver)) == driver)
+          return error_response(400, "invalid_driver", "driver is an agent's id: agent:<name>")
+        end
+
         model = (body["model"] || body["model_name"]).to_s.strip
         refused = create_refusal(body, idle ? body["preview"] : prompt, values: [parent_answers], model: model)
         return refused if refused
 
         folder = { working_directory: dir || start_dir }
+        folder[:driver] = driver if driver
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
         folder[:model_name] = model unless model.empty?

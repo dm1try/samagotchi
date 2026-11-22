@@ -80,5 +80,6 @@
       "PR #12"
     ],
     "from": "golden-0004-source"
-  }
+  },
+  "driver": "agent:claude"
 }

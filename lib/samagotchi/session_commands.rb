@@ -189,6 +189,7 @@ module Samagotchi
       # an anytime command runs on another thread against this instance.
       return continue_command(text, as_parent: as_parent) if entry.id == :continue
       return parent_answers(text, user_ui: user_ui) if entry.id == :parent_answers
+      return driver(text, user_ui: user_ui) if entry.id == :driver
       return callback(text, as_parent: as_parent) if entry.id == :callback
 
       instance_exec(text, &entry.handler)
@@ -520,6 +521,13 @@ module Samagotchi
       output, changed, status = ParentAnswersCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
                                                     .run(text.delete_prefix(PARENT_ANSWERS_COMMAND), user_ui: user_ui)
       reply(output, status: status, changed: changed ? [:parent_answers] : [])
+    end
+
+    # /driver (DriverCommand); :driver in changed when it named one.
+    def driver(text, user_ui: false)
+      output, changed, status = DriverCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                             .run(text.delete_prefix(DRIVER_COMMAND), user_ui: user_ui)
+      reply(output, status: status, changed: changed ? [:driver] : [])
     end
 
     # /working-set (WorkingSetCommand): an op that changes the conversation

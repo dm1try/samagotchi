@@ -75,14 +75,18 @@ module Samagotchi
       end
     end
 
-    # The reasons a worker refuses a participant's queued turn
-    # (WorkerParticipantGate#refusal), as its settled record's cancel_reason.
+    # The reasons a worker refuses a queued turn before it runs, as its
+    # settled record's cancel_reason: a participant's
+    # (WorkerParticipantGate#refusal), and a visitor's at session.max_wakes
+    # (Worker#refuse_visitor, Visitor::CAP_REASON).
     REFUSED_LINES = { "revoked" => ParticipantMessages::TOKEN_ENDED,
                       "outdated" => ParticipantMessages::TOKEN_OUTDATED,
-                      "cap_reached" => ParticipantMessages::CAP_REACHED }.freeze
+                      "cap_reached" => ParticipantMessages::CAP_REACHED,
+                      "max_wakes" => "session.max_wakes turns ran in a row with no message from this session's owner; " \
+                                     "it runs again after their next message" }.freeze
 
-    # A participant's turn the worker refused before it ran: by its
-    # cancel_reason (chi web's participant wait sends no outcome).
+    # A participant's or a visitor's turn the worker refused before it ran:
+    # by its cancel_reason (chi web's participant wait sends no outcome).
     def refused?(result)
       result.status == :no_reply && REFUSED_LINES.key?(result.cancel_reason.to_s) &&
         [nil, "canceled"].include?(result.outcome)

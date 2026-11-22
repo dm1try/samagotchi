@@ -314,12 +314,14 @@ module Samagotchi
 
       # The last prompt as a join shows it: a delegate report (a wake
       # turn's) as the child's lines, a participant's with their name (the
-      # one saved with it), anything else as the user's.
+      # one saved with it), a visitor's opener (saved with its sender's id,
+      # Steer::OPENER_HEADERS) by that sender, anything else as the user's.
       def join_prompt_line(message)
         source = (message[:source] || message["source"]).to_s
         content = (message[:content] || message["content"]).to_s
         author = Steer.sender_author(message[:author] || message["author"])
         return prompt_line(ClientId::PARTICIPANT_PREFIX, content, author: author, author_name: message[:author_name] || message["author_name"]) if author
+        return prompt_line(source, content) if Steer.opener_header(message)
         return prompt_line(nil, content) unless source == Steer::DELEGATE_REPORT
 
         content.split(/\n\n(?=session: )/).map { |report| report_line(report) }.join("\n")

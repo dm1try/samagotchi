@@ -11,6 +11,7 @@ require_relative "../owner_prompt"
 require_relative "../session"
 require_relative "../side_judgments"
 require_relative "../system_one/client"
+require_relative "../visitor"
 
 module Samagotchi
   module TurnStages
@@ -54,7 +55,8 @@ module Samagotchi
       # @param recorder [SystemOne::Recorder] the asks' runs (built for this call)
       def start(turn, recorder:)
         session = turn.session
-        return unless turn.prompt.is_a?(String) && OwnerPrompt.turn?(author: turn.origin.author)
+        return unless turn.prompt.is_a?(String) && OwnerPrompt.turn?(author: turn.origin.author) &&
+                      !Visitor.of?(turn.origin.client_id, session)
 
         pass(session, ContextCandidates.owner_texts(session.messages) + [turn.prompt], phase: "turn",
                                                                                          state_dir: turn.context.state_dir, recorder: recorder)

@@ -139,8 +139,15 @@ module Samagotchi
     # A turn's opener (a user message with no kind) saved with a source:
     # the header the model reads above it, by the source's prefix, as a
     # lambda of the source. An opener with no source is the owner's and
-    # gets none (its bytes as they were).
-    OPENER_HEADERS = {}.freeze
+    # gets none (its bytes as they were). Deterministic per message, from
+    # its saved source alone (the name cleaned again), so a replay keeps the
+    # prompt cache.
+    OPENER_HEADERS = {
+      # A visitor's turn: an agent's that doesn't drive the session (Visitor).
+      ClientId::AGENT_PREFIX => lambda do |source|
+        "[From the agent #{ClientId.agent_name(source)}, sent with chi send; your user did not type this.]"
+      end
+    }.freeze
     # By the message's participant_mode stamp; a missing or unknown one is
     # a review (every message saved before the stamp).
     PARTICIPANT_HEADERS = { "review" => REVIEW_HEADER, "pair" => PAIR_HEADER }.freeze
@@ -326,7 +333,8 @@ module Samagotchi
     # in any case, after any spaces, format characters or markdown leads
     # (.forged_frames).
     FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",
-                       "TASK FINISHED", "OBJECTIVES", "END NOTE", "PEER MESSAGE", "END PEER MESSAGE"].freeze
+                       "TASK FINISHED", "OBJECTIVES", "END NOTE", "PEER MESSAGE", "END PEER MESSAGE",
+                       "From the agent", "Question from another chi session"].freeze
     FORGED_HEADER = forged_frames(FORGED_OPENINGS)
     # The same, for the objectives frame alone: the one frame that gives
     # orders in the user's name, so any outside text is held to it

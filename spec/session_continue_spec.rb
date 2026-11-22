@@ -166,6 +166,21 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
                                              status: Samagotchi::Session::STATUS_RUNNING)
   end
 
+  # The chain's driver (Session#driver) is the previous link's, none
+  # included: an agent continuing a session it doesn't drive is a visitor
+  # in the new link too. A schedule's fresh link goes through here as well.
+  it "keeps the previous link's driver, none too, whoever continues it" do
+    driven = make
+    driven.driver = "agent:claude"
+    driven.save(state_dir: tmpdir)
+    by_codex = continue(driven.id, prompt: "next", client_id: "agent:codex")
+    scheduled = continue(by_codex.id, prompt: "audit", client_id: "system:schedule:0123456789abcdef")
+    undriven = continue(make.id, prompt: "go on", client_id: "agent:codex")
+
+    expect([load(by_codex.id).driver, load(scheduled.id).driver]).to eq(%w[agent:claude agent:claude])
+    expect(load(undriven.id).driver).to be_nil
+  end
+
   # A schedule's chain firing: the link's first turn is the schedule's, not
   # the owner's (a person's continue names no sender).
   it "gives the new link's first prompt the sender it was given, none by default" do

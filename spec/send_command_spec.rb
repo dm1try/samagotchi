@@ -234,6 +234,17 @@ RSpec.describe Samagotchi::SendCommand do
         expect(err.string).to include("--as ignored: this runs inside a chi session")
       end
 
+      it "names the new session's driver with --new --driver; the agent that creates one drives it" do
+        dir = Dir.mktmpdir("send-driver", tmpdir)
+        allow(Process).to receive(:spawn).and_return(12_345)
+        expect(run_env({}, "--new", "--dir", dir, "--driver", "Claude", "-m", "hi")).to eq(0), err.string
+        expect(run_env({ "CLAUDECODE" => "1" }, "--new", "--dir", dir, "-m", "hey")).to eq(0), err.string
+        drivers = Samagotchi::Session.list(state_dir: tmpdir).to_h { |s| [s.first_preview, s.driver] }
+        expect(drivers).to eq("hi" => "agent:claude", "hey" => "agent:claude")
+        expect(run_env({}, "--new", "--dir", dir, "--driver", "a b", "-m", "x")).to eq(2)
+        expect(run_env({}, "--driver", "claude", "-m", "x", "abc")).to eq(2)
+      end
+
       it "refuses an --as that is not a name" do
         expect(run_env({}, "--as", "two words", "-m", "hi", "abc")).to eq(2)
         expect(err.string).to include("--as takes a name")

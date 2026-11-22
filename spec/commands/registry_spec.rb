@@ -173,7 +173,7 @@ RSpec.describe Samagotchi::Commands::Registry do
 
     it "offers the attached TUI's Tab list, its own commands among them" do
       expect(builtins.completions(:attached))
-        .to eq(%w[/archive /callback /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /objectives /parent-answers /participants /queue /quit /reasoning-history /recap /share /stats /thinking /title /toolkit /unqueue
+        .to eq(%w[/archive /callback /context /continue /cut /detach /driver /exit /guardrails /help /llm-context /model /models /objectives /parent-answers /participants /queue /quit /reasoning-history /recap /share /stats /thinking /title /toolkit /unqueue
                   /working-set])
     end
 
@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     it "is frozen, and each command #run runs has a handler" do
       expect(builtins).to be_frozen
       runnable = builtins.entries.reject(&:local)
-      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking reasoning_history toolkit working_set parent_answers title objectives help callback recap_setting])
+      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking reasoning_history toolkit working_set parent_answers driver title objectives help callback recap_setting])
       expect(runnable.map(&:handler)).to all(be_a(Proc))
     end
   end

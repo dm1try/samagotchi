@@ -895,6 +895,9 @@ module Samagotchi
         else
           body[:dir] = spec.working_directory
           body.merge!(setup_body(spec.setup)) if spec.setup
+          # An older chi web ignores it: no driver named (its creator's id
+          # downgraded too, #sent_id).
+          body[:driver] = spec.driver if spec.driver
         end
         body.compact
       end

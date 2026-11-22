@@ -49,6 +49,7 @@ require_relative "worker/scratch"
 require_relative "worker/child_side"
 require_relative "worker/command_queue"
 require_relative "worker/block_fixes"
+require_relative "worker/senders"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -100,6 +101,7 @@ module Samagotchi
     include ChildSidePart
     include CommandQueuePart
     include BlockFixesPart
+    include SendersPart
 
     FALLBACK_TICK_SECONDS = 5
     # A worker just started runs no wake turn for delegate reports this
@@ -692,10 +694,16 @@ module Samagotchi
         return @participant_gate.refuse(origin, reason)
       end
 
+      visitor = Visitor.of?(origin.client_id, @session)
+      return refuse_visitor(origin) if visitor && !count_visitor
+
       # A candidate the prompt mentions is attached and fetched first, so
       # the absorb below brings its note into this turn.
-      ContextCandidates.before_turn(session: @session, prompt: prompt.text, author: origin.author, state_dir: @state_dir,
-                                    cancelled: -> { stopped_on_disk? })
+      # Not for a visitor's prompt: only the owner's attaches (OwnerPrompt).
+      unless visitor
+        ContextCandidates.before_turn(session: @session, prompt: prompt.text, author: origin.author, state_dir: @state_dir,
+                                      cancelled: -> { stopped_on_disk? })
+      end
       # A first turn sees the context attached before it, and any turn the
       # background tasks that finished since the last look.
       absorb_context(before_turn: true)
@@ -703,8 +711,12 @@ module Samagotchi
       user_input(origin.client_id)
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
+      # A visitor's opener is saved with its sender, which gives it its
+      # header line (Steer::OPENER_HEADERS); the driver's and the owner's
+      # keep their bytes.
+      source = visitor ? { opener_source: origin.client_id } : {}
       run_engine_turn(prompt.text, origin: origin, max_iterations: max_iterations(prompt.no_interrupt),
-                                   images: prompt.images, **prompt.anchors.kwargs) do |result, error|
+                                   images: prompt.images, **source, **prompt.anchors.kwargs) do |result, error|
         if error
           # The Engine announced :turn_failed (with the error's one line).
           restore_failed_turn([[prompt.text, origin, prompt.images, prompt.anchors], *@merged_this_turn], error: error)
@@ -750,7 +762,8 @@ module Samagotchi
       @turn_author = origin.participant_author
       restores = @turn_flow.restores
       begin
-        @checkpoint.begin_turn(prompt: prompt, turn_id: turn_args[:id], enqueued_id: origin.enqueued_id, author: turn_author_fields(origin))
+        @checkpoint.begin_turn(prompt: prompt, turn_id: turn_args[:id], enqueued_id: origin.enqueued_id, author: turn_author_fields(origin),
+                               source: turn_args[:opener_source])
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's
@@ -958,26 +971,6 @@ module Samagotchi
     end
 
     def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-    # The owner's input (ClientId.owner?) un-archives the session; a
-    # delegate's, a plugin's, a reminder's or a participant's doesn't.
-    # It also resets the wakes (budget and pause); input typed in the web or
-    # a TUI the peer wakes too (chi send doesn't: a peer can run it).
-    def user_input(client_id)
-      return unless ClientId.owner?(client_id)
-
-      ArchiveStore.user_input(@session_id, state_dir: @state_dir)
-      @wakes.human_input!(interactive: ClientId.interactive?(client_id))
-      @child_reports&.release_holds
-    end
-
-    # A queued turn that may not start (a participant's, WorkerParticipantGate#refuse):
-    # settled as refused for +reason+ (a code) and dropped from every UI's
-    # queue; it never runs (TurnCheckpoint.refuse_queued).
-    # @return [nil]
-    def refuse_queued_turn(origin, reason, author: nil)
-      TurnCheckpoint.refuse_queued(@session_dir, @event_log, origin, reason, author: author)
-    end
 
     def stopped_on_disk?
       SessionManager.stopped_on_disk?(@session_id, state_dir: @state_dir)

@@ -596,7 +596,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
   end
 
   it "offers /detach and /quit on Tab" do
-    expect(attached.send(:assist_path_completion_candidates, "/d")).to eq(["/detach"])
+    expect(attached.send(:assist_path_completion_candidates, "/d")).to eq(["/detach", "/driver"])
     expect(attached.send(:assist_path_completion_candidates, "/qui")).to eq(["/quit"])
   end
 end

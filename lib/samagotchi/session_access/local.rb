@@ -159,8 +159,9 @@ module Samagotchi
           return SessionContinue.run(spec.continues, **start, model: spec.model_name, client_id: spec.client_id, **dir)
         end
 
+        driver = spec.driver ? { driver: spec.driver } : {}
         SessionManager.spawn_session(**start, working_directory: spec.working_directory, model_name: spec.model_name,
-                                              setup: spec.setup, client_id: spec.client_id, **dir)
+                                              setup: spec.setup, client_id: spec.client_id, **driver, **dir)
       end
 
       # Whether a just-created session's worker came up (its Bridge

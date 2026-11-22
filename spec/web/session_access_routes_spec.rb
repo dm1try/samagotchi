@@ -449,6 +449,16 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
                                                           "standard applies", "model_warning" => nil)
     end
 
+    it "saves the driver the body names (chi send --new --driver), else its creator when an agent; refuses one that is no agent's id" do
+      named, body = create(prompt: "hi", dir: folder, driver: "agent:claude")
+      expect(named).to eq(201), body.inspect
+      expect(Samagotchi::Session.load(body["id"], state_dir: state_dir).driver).to eq("agent:claude")
+      _status, body = create(prompt: "hi", dir: folder, client_id: "agent:codex")
+      expect(Samagotchi::Session.load(body["id"], state_dir: state_dir).driver).to eq("agent:codex")
+      expect(create(prompt: "hi", dir: folder, driver: "claude")).to match([400, include("error" => "invalid_driver")])
+      expect(create(prompt: "hi", dir: folder, driver: "agent:Bad Name")).to match([400, include("error" => "invalid_driver")])
+    end
+
     it "refuses a bad toolkit or parent_answers, and either beside continues" do
       previous = make
       expect(create(prompt: "hi", toolkit: 3)).to match([400, include("error" => "invalid_toolkit")])

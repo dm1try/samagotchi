@@ -2429,7 +2429,7 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge(on_command: ->(_) { raise "must not be called" })
 
         expect(post_command(JSON.generate(line: "hello")).first).to eq(400)
-        expect(post_command(JSON.generate(line: "/foo")).last["detail"]).to eq("not a session command: /foo (known: !<cmd>, !rollback, /callback, /context, /continue, " \
+        expect(post_command(JSON.generate(line: "/foo")).last["detail"]).to eq("not a session command: /foo (known: !<cmd>, !rollback, /callback, /context, /continue, /driver, " \
                                                  "/guardrails, /help, /llm-context, /model, /models, /objectives, /parent-answers, /reasoning-history, /recap, /thinking, /title, /toolkit, /working-set; /help lists them)")
         expect(post_command(JSON.generate(line: "/recap")).first).to eq(400)
         expect(post_command("{nope").first).to eq(400)

@@ -36,6 +36,7 @@ module Samagotchi
       @peer_in_a_row = 0
       @paused = false
       @budget_noticed = false
+      @visitor_noticed = false
       @peer_noticed = false
       @handed = nil
     end
@@ -145,6 +146,7 @@ module Samagotchi
       @in_a_row = 0
       @paused = false
       @budget_noticed = false
+      @visitor_noticed = false
       return unless interactive
 
       @peer_in_a_row = 0
@@ -157,6 +159,16 @@ module Samagotchi
       return false if @budget_noticed
 
       @budget_noticed = true
+    end
+
+    # @return [Boolean] true the first time a visitor's turn (an agent's
+    #   that doesn't drive the session) is refused since the last human
+    #   input: the UIs hear it once. Apart from #notice_budget!, which a
+    #   delegate's or a task's notice may have spent this stretch.
+    def notice_visitor!
+      return false if @visitor_noticed
+
+      @visitor_noticed = true
     end
 
     # @return [Boolean] true the first time a peer's answer is held since

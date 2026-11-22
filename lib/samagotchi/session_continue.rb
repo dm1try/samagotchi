@@ -477,7 +477,10 @@ module Samagotchi
         model_name: choice.model, setup: SessionSetup.of(previous), review: previous.review,
         continues: previous.id, note: SessionChain.note_text(previous, recap: recap, state_dir: state_dir),
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn, client_id: client_id,
-        session_id: session_id
+        # The chain's driver, nil too: an agent continuing a session it
+        # doesn't drive is a visitor in the new link (not SessionSetup,
+        # which a fork copies).
+        session_id: session_id, driver: previous.driver
       )
       link.moved_children = move
       link.moved_context = carried[:context]

@@ -6,6 +6,7 @@ require_relative "llm_context_command"
 require_relative "thinking_command"
 require_relative "toolkit_command"
 require_relative "parent_answers_command"
+require_relative "driver_command"
 require_relative "title_command"
 require_relative "reasoning_history_command"
 require_relative "working_set_command"
@@ -31,6 +32,7 @@ module Samagotchi
     THINKING_COMMAND = ThinkingCommand::NAME
     TOOLKIT_COMMAND = ToolkitCommand::NAME
     PARENT_ANSWERS_COMMAND = ParentAnswersCommand::NAME
+    DRIVER_COMMAND = DriverCommand::NAME
     TITLE_COMMAND = TitleCommand::NAME
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     WORKING_SET_COMMAND = WorkingSetCommand::NAME
@@ -96,6 +98,10 @@ module Samagotchi
                                                 "never looser than config.yml's)",
                         id: :parent_answers, mid_turn: show_mid_turn(PARENT_ANSWERS_COMMAND),
                         match: ->(text) { text.match?(%r{\A/parent-answers(?:\s+.*)?\z}) }) { |text| parent_answers(text) }
+      # Only a field: naming the driver doesn't wait for the turn. A user's
+      # at a UI (#run's user_ui:).
+      registry.register(DRIVER_COMMAND, "show or name the agent that drives this session (NAME|none)",
+                        id: :driver, anytime: true, match: ->(text) { text.match?(%r{\A/driver(?:\s+.*)?\z}) }) { |text| driver(text) }
       # Only a name: renaming a running session doesn't wait for its turn.
       registry.register(TITLE_COMMAND, "show or set this session's title (--clear: back to its first message)",
                         id: :title, anytime: true, match: ->(text) { text.match?(%r{\A/title(?:\s+.*)?\z}) }) { |text| title(text) }

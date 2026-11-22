@@ -59,12 +59,15 @@ module Samagotchi
       # @param client_id [String, nil] who sent +prompt+ (a ClientId); required
       #   even when nil is intentional for a session with no initial prompt
       # @param session_id [String, nil] an id reserved by a durable operation
+      # @param driver [String, nil, Symbol] its driver (Session#driver):
+      #   :creator (the default) is +client_id+ when it is an agent's; a
+      #   continue passes the previous link's, nil included
       # @return [Session] with #seed_images_dropped: refs whose file was gone,
       #   and #model_warning: an id its host's saved list doesn't have
       def spawn_session(prompt:, client_id:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                         parent_id: nil, messages: [], images_from: nil, preview: nil, title: nil, delegate: false,
                         setup: SessionSetup.new, continues: nil, note: nil, note_source: "chi", before_spawn: nil,
-                        review: nil, verify_fresh: nil, scratch: false, session_id: nil)
+                        review: nil, verify_fresh: nil, scratch: false, session_id: nil, driver: :creator)
         sd = state_dir || Session.default_state_dir
         if session_id && (!Session.valid_id?(session_id) || Session.exist?(session_id, state_dir: sd))
           raise ArgumentError, "invalid or existing session id #{session_id.inspect}"
@@ -110,6 +113,9 @@ module Samagotchi
           session.first_turn_id = SecureRandom.uuid
           session.first_turn_client_id = client_id unless ClientId.human?(client_id)
         end
+        # With a prompt or without (chi send --new's idle create, its line
+        # sent next): its creator's first turn is the driver's too.
+        session.driver = driver == :creator ? (client_id if ClientId.agent?(client_id)) : driver
         # The worker takes last_prompt and clears it, and messages are saved at
         # the turn's end: until then this is the only preview a list has.
         session.first_preview = Session.preview_of(preview.to_s.strip.empty? ? prompt : preview)

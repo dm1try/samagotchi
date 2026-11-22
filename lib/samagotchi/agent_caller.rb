@@ -58,6 +58,20 @@ module Samagotchi
     # there).
     def inside_chi?(env: ENV) = !env.fetch(PARENT_SESSION, "").to_s.strip.empty?
 
+    # chi send's sender from its --as (+as+, as typed) and +env+: the name
+    # (nil: the owner), a usage error for an --as that is no name, and a note
+    # for stderr when --as is ignored (inside a chi session).
+    # @return [Array(String, String, String)] name, error, note (each may be nil)
+    def send_name(as:, env: ENV)
+      return [name(env: env), nil, nil] if as.nil?
+
+      clean = clean(as)
+      return [nil, "--as takes a name: lowercase letters, digits, - and _, up to #{ClientId::AGENT_NAME_MAX}, not #{as}", nil] unless clean
+
+      note = "--as ignored: this runs inside a chi session, which names the sender" if inside_chi?(env: env)
+      [name(env: env, as: clean), nil, note]
+    end
+
     # The client id a message from this caller goes in as: an agent's
     # (agent:<name>), or chi send's, the owner's, with no name.
     # @param name [String, nil] the agent's name (#name)
