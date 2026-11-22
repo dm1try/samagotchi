@@ -23,7 +23,8 @@ module Samagotchi
       # well inside Claude Code HTTP's 60 s and Codex's 300 s).
       SLICE = 25
       # The most seconds a chi_ask or a chi_answer takes in all
-      # (Web::AskRoutes::ASK_MAX_SECONDS).
+      # (Web::AskRoutes::ASK_MAX_SECONDS); under --remote about a minute for
+      # a slow worker (the other chi web's routes make their own tries).
       CAP = 35
       LIST_LIMIT = 20
       LIST_MAX = 50

@@ -49,7 +49,9 @@ host isn't left waiting on that call.
 
 `chi_ask` with `/continue yes` follows the continued turn: its answer, or a `chi_wait` token while it runs.
 
-A call waits at most 25 seconds (a `chi_ask` or `chi_answer` 35 in all, under Claude Code HTTP's 60 s). Then:
+A call waits at most 25 seconds (a `chi_ask` or `chi_answer` 35 in all, under Claude Code HTTP's 60 s). Under `chi
+--remote NAME` (stdio, where no host has a 60 s limit) a session whose worker is slow can take about a minute: the
+other chi web makes its own tries. Then:
 
 - the turn still runs: `Still running. Call chi_wait with this token to keep waiting.` with a `token`;
 - a question waits: the question, its numbered options and `Call chi_answer with session, question_id and option
