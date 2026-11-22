@@ -364,11 +364,44 @@ RSpec.describe Samagotchi::SessionManager do
         expect(input_files).to be_empty
       end
 
-      it "writes an agent's file as cli:send while a worker with no readable Bridge holds the session" do
+      # A current worker's Bridge that can't take the body (a big piped chi
+      # send: 413), a 5xx or a socket error: the file keeps the agent's id,
+      # never the owner's (which would run a ! line and reset the budget).
+      it "keeps an agent's id in the file when a current worker's Bridge answers 413, a 5xx or a socket error" do
         own("worker")
-        expect(described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "q", state_dir: tmpdir,
-                                                        bridge: -> {}).status).to eq(:accepted)
-        expect(input_files.map { |path| JSON.parse(File.read(path))["client_id"] }).to eq(["cli:send"])
+        [413, 500, :socket].each do |answer|
+          bridge = client_naming(Samagotchi::Bridge::FEATURES)
+          if answer == :socket
+            allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNRESET)
+          else
+            allow(bridge).to receive(:post_turn)
+              .and_return(Samagotchi::BridgeClient::Response.new(status: answer, body: '{"error":"too_large"}'))
+          end
+          expect(described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "!ls", state_dir: tmpdir,
+                                                          bridge: -> { bridge }).status).to eq(:accepted), answer.to_s
+        end
+        expect(input_files.map { |path| JSON.parse(File.read(path))["client_id"] }).to eq(%w[agent:claude] * 3)
+      end
+
+      it "writes an agent's file as cli:send to an older worker's: its Bridge's features, else its sidecar's" do
+        own("worker")
+        old = client_naming(%w[delivery])
+        allow(old).to receive(:post_turn)
+          .and_return(Samagotchi::BridgeClient::Response.new(status: 413, body: '{"error":"too_large"}'))
+        described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "a", state_dir: tmpdir, bridge: -> { old })
+        Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid, features: %w[delivery]).write(session_dir)
+        described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "b", state_dir: tmpdir, bridge: -> {})
+        Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid, features: Samagotchi::Bridge::FEATURES).write(session_dir)
+        described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "c", state_dir: tmpdir, bridge: -> {})
+        clients = input_files.to_h { |path| JSON.parse(File.read(path)).values_at("prompt", "client_id") }
+        expect(clients).to eq("a" => "cli:send", "b" => "cli:send", "c" => "agent:claude")
+      end
+
+      it "refuses an agent's file while a worker with no Bridge and no sidecar holds the session (exiting: unknown)" do
+        own("worker")
+        expect(described_class.deliver_turn(session.id, client_id: "agent:claude", prompt: "q", state_dir: tmpdir, bridge: -> {}))
+          .to have_attributes(status: :timeout, ack: include("error" => "worker_timeout"))
+        expect(input_files).to be_empty
       end
 
       it "refuses a participant's Revise to a worker without participant_revise in their words; the owner's goes" do
