@@ -264,6 +264,7 @@ module Samagotchi
         when :busy
           words = ASK_BUSY_WORDS.fetch(refused.busy.error)
           json = busy_json(refused.busy).merge(detail: words, message: words)
+          json[:question] = question_json(refused.busy.question, reply_for) if refused.busy.question
           json_response(409, json.merge(needs_detail_fields(reply_for, refused.busy.question)))
         else refused_delivery(refused.result)
         end

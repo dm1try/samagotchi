@@ -194,6 +194,16 @@ module Samagotchi
         { needs: "detail", text: reply_for.needs_detail_text(question), question: question.to_file.slice("id", "kind") }
       end
 
+      # The question as +reply_for+'s surface gets it: a plain one's text and
+      # header made plain (PlainReply), its options byte-exact (they are
+      # answered by label); the saved question is never touched.
+      def question_json(question, reply_for)
+        json = question&.to_file
+        return json unless json && reply_for&.plain?
+
+        json.merge(%w[question header].to_h { |key| [key, PlainReply.strip(json[key])] }.compact)
+      end
+
       def strategy_json(strategy) = { name: strategy.name, allowed: strategy.allowed, origin: strategy.origin.to_s }
 
       def wait_start_json(id, start)
@@ -263,13 +273,14 @@ module Samagotchi
       # +reply_for+: the asking surface's (ReplyFor), passed in by the route
       # (an ask's from its request, a token's from the token, an answer's
       # from the pending turn's saved opener), never looked up after the
-      # turn: a plain one gets the reply made plain (PlainReply), here only.
+      # turn: a plain one gets the reply and its question's words made plain
+      # (PlainReply, #question_json), here only.
       def wait_result_json(result, strategy, reply_for: nil)
         json = { status: result.status.to_s }
         RESULT_FIELDS.each { |key| json[key] = result[key] }
         json[:text] = json[:text]&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         json[:text] = PlainReply.strip(json[:text]) if reply_for&.plain?
-        json[:question] = result.question&.to_file
+        json[:question] = question_json(result.question, reply_for)
         json.merge!(needs_detail_fields(reply_for, result.question)) if result.status == :waiting_for_answer
         json[:parent_strategy] = strategy_json(strategy)
         json

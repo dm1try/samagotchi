@@ -99,8 +99,10 @@ What happens:
   short one too. Ask again on the web for the long one.
 - With `formatting: plain` the answer you get has its markdown taken out (list
   bullets, bold, code marks, headings, tables, link URLs, emoji; a numbered
-  list keeps its numbers). Only your answer: the session, the web and the
-  terminal keep the model's text. A `token` you wait on keeps doing this.
+  list keeps its numbers). So does a question's text and header; its options
+  stay exactly as they are, since you answer by label. Only your answer: the
+  session, the web and the terminal keep the model's text. A `token` you wait
+  on keeps doing this.
 - The next message from the web or the terminal gets full formatting again: chi
   tells the model once.
 - Each message declares its own: send `reply_for` on every ask from that

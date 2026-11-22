@@ -213,6 +213,24 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
           expect(ask(session, { prompt: "x", reply_for: { formatting: "plain" }, timeout: 1 }).last).not_to have_key("needs")
         end
 
+        it "makes a plain surface's question text and header plain, its options byte-exact, in the reply and the 409 waiting" do
+          question = { id: "q2", header: "**Pick** a `file`", question: "Which file: `README.md` or **Gemfile**?",
+                       options: ["`README.md`", "**Gemfile**"] }
+          session = make
+          asking(session, question)
+
+          body = ask(session, { prompt: "which?", reply_for: "voice", timeout: 1 }).last
+          expect(body["question"]).to include("header" => "Pick a file", "question" => "Which file: README.md or Gemfile?",
+                                              "options" => ["`README.md`", "**Gemfile**"])
+          status, refused = ask(session, { prompt: "and?", reply_for: "voice" })
+          expect([status, refused["error"]]).to eq([409, "waiting"])
+          expect(refused["question"]).to include("header" => "Pick a file", "question" => "Which file: README.md or Gemfile?",
+                                                 "options" => ["`README.md`", "**Gemfile**"])
+          expect(ask(session, { prompt: "and?" }).last["question"]).to include("question" => question[:question])
+          saved = Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question
+          expect(saved).to have_attributes(question: question[:question], header: question[:header])
+        end
+
         it "says it in words on the 409 waiting too" do
           session = make(status: "running", pending_question: approval)
           own(session)
