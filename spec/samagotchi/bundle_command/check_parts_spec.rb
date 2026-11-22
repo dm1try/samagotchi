@@ -60,8 +60,9 @@ RSpec.describe Samagotchi::BundleCommand::Check, "plugin parts" do
       text.sub("    def say(text) = super.upcase\n", "    def say(text) = super.upcase\n\n    def cost(ctx) = ctx.cost.total\n")
     end
     refresh!
-    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.1.28"', 'requires_chi: ">= 0.80.0"') }
-    expect(findings(:warn)).to eq(['warn requires-chi-floor manifest.yml:11: requires_chi ">= 0.80.0" admits chi 0.80.0, ' \
+    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.183.0"', 'requires_chi: ">= 0.80.0"') }
+    # plugin: parts: itself needs 0.183.0 (its own floor warning, at the plugin: line), so check the call's alone.
+    expect(findings(:warn).grep(/manifest.yml:11/)).to eq(['warn requires-chi-floor manifest.yml:11: requires_chi ">= 0.80.0" admits chi 0.80.0, ' \
                                    'but shout.rb uses ctx.cost, which needs chi 0.83.0 (fix: requires_chi: ">= 0.83.0")'])
 
     out.truncate(0)
@@ -70,7 +71,7 @@ RSpec.describe Samagotchi::BundleCommand::Check, "plugin parts" do
       text.sub("  module Helpers\n", "  module Helpers\n    def guard(chi) = chi.on(:before_tool_call, on_error: :fail_closed) { nil }\n")
     end
     refresh!
-    warnings = findings(:warn)
+    warnings = findings(:warn).grep_v(/plugin: parts:, which needs/)
     expect(warnings.first).to start_with('warn requires-chi-floor manifest.yml:11: requires_chi ">= 0.80.0" admits chi 0.80.0, ' \
                                          "but helpers.rb uses chi.on(on_error:), which needs chi 0.157.0")
     expect(warnings.last).to start_with("warn fail-closed helpers.rb:7: a fail-closed chi.on hook")
