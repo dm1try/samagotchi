@@ -961,6 +961,22 @@ test.describe("the working set", () => {
     await clickBarItem(page, "workingSet");
     const pop = page.locator("#workingSetPopover");
     const row = pop.locator(".ws-row.file", { hasText: "README.md" });
+    // One width, closed or with a row open (nothing moves sideways).
+    const width = async () => Math.round((await pop.boundingBox()).width);
+    const closedWidth = await width();
+    // From the start: a prompt memory opens as chi sent it (the part route's
+    // slice of the saved head), rendered; its ▸ again closes it.
+    await pop.locator(".ws-sec.start .ws-sec-head").click();
+    const identity = pop.locator('.ws-sec.start .ws-row[data-ws-id="memory:identity"]');
+    await identity.locator(".ws-peek-toggle").click();
+    const partPeek = pop.locator(".ws-part-peek");
+    await expect(partPeek.locator(".ws-peek-t")).toHaveText("in the prompt · sent with every request");
+    await expect(partPeek.locator(".ws-lead > summary")).toHaveText("chi adds a line before it");
+    await expect(partPeek.locator(".wsr-md")).not.toBeEmpty();
+    expect(await width()).toBe(closedWidth);
+    await identity.locator(".ws-peek-toggle").click();
+    await expect(partPeek).toHaveCount(0);
+    await pop.locator(".ws-sec.start .ws-sec-head").click();
     // What chi has of it: the row's ▸ peeks (a whole read of an .md file:
     // rendered), the peek's link opens the reader over the stage (rendered,
     // its switch to the numbered source), ← Stage brings it back.
@@ -968,6 +984,7 @@ test.describe("the working set", () => {
     const peek = pop.locator(".ws-peek");
     await expect(peek.locator(".ws-peek-t")).toHaveText(/latest · read/);
     await expect(peek.locator(".wsr-md h1")).toHaveText("e2e project");
+    expect(await width()).toBe(closedWidth);
     await peek.locator(".ws-peek-open").click();
     const reader = page.locator("#wsReader");
     await expect(reader).toBeVisible();

@@ -27,6 +27,22 @@
 .ws-popover.sheet .ws-peek-f>button{flex:1;height:44px;text-align:center}
 .ws-popover.sheet .ws-peek-f>button+button{border-left:1px solid var(--border)}
 
+/* The prompt peek (ws_part_peek.js): a "From the start" row's sent text,
+   the line chi adds before it folded, the tools' names and sizes, one tab
+   per hold. A held row's read tab is the item peek, drawn inside it. */
+.ws-part-peek .ws-peek-b{padding:0}
+.ws-part-peek .ws-peek-b .wsr-md{padding:8px 12px}
+.ws-lead{margin:6px 12px 8px;border:1px dashed var(--border-strong);border-radius:6px;font-size:11.5px;color:var(--ws-muted)}
+.ws-lead>summary{cursor:pointer;padding:4px 8px}
+.ws-lead>pre{margin:0;padding:6px 8px;border-top:1px dashed var(--border-strong);font:11px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:var(--text-2)}
+.ws-tools{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:8px 12px;max-height:220px;overflow:auto;font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-2)}
+.ws-tool-k{color:var(--ws-faint);text-align:right;font-variant-numeric:tabular-nums}
+.ws-tabs{display:flex;gap:2px;padding:4px 6px 0;border-bottom:1px solid var(--border)}
+.ws-tab{padding:5px 10px;border:1px solid transparent;border-bottom:0;border-radius:6px 6px 0 0;background:transparent;color:var(--ws-muted);font:inherit;font-size:12px;cursor:pointer}
+.ws-tab.on{color:var(--text);background:var(--bg-panel);border-color:var(--border);margin-bottom:-1px;padding-bottom:6px}
+.ws-tab:hover:not(:disabled){filter:none}@media(hover:hover){.ws-tab:not(.on):hover{color:var(--text-2)}}
+.ws-held>.ws-peek{margin:0;border:0;border-radius:0}
+
 /* A tool row's way in. */
 .activity-ws{flex:none;padding:0 6px;border:1px solid var(--ws-act-border);border-radius:4px;background:transparent;font-size:11px;line-height:16px;color:var(--ws-muted);cursor:pointer;opacity:0}
 .activity-row:hover .activity-ws,.activity-row:focus-within .activity-ws{opacity:1}

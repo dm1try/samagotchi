@@ -1693,6 +1693,11 @@
     "heldOrder",
     "recencyOrder"
   ],
+  "ws_part_peek.js": [
+    "createPartPeek",
+    "getWorkingSetPart",
+    "partPath"
+  ],
   "ws_peek.js": [
     "PEEK_WIDTH",
     "createPeek"
