@@ -7,7 +7,9 @@
 // released files). The new view without a part peek, or with rows without
 // their parts' keys, draws today's rows (no ▸ on a part, 520 wide); the old
 // view ignores the new peek's part and still finds PEEK_WIDTH. Goes at the next release, with PEEK_WIDTH (kept
-// for an older cached view in ws_peek.js).
+// for an older cached view in ws_peek.js). Build 2's stale states: chi web's GET's parts reach the start rows
+// through ws_sections.js (an option, no new export); 0.183.0's ws_sections.js and stream_handlers.js beside
+// this view say no stale and throw nothing; with this page's modules an event (no parts) keeps the GET's states.
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +30,7 @@ async function mixedPage(oldFiles) {
   cpSync(PUBLIC, dir, { recursive: true });
   for (const file of oldFiles) cpSync(join(OLD, file), join(dir, file));
   const url = (file) => pathToFileURL(join(dir, file)).href;
-  return Promise.all([import(url("working_set_view.js")), import(url("ws_reader.js")), import(url("working_set.js"))]);
+  return Promise.all([import(url("working_set_view.js")), import(url("ws_reader.js")), import(url("working_set.js")), import(url("stream_handlers.js"))]);
 }
 
 const PARTS = [
@@ -37,7 +39,8 @@ const PARTS = [
   { kind: "identity", label: "identity", chars: 2400, tokens: 600, ref: "identity", scope: "system" },
 ];
 
-function open([{ createWorkingSet }, { createWorkingSetPreview }, { itemsOfTurn }], session) {
+// +states+: the GET's parts (none: no GET asked).
+function open([{ createWorkingSet }, { createWorkingSetPreview }, { itemsOfTurn }], session, { states = null } = {}) {
   const center = document.createElement("section");
   const historyEl = document.createElement("div");
   const infoEl = document.createElement("div");
@@ -46,7 +49,8 @@ function open([{ createWorkingSet }, { createWorkingSetPreview }, { itemsOfTurn 
   const getItem = (_id, kind, key) => Promise.resolve({ kind, key, events: [] });
   const preview = createWorkingSetPreview({ centerEl: center, session: () => session, state: () => ({ dir: "/p" }), getItem, getPart: () => Promise.resolve({}) });
   const current = { preloadedMemories: [], mutedMemories: [], usedMemories: [], dir: "/p", promptParts: PARTS, ctxTokens: 9000, ctxWindow: 128000 };
-  const ws = createWorkingSet({ historyEl, infoEl, state: () => current, session: () => session, peek: preview.peek, onTimeline: preview.open });
+  const getWorkingSet = states ? () => Promise.resolve({ items: [{ kind: "file", key: "/p/a.rb", state: "live", tokens: 100 }], at: 2, running: false, parts: states }) : undefined;
+  const ws = createWorkingSet({ historyEl, infoEl, state: () => current, session: () => session, peek: preview.peek, onTimeline: preview.open, getWorkingSet });
   preview.attach(ws);
   const read = { tool: "read", title: "a.rb", status: "ok", tool_id: "t1", ref: { kind: "file", path: "/p/a.rb" } };
   ws.seed([{ items: itemsOfTurn({ gens: [{ tools: [read] }] }, 0), prompt: "go" }]);
@@ -55,7 +59,7 @@ function open([{ createWorkingSet }, { createWorkingSetPreview }, { itemsOfTurn 
   const pop = ws.popover.pop;
   pop.querySelector(".ws-sec.start .ws-sec-head").click();
   const cleanup = () => { ws.popover.close(); center.remove(); historyEl.remove(); infoEl.remove(); pop.remove(); window.localStorage.removeItem(`chi_ws_sections_folded:${session}`); };
-  return { pop, cleanup };
+  return { pop, ws, cleanup };
 }
 
 test("this view with 0.183.0's ws_reader.js and ws_peek.js: no part peek, today's start rows, one width", async () => {
@@ -89,5 +93,32 @@ test("this view and ws_reader.js with 0.183.0's ws_sections.js: start rows witho
     const start = v.pop.querySelector(".ws-sec.start");
     assert.equal(start.querySelectorAll(".ws-row.part").length, 2);
     assert.equal(start.querySelectorAll(".ws-peek-toggle").length, 0, "no toggle that would load forever");
+  } finally { v.cleanup(); }
+});
+
+// The event's handler as the page makes it, every other dependency a no-op.
+const handlersOf = ({ createStreamHandlers }, workingSet) => createStreamHandlers(new Proxy({ workingSet }, {
+  get: (deps, key) => (key in deps ? deps[key] : () => {}),
+}));
+
+test("this view with 0.183.0's ws_sections.js and stream_handlers.js: a GET's stale parts show no stale, nothing throws", async () => {
+  const modules = await mixedPage(["ws_sections.js", "stream_handlers.js"]);
+  const v = open(modules, "m4", { states: [{ key: "identity:identity@system", state: "stale" }] });
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 0);
+    assert.doesNotThrow(() => handlersOf(modules[3], v.ws).working_set_updated({ items: [], at: 3 }));
+    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 0);
+  } finally { v.cleanup(); }
+});
+
+test("this page's modules: the GET's stale parts show stale; an event through the handler (no parts) keeps them", async () => {
+  const modules = await mixedPage([]);
+  const v = open(modules, "m5", { states: [{ key: "identity:identity@system", state: "stale" }] });
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 1);
+    handlersOf(modules[3], v.ws).working_set_updated({ items: [], at: 3 });
+    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 1);
   } finally { v.cleanup(); }
 });

@@ -42,11 +42,21 @@ module Samagotchi
       # the session's messages, behind that turn's events, and the page
       # keeps theirs (working_set.js newerSnapshot).
       # A participant's is filtered (ParticipantView.working_set: the
-      # project's files only).
+      # project's files only). The owner's also says which "From the start"
+      # parts are stale (parts: [{key, state}], WorkingSetPart.states: the
+      # source's text now differs from what was sent; no field: none is),
+      # whichever of the
+      # three answered, with the parts the part route reads (#prompt_source):
+      # so a live idle worker's and an older worker's sessions get them too.
+      # Never a participant's (no prompt text, D4).
       def handle_working_set(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        set = working_set_payload(id, session)
-        return json_response(200, set) if principal(req).owner?
+        live = bridge_get_json(id, "snapshot")
+        set = working_set_payload(session, live)
+        if principal(req).owner?
+          parts = WorkingSetPart.states(prompt_source(live, session).first, root: MemoryPaths.system_dir, cwd: session.working_directory)
+          return json_response(200, parts.empty? ? set : set.merge(parts: parts))
+        end
 
         viewer = participant_viewer(req, session)
         # Redacted as the stream's event is (ParticipantView.event): a file name may hold a secret's shape.
@@ -100,10 +110,11 @@ module Samagotchi
         json_response(200, body)
       end
 
-      # GET /api/sessions/:id/working_set/part?key=: one "From the start" part
-      # as chi sent it (WorkingSetPart.answer: the slice of the saved head,
-      # or the line that says why not and, under a changed head, the source
-      # now). Owner only: participants see no prompt text. The parts and
+      # GET /api/sessions/:id/working_set/part?key=[&now=1]: one "From the
+      # start" part as chi sent it (WorkingSetPart.answer: the slice of the
+      # saved head, or the line that says why not and, under a changed head,
+      # the source now). +now+: with the slice, the source now and its diff
+      # (a stale row's "now" tab). Owner only: participants see no prompt text. The parts and
       # messages[0] come from one source: a live worker's snapshot frame
       # (session_state_snapshot's prompt_parts, the snapshot's messages),
       # else the session file. One session-file parse, no Bridge route.
@@ -113,23 +124,29 @@ module Samagotchi
 
         session = @session_class.load(id, state_dir: default_state_dir)
         live = bridge_get_json(id, "snapshot")
-        state = live.is_a?(Hash) ? live["session_state_snapshot"] : nil
-        parts, messages = if state.is_a?(Hash) && state["prompt_parts"].is_a?(Array)
-                            [state["prompt_parts"], Array(live.dig("snapshot", "messages"))]
-                          else
-                            [session.prompt_parts, session.messages]
-                          end
+        parts, messages = prompt_source(live, session)
         body = WorkingSetPart.answer(parts: parts, messages: messages, key: key,
                                      older_worker: !live.nil? && WorkingSetPart.older_worker?(live.dig("snapshot", "chi_version")),
                                      running: !live&.dig("snapshot", "current_turn").nil?, root: MemoryPaths.system_dir,
-                                     cwd: session.working_directory)
+                                     cwd: session.working_directory, now: req.GET["now"] == "1")
         return error_response(404, "unknown_part", WorkingSetPart::UNKNOWN) unless body
 
         json_response(200, body)
       end
 
-      def working_set_payload(id, session)
-        live = bridge_get_json(id, "snapshot")
+      # The prompt parts and the messages they slice (+live+: the worker's
+      # Bridge snapshot answer, nil without a worker), from one source: a
+      # live worker's snapshot frame (session_state_snapshot's prompt_parts,
+      # the snapshot's messages), else the session file.
+      # @return [Array(Array, Array)]
+      def prompt_source(live, session)
+        state = live.is_a?(Hash) ? live["session_state_snapshot"] : nil
+        return [state["prompt_parts"], Array(live.dig("snapshot", "messages"))] if state.is_a?(Hash) && state["prompt_parts"].is_a?(Array)
+
+        [session.prompt_parts, session.messages]
+      end
+
+      def working_set_payload(session, live)
         worker_snapshot = live && live["snapshot"]
         running = !worker_snapshot&.dig("current_turn").nil?
         turn_set = running && running_working_set(live["snapshot"]["working_set"])

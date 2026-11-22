@@ -329,15 +329,17 @@ RSpec.describe Samagotchi::Web::App, "working set" do
 
     def part_call(session, key) = call("/api/sessions/#{session.id}/working_set/part?key=#{URI.encode_www_form_component(key)}")
 
-    # A session whose head and parts are a real build's (chat), saved.
-    def built_session(memories: %w[style], head: nil)
-      notes = -> { Dir.chdir(repo) { Samagotchi::ModelNotes.for(name: "m", key: "m", fallback_key: "fb", warn: false) } }
+    # A session whose head and parts are a real build's (chat), saved; +cwd+:
+    # the folder it was built and works in.
+    def built_session(memories: %w[style], head: nil, cwd: repo)
+      notes = -> { Dir.chdir(cwd) { Samagotchi::ModelNotes.for(name: "m", key: "m", fallback_key: "fb", warn: false) } }
       prompt = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
                                             session: -> {}, thinking: -> { :off }, model: -> { model }, model_notes: notes,
                                             memories: memories)
-      @built = Dir.chdir(repo) { prompt.built_for(chat: true) }
+      @built = Dir.chdir(cwd) { prompt.built_for(chat: true) }
       saved_session([{ role: "system", content: head || @built.prompt }, { role: "user", content: "hi" }]).tap do |session|
         session.prompt_parts = @built.prompt_parts
+        session.working_directory = cwd
         session.save(state_dir: state_dir)
       end
     end
@@ -431,6 +433,142 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       end
       expect(part_of("preloads").scope).to eq("system") # a bare name the system scope answered
       expect(part_of("preloads").params).to include("requested_scope" => nil, "fallback_model_key" => "fb")
+    end
+
+    it "re-fetches the other shapes to their build's digest: a project/x preload, a project note, a scope's second note, " \
+       "identity without an overlay, a two-file AGENTS chain" do
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "identity.m.md"))
+      write_memory("system", "model_notes_zed.md", "models: *\nSecond system note\n")
+      write_memory("project", "model_notes_proj.md", "models: *\nProject note\n")
+      write_memory("project", "pstyle.md", "project style\n")
+      pkg = File.join(repo, "pkg").tap { |dir| FileUtils.mkdir_p(dir) }
+      File.write(File.join(pkg, "AGENTS.md"), "Package rules.\n")
+      session = built_session(memories: %w[project/pstyle], head: "an older head", cwd: pkg)
+      parts = @built.prompt_parts
+      notes = parts.select { |part| part.kind == "notes" }
+      expect(notes.map { |part| [part.ref, part.scope] }).to include(%w[model_notes_tips system], %w[model_notes_zed system],
+                                                                     %w[model_notes_proj project])
+      expect(parts.count { |part| part.kind == "agents" }).to eq(2)
+      expect(part_of("preloads")).to have_attributes(ref: "pstyle", scope: "project")
+      expect(part_of("preloads").params).to include("requested_scope" => "project")
+      checked = parts.select { |part| %w[identity preloads notes agents].include?(part.kind) }
+      expect(checked.map(&:kind).tally).to eq("identity" => 1, "preloads" => 1, "notes" => 3, "agents" => 2)
+      checked.each do |part|
+        now = part_call(session, keys[parts.index(part)]).last["now"]
+        expect(now).to include("gone" => false), part.ref
+        expect(Samagotchi::PromptPart.digest_of(now["text"])).to eq(part.digest), part.ref
+      end
+      expect(Samagotchi::WorkingSetPart.states(parts, root: Samagotchi::MemoryPaths.system_dir, cwd: pkg)).to eq([])
+    end
+
+    # GET …/working_set's parts: which "From the start" parts are stale.
+    def stale_keys(session)
+      body = call("/api/sessions/#{session.id}/working_set").last
+      body.key?("parts") ? body["parts"].map { |state| state.fetch("key") if state["state"] == "stale" } : []
+    end
+
+    it "says in the GET which prompt parts changed since they were sent: an edit, an overlay gone, a memory gone; none again" do
+      session = built_session
+      preload = keys[@built.prompt_parts.index(part_of("preloads"))]
+      expect(call("/api/sessions/#{session.id}/working_set").last).not_to have_key("parts")
+
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be terse\n")
+      expect(stale_keys(session)).to eq([preload])
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be brief\n")
+      expect(stale_keys(session)).to eq([])
+
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "identity.m.md"))
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"))
+      File.write(File.join(repo, "AGENTS.md"), "Gadgets too.\n")
+      expect(stale_keys(session)).to contain_exactly("identity:identity@system", preload, keys[@built.prompt_parts.index(part_of("agents"))])
+    end
+
+    it "answers the list for a session whose AGENTS part or folder holds a NUL byte (no state, no 500)" do
+      session = built_session
+      session.prompt_parts = session.prompt_parts.map do |part|
+        part.kind == "agents" ? part.with(params: { "path" => "/x\u0000y/AGENTS.md" }) : part
+      end
+      session.working_directory = "#{repo}\u0000y"
+      session.save(state_dir: state_dir)
+      status, body = call("/api/sessions/#{session.id}/working_set")
+      expect(status).to eq(200)
+      expect(body).not_to have_key("parts")
+    end
+
+    it "never says an index, an appended file or an older chi's part is stale" do
+      extra = File.join(repo, "extra.md").tap { |file| File.write(file, "Extra.\n") }
+      prompt = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
+                                            session: -> {}, thinking: -> { :off }, model: -> { model }, memories: %w[style],
+                                            appended_files: [extra])
+      @built = Dir.chdir(repo) { prompt.built_for(chat: true) }
+      expect(@built.prompt_parts.map(&:kind)).to include("indexes", "appended")
+      session = saved_session([{ role: "system", content: @built.prompt }]).tap do |saved|
+        saved.prompt_parts = @built.prompt_parts
+        saved.save(state_dir: state_dir)
+      end
+      File.write(extra, "Changed.\n")
+      write_memory("system", "fresh.md", "a new memory: the index changed\n")
+      expect(stale_keys(session)).to eq([])
+
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be terse\n")
+      expect(stale_keys(session)).to eq([keys[@built.prompt_parts.index(part_of("preloads"))]])
+      session.prompt_parts = @built.prompt_parts.map { |part| Samagotchi::PromptPart.from_h(part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope)) }
+      session.save(state_dir: state_dir)
+      expect(stale_keys(session)).to eq([])
+    end
+
+    it "says stale on every branch of the GET: a live idle worker's set, a running turn's, an older worker's snapshot" do
+      session = built_session
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be terse\n")
+      preload = keys[@built.prompt_parts.index(part_of("preloads"))]
+      wire = JSON.parse(JSON.generate(session.prompt_parts.map(&:to_h)))
+      set = { "items" => [], "at" => 3 }
+      [{ "snapshot" => { "current_turn" => nil, "idle_working_set" => set }, "session_state_snapshot" => { "prompt_parts" => wire } },
+       { "snapshot" => { "current_turn" => { "parts" => [] }, "working_set" => set }, "session_state_snapshot" => { "prompt_parts" => wire } },
+       # An older worker (no idle set, no parts in its frame): the file's parts.
+       { "snapshot" => { "messages" => [], "current_turn" => nil }, "session_state_snapshot" => {} }].each do |live|
+        allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+        expect(stale_keys(session)).to eq([preload]), live.inspect
+      end
+      # The live worker's parts are the truth: a snapshot whose parts are none says none.
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(
+        "snapshot" => { "current_turn" => nil, "idle_working_set" => set }, "session_state_snapshot" => { "prompt_parts" => [] }
+      )
+      expect(stale_keys(session)).to eq([])
+    end
+
+    it "adds the source now and its diff from the sent text on &now=1: changed, unchanged, gone, scrubbed" do
+      session = built_session
+      preload = keys[@built.prompt_parts.index(part_of("preloads"))]
+      now_call = ->(key) { call("/api/sessions/#{session.id}/working_set/part?key=#{URI.encode_www_form_component(key)}&now=1").last }
+      expect(part_call(session, preload).last).not_to have_key("now")
+      same = now_call.call(preload)
+      expect(same["sent"]["text"]).to eq("be brief\n\n\n---\n\nModel-specific guidance (fb):\nFallback overlay.")
+      expect(same["now"]).to include("text" => same["sent"]["text"], "gone" => false)
+      expect(same["now"]["diff"]).to include("text" => "", "added" => 0, "removed" => 0, "new_file" => false)
+
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be terse\n")
+      changed = now_call.call(preload)
+      expect(changed["now"]["text"]).to start_with("be terse\n")
+      expect(changed["now"]["diff"]).to include("added" => 1, "removed" => 1)
+      expect(changed["now"]["diff"]["text"]).to include("-be brief", "+be terse")
+      expect(changed["now"]["diff"]["text"]).not_to include("No newline")
+
+      File.binwrite(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "bad \xFF byte\n")
+      expect(now_call.call(preload)["now"]["text"]).to start_with("bad \uFFFD byte")
+
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"))
+      expect(now_call.call(preload)["now"]).to eq("text" => nil, "diff" => nil, "gone" => true)
+      # Chi's own text, an index: nothing to fetch.
+      expect(now_call.call("base:base prompt")).not_to have_key("now")
+      expect(now_call.call("indexes:system")).not_to have_key("now")
+    end
+
+    it "keeps a changed head's answer on &now=1: the source now, no diff (nothing sent to diff against)" do
+      session = built_session(head: "an older head")
+      body = call("/api/sessions/#{session.id}/working_set/part?key=identity:identity@system&now=1").last
+      expect(body).to include("changed" => "idle")
+      expect(body["now"]).to eq("text" => "I am chi.\n\n\n---\n\nModel-specific guidance (m):\nOverlay for m.", "gone" => false)
     end
 
     it "says gone when the memory left, and reads nothing for crafted params outside chi web's memories" do

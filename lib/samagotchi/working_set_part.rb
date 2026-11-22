@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require_relative "context_note"
-require_relative "prompt_files"
 require_relative "prompt_part"
+require_relative "text_diff"
 require_relative "version"
-require_relative "working_set"
+require_relative "working_set_locator"
 
 module Samagotchi
   # One prompt part as chi sent it: what chi web's GET
@@ -26,12 +26,12 @@ module Samagotchi
       idle: "chi's prompt changed after it was sent. This is the source now; the sent text shows after the next turn."
     }.freeze
 
+    # A part whose source changed since chi was sent it (#states).
+    STALE = "stale"
+
     # The route's refusals.
     INVALID = "expected key (a prompt part's key)"
     UNKNOWN = "no such prompt part in this session"
-
-    # The memory kinds a changed head re-fetches (with the saved params).
-    MEMORY_KINDS = %w[identity preloads notes].freeze
 
     module_function
 
@@ -42,9 +42,11 @@ module Samagotchi
     # its parts still the file's until a turn builds them) gets the
     # older_chi words, which are true for it; +running+: a turn runs;
     # +root+: chi web's memories folder (MemoryPaths.system_dir); +cwd+: the
-    # session's working directory (its AGENTS.md chain).
+    # session's working directory (its AGENTS.md chain); +now+: with the
+    # sent slice, the source now and its diff from what was sent
+    # ({text, diff, gone}, the page's "now" tab), when a locator fetches it.
     # @return [Hash, nil] nil when no part has that key
-    def answer(parts:, messages:, key:, older_worker:, running:, root:, cwd:)
+    def answer(parts:, messages:, key:, older_worker:, running:, root:, cwd:, now: false)
       parts = PromptPart.list(parts)
       index = PromptPart.keys(parts).index(key.to_s)
       return nil unless index
@@ -66,11 +68,45 @@ module Samagotchi
 
       if PromptPart.digest_of(text, 16) != part.head
         changed = running ? :running : :idle
-        now = now_of(part, root: root, cwd: cwd)
-        return shown.merge(note: WORDS[changed], reason: changed.to_s, changed: changed.to_s, now: now).compact
+        source = now_of(part, root: root, cwd: cwd)
+        return shown.merge(note: WORDS[changed], reason: changed.to_s, changed: changed.to_s, now: source).compact
       end
 
-      shown.merge(sent: sent_of(part, parts, text))
+      sent = sent_of(part, parts, text)
+      source = now && now_of(part, root: root, cwd: cwd)
+      return shown.merge(sent: sent) unless source
+
+      # Each side ends its last line: a stripped note's or file's text would draw "\ No newline" markers otherwise.
+      lined = ->(text) { text.end_with?("\n") ? text : "#{text}\n" }
+      diff = source[:gone] ? nil : TextDiff.unified(lined.call(sent[:text]), lined.call(source[:text])).merge(new_file: false)
+      shown.merge(sent: sent, now: source.merge(diff: diff))
+    end
+
+    # The parts of +parts+ (a saved or wire list) whose source changed
+    # since chi was sent it: [{key: PromptPart.keys', state: "stale"}],
+    # only the stale ones. A part is stale when its locator
+    # (WorkingSet::Locator, origin :prompt: the saved params, the guard)
+    # fetches text whose PromptPart.digest_of differs from the part's saved
+    # digest, or finds the source gone. Only what a locator fetches gets a
+    # state (identity, preloads, notes, AGENTS.md): never an index (it
+    # changes at every memory write, D5), an appended file, chi's own text
+    # or a part an older chi built (no digest). A digest sees a part's text
+    # only: a note newly applying, a new AGENTS.md in the chain, a memory
+    # muted since change which parts exist, and say nothing here. +root+,
+    # +cwd+: as #answer's.
+    # @return [Array<Hash>]
+    def states(parts, root:, cwd:)
+      parts = PromptPart.list(parts)
+      keys = PromptPart.keys(parts)
+      parts.each_with_index.filter_map do |part, index|
+        next unless part.digest && WorkingSet::Locator::FETCHED.include?(part.kind)
+
+        now = WorkingSet::Locator.of_part(part).fetch(root: root, cwd: cwd)
+        next unless now
+        next unless now.gone || PromptPart.digest_of(now.text) != part.digest
+
+        { key: keys[index], state: STALE }
+      end
     end
 
     # Whether a worker that says it runs +version+ (its Bridge snapshot's
@@ -97,38 +133,15 @@ module Samagotchi
     end
 
     # The part's source now ({text:, gone:}), nil when there is none to
-    # fetch or the guard refuses: a memory with the saved params
-    # (WorkingSet.prompt_memory_now), an AGENTS.md on the session's own
-    # chain. An appended file is never fetched (its path came with a run's
-    # flags, not from where the session works); base, the kit, a plugin's
-    # section, an index and the session lines are chi's own text.
+    # fetch or the guard refuses (WorkingSet::Locator, origin :prompt: a
+    # memory with the saved params, an AGENTS.md on the session's own
+    # chain, never an appended file).
     def now_of(part, root:, cwd:)
-      now = if MEMORY_KINDS.include?(part.kind)
-              WorkingSet.prompt_memory_now(part.kind, part.ref, part.params, root: root)
-            elsif part.kind == "agents"
-              agents_now(part, cwd)
-            end
-      now && { text: now.text, gone: now.gone }
+      now = WorkingSet::Locator.of_part(part).fetch(root: root, cwd: cwd)
+      # The file's bytes as they are: JSON wants them valid (the saved head was scrubbed at save).
+      now && { text: now.text && TextDiff.clean(now.text), gone: now.gone }
     end
 
-    def agents_now(part, cwd)
-      path = part.params.is_a?(Hash) ? part.params["path"].to_s : ""
-      return nil if path.empty? || cwd.to_s.empty?
-
-      chain = PromptFiles.agents_paths(cwd).map { |candidate| real(candidate) }
-      return nil unless chain.include?(real(path))
-
-      text = PromptFiles.content(path)
-      WorkingSet::Now.new(text: text, diff: nil, gone: text.nil?)
-    end
-
-    # The same file however it's spelled (/tmp vs /private/tmp on macOS).
-    def real(path)
-      File.realpath(path)
-    rescue SystemCallError
-      File.expand_path(path)
-    end
-
-    private_class_method :sent_of, :now_of, :agents_now, :real
+    private_class_method :sent_of, :now_of
   end
 end

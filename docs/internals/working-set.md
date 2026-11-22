@@ -297,7 +297,9 @@ now (`WorkingSet::Now`: `text`, `diff`, `gone`): each name that read read, from 
 overlay stamped with it appended as `Tools::MemoryRead.call` appends it (`Model-specific guidance (<key>):`, the key
 off the overlay's file name), and a missing name's `Error:` tail kept; `diff` is `TextDiff.unified` of what the read
 sent against that (`EditPreview`'s shape, so `diff_view.js` draws it; an empty `text` is "no change"). `gone` when a
-file is; nil without a stamp.
+file is; nil without a stamp. Each name is a `WorkingSet::Locator` of origin `:run` ([Prompt parts as sent](#prompt-parts-as-sent), The locator):
+every name is resolved first (refused: nil; no entry answers: gone), then read, and `memory_now` keeps the join and
+the diff.
 
 **The route.** `GET /api/sessions/:id/working_set/item?kind=&key=` (`WorkingSetRoutes#handle_working_set_item`,
 `:owner, :session`: a participant gets 403 from `not_permitted_for`) answers `timeline.to_h`, and with `&now=1` for a
@@ -534,14 +536,58 @@ Else `{part, sent: {text, lead}}`. Mid-turn the snapshot's messages lag the turn
 so the slice is exact unless the prompt was rebuilt (4). A memory file with invalid UTF-8 is scrubbed in the saved
 head, so its session stays in 5: accepted.
 
-**The fallback's fetch** (4 and 5). It reads paths a session file names, so it keeps `memory_now`'s guard: a memory
-(`WorkingSet.prompt_memory_now`) resolves with the saved keys, `requested_scope` and folders only when the saved
-`system_dir` and `project_dir` are inside chi web's own `MemoryPaths.system_dir`, and the files resolved pass
-`memory_paths?`; identity and preloads through `Tools::MemoryRead.resolve` and `.compose`, a note through
-`ModelNotes.body_at` (the composers the build used, so an unchanged memory's text has the build's digest). An AGENTS.md
-is read only when it is on the session `working_directory`'s chain (`PromptFiles.agents_paths`, `PromptFiles.content`).
-An appended file is never fetched (as sent from the head only); base, the kit, a plugin's section, an index and the
-session lines are chi's own text: the line alone. Nothing is recomputed: no model key, no folder.
+**The locator.** Every "now" the working set shows is fetched by one resolver, `WorkingSet::Locator`
+(`working_set_locator.rb`, `Data.define(:origin, :kind, :ref, :scope, :params)`; loaded only when a fetch runs, for the
+testing kit's file budget): "where a held text came from and how to fetch it again". `#fetch` has three outcomes: nil
+(refused, or nothing to fetch), a `WorkingSet::Now` with `gone`, a `Now` with its text (diff nil). Its guard follows
+`origin`, and the two stay apart:
+
+- `:run`, a `memory_read` stamp's entry (`WorkingSet.memory_now`): resolved with chi web's own `MemoryPaths.system_dir`,
+  any saved folder ignored; a path-only stamp (or one whose project folder is outside the root) reads its stamped
+  paths; a `read:` stand-in reads the files.
+- `:prompt`, a prompt part's `params` (cases 4 and 5, `&now=1`, the stale states): a memory resolves with the saved
+  keys, `requested_scope` and folders only when the saved `system_dir` and `project_dir` are inside chi web's own
+  `MemoryPaths.system_dir`, and every path it may look at (the files resolved; a note's file and each saved key's
+  overlay, before any is stat'd) passes `memory_paths?`; identity and preloads through `Tools::MemoryRead.resolve` and
+  `.compose`, a note through `ModelNotes.body_at` (the composers the build used, so an unchanged memory's text has the
+  build's digest). An AGENTS.md is read only when it is on the session `working_directory`'s chain
+  (`PromptFiles.agents_paths`, `PromptFiles.content`). An appended file is never fetched (as sent from the head only);
+  base, the kit, a plugin's section, an index and the session lines are chi's own text: the line alone. Nothing is
+  recomputed: no model key, no folder (a model switch rebuilds the prompt, so the saved keys describe the sent text).
+
+The path guard both share is `WorkingSet::MemoryGuard` (in `working_set.rb`: `#build`'s stale check of a read memory
+uses it at load). A file or URL row has no locator: its timeline is the conversation's text, and its stale check is a
+`stat` against its stamp.
+
+**Stale prompt parts.** `WorkingSetPart.states(parts, root:, cwd:)` names the parts whose source changed since chi
+was sent it, `[{key, state: "stale"}]` (the stale ones only): a part whose locator fetches text with a different
+`PromptPart.digest_of` from its saved `digest`, or finds the source gone. A digest covers exactly the text the fetch
+returns, so it catches an edit, shadowing (a bare preload now answered by the project scope), an overlay added or
+removed, and a file deleted (gone). It does not catch what changes which parts exist rather than a part's text: a
+note that newly applies (or whose `models:` line no longer matches), a new AGENTS.md in the chain, a memory muted
+after the build. Only fetchable kinds get a state (identity, preloads, notes, AGENTS.md): never an index (it changes at
+every memory write), an appended file, chi's own text, or a part an older chi built (no digest). Cost: about 0.8 ms per
+GET for 11 fetchable parts (the Studio, warm cache; `find_dot_git` is stat-only).
+
+The carrier is chi web's `GET …/working_set` alone: `handle_working_set` adds `parts:` for the owner whichever of its
+three sources answered (the running turn's set, an idle worker's, a build from the file), from the parts the part
+route reads (`#prompt_source`: the live snapshot frame's, else the file's), so a stopped session, a live idle worker
+and an older (0.183.0) worker all get them. No field means none stale. No event field, no worker change; a
+participant's answer never has it (`ParticipantView.working_set` rebuilds `{items, at}`). The page asks the GET each
+time the list opens. A `:working_set_updated` event carries no parts: the page keeps the session's last GET's states on
+the event's set (`working_set_view.js takeServer`), and a GET an event overtook still gives its parts. The page asks
+the GET again when the session's parts are rebuilt (their heads or digests change, `sessionChanged`) and at a turn's
+hand-off when it holds states or the list is open, so a rebuilt prompt's states go.
+
+Stale lasts in a live worker until chi rebuilds its prompt: `SystemPrompt#built_for` caches the build until
+`#reset!` (a model switch, a participants change, a plugin's `prompt_changed!`, a toolkit change). An outside edit,
+and chi's own `memory_write` of a preloaded memory, do not reset it, so the worker keeps sending the old text and the
+row stays `stale` across turns until one of those or a restart. That is true, and the row shows it as is.
+
+**The source now.** `GET …/working_set/part?key=&now=1` adds, beside the sent slice, `now: {text, diff, gone}`: the
+locator's text (scrubbed to valid UTF-8 before JSON) and `TextDiff.unified` of the sent text against it (nil when
+gone). Under cases 4 and 5 the answer stays as above (the source now, no diff: nothing sent to diff against). Parts
+without a locator have no `now`.
 
 **The page.** `ws_part_peek.js` (made by `ws_reader.js` with the reader's markdown cache, handed to the view as
 `peek.part`): the peek's head "in the prompt · sent with every request", the text (a memory's and an `.md` file's
@@ -549,6 +595,14 @@ rendered), chi's lead folded under "chi adds a line before it", no foot buttons;
 line with the source now under it. A row of several holds gets one tab per hold, its kind and size (`note · ~0.9k`,
 `preload · ~1.2k`, `in the prompt · ~1.4k`), and `read · t1·s1` for an item that was read: the item peek, first. One
 peek open at a time. The popover is 520 wide open or closed.
+
+The GET's `parts` reach the start rows as `headSections`' `states` option (`startRows`: `partStates` beside
+`partKeys`, `partStale` when one is). A stale row says `stale` in `--warn-text` (`.ws-pstale`) in place of its words,
+which move to its title ("model note · changed after chi's prompt was built"); a memory row whose read is stale too
+still says one `stale`, its title and its now tab naming both ("read changed · prompt text changed"). Its peek gets a `now · changed` tab right after the stale hold (`warn`):
+the `&now=1` answer, drawn as "<label> changed after chi's prompt was built" with the diff's `+a −d` and
+`diff_view.js`'s diff ("no change" once it was edited back), or "Its source is gone now." It opens first unless the row
+has a read. No new export: an older `ws_sections.js` ignores `states`, and the 0.183.0 page ignores the field.
 
 **Compat.** An older page ignores the fields and the route; an older chi reading a newer file drops the fields
 (`PromptPart.from_h`), and its own save drops them (cases 1–2). The corpus's `compat-prompt` session has a head and

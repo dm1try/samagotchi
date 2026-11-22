@@ -302,12 +302,17 @@ module Samagotchi
 
     # What the memory +key+'s latest memory_read would answer now, and its
     # diff from what that read sent; nil when no read of it has a stamp (a
-    # session saved before memory stamps). +root+: the memories folder
+    # session saved before memory stamps). One Locator (:run) per name the
+    # read found: every name is resolved first (refused: nil; no entry
+    # answers: gone), then read (a file gone: gone), and the bodies joined
+    # as memory_read joins them. +root+: the memories folder
     # (MemoryPaths.system_dir: the projects' folders are under it); a stamped
     # or resolved path outside it is never read, nil then. +read+: File.read,
     # or a stand-in.
     # @return [Now, nil]
     def memory_now(conversation, key:, strategy:, cwd:, root:, read: ->(path) { File.read(path, encoding: "UTF-8") })
+      # Here, not at load: the testing kit loads WorkingSet and keeps a file budget (sandbox_spec).
+      require_relative "working_set_locator"
       conversation = Array(conversation)
       view = LLMContextView.new(strategy: strategy)
       touch = all_touches(conversation, cwd, view).reverse.find do |candidate|
@@ -316,29 +321,19 @@ module Samagotchi
       entries = touch && memory_entries(touch.run, conversation)
       return nil unless entries
 
-      names = found_names(touch.run)
-      current_entries = names.map do |name|
-        entry = entries[name]
-        return nil unless entry.is_a?(Hash)
+      locators = found_names(touch.run).map { |name| Locator.of_stamp(name, entries[name]) }
+      current_entries = locators.map do |locator|
+        found = locator.resolve(root: root)
+        return nil if found.nil?
+        return Locator::GONE if found == :gone
 
-        if resolution_metadata?(entry)
-          resolved = resolve_memory(name, entry, system_dir: root)
-          if resolved != :stamped_paths
-            return Now.new(text: nil, diff: nil, gone: true) unless resolved
-
-            entry = resolved_memory_entry(resolved)
-          end
-        end
-        return nil unless memory_paths?(entry, root)
-
-        entry
+        found
       end
 
       had = body_of(touch.run.text)
-      bodies = names.zip(current_entries).map { |name, entry| memory_body(name, entry, read) }
-      return Now.new(text: nil, diff: nil, gone: true) if bodies.any?(&:nil?)
+      bodies = locators.zip(current_entries).map { |locator, entry| locator.body(entry, read: read) }
+      return Locator::GONE if bodies.any?(&:nil?)
 
-      # Here, not at load: the testing kit loads WorkingSet and keeps a file budget (sandbox_spec).
       require_relative "text_diff"
       last = had.split(Tools::MemoryRead::SEPARATOR).last.to_s
       bodies << last if last.match?(MISSING)
@@ -346,102 +341,61 @@ module Samagotchi
       Now.new(text: now, diff: TextDiff.unified(had, now).merge(new_file: false), gone: false)
     end
 
-    # A prompt memory part's text now (identity, a preload, a model note),
-    # fetched with the params its build saved (PromptPart#params) and the
-    # composer the build used (Tools::MemoryRead.compose, ModelNotes.body_at),
-    # so an unchanged memory's text is the item's text byte for byte. The
-    # params are the session file's: the guard is #memory_now's. Their
-    # system_dir and project_dir must be inside +root+ (chi web's own
-    # MemoryPaths.system_dir) and the files resolved must pass
-    # #memory_paths?, or nothing is read (nil). No model key or folder is
-    # worked out again: the saved ones only. +kind+: "identity", "preloads"
-    # or "notes"; +name+: the part's ref.
-    # @return [Now, nil] text and gone (diff nil); nil when refused
-    def prompt_memory_now(kind, name, params, root:)
-      return nil unless params.is_a?(Hash) && resolution_metadata?(params)
+    # The guard every read of a path a session file names goes through
+    # (Locator's fetches, #memory_changed?'s re-resolve): the paths must be
+    # .md files inside chi web's memories folder. Here, not in Locator's
+    # file: #build's stale check needs it at load.
+    module MemoryGuard
+      module_function
 
-      system_dir = field(params, :system_dir)
-      project_dir = field(params, :project_dir)
-      return nil unless system_dir && inside_root?(system_dir, root) && (project_dir.nil? || inside_root?(project_dir, root))
-      return nil if name.to_s.strip.empty? || Tools::MemoryRead.invalid_name?(name.to_s)
-
-      kind.to_s == "notes" ? note_now(name.to_s, params, system_dir, project_dir, root) : read_now(name.to_s, params, system_dir, root)
-    rescue SystemCallError, ArgumentError
-      nil
-    end
-
-    # A preload's or identity's text now: resolved as memory_read resolves it.
-    def read_now(name, params, system_dir, root)
-      resolved = resolve_memory(name, params, system_dir: system_dir)
-      return nil if resolved == :stamped_paths
-      return Now.new(text: nil, diff: nil, gone: true) unless resolved
-      return nil unless memory_paths?(resolved_memory_entry(resolved), root)
-
-      Now.new(text: Tools::MemoryRead.compose(resolved), diff: nil, gone: false)
-    end
-
-    # A model note's text now: its scope's file, its overlay beside it.
-    def note_now(name, params, system_dir, project_dir, root)
-      require_relative "model_notes"
-      dir = field(params, :requested_scope).to_s == "project" ? project_dir : system_dir
-      return nil unless dir
-
-      keys = [field(params, :model_key), field(params, :fallback_model_key)]
-      path = File.join(dir, "#{name}.md")
-      overlay = keys.compact.map { |key| key.to_s.strip }.reject(&:empty?).map { |key| File.join(dir, "#{name}.#{key}.md") }
-                    .find { |candidate| File.file?(candidate) }
-      return nil unless memory_paths?({ path: path, overlay: overlay && { path: overlay } }, root)
-      return Now.new(text: nil, diff: nil, gone: true) unless File.file?(path)
-
-      text = ModelNotes.body_at(path, keys, dir: dir)
-      Now.new(text: text, diff: nil, gone: text.nil?)
-    end
-
-    # Whether +path+ is +root+ or inside it.
-    def inside_root?(path, root)
-      expanded = File.expand_path(path.to_s)
-      base = File.expand_path(root.to_s)
-      expanded == base || expanded.start_with?(File.join(base, ""))
-    end
-
-    # Whether a stamp entry's file and its overlay's are .md files inside the
-    # memories folder +root+ (a stamp is the session file's: never read
-    # what it names elsewhere).
-    def memory_paths?(entry, root)
-      overlay = field(entry, :overlay)
-      paths = [field(entry, :path), overlay.is_a?(Hash) ? field(overlay, :path) : nil].compact
-      base = File.join(File.expand_path(root.to_s), "")
-      real = File.exist?(base) ? File.join(File.realpath(base), "") : base
-      paths.all? do |path|
+      # Whether +path+ is +root+ or inside it.
+      def inside_root?(path, root)
         expanded = File.expand_path(path.to_s)
-        next false unless expanded.start_with?(base) && expanded.end_with?(".md")
-
-        !File.exist?(expanded) || File.realpath(expanded).start_with?(real)
+        base = File.expand_path(root.to_s)
+        expanded == base || expanded.start_with?(File.join(base, ""))
       end
-    end
 
-    def project_dir_within_root?(path, root)
-      return true if path.nil?
+      # Whether a stamp entry's file and its overlay's are .md files inside the
+      # memories folder +root+ (a stamp is the session file's: never read
+      # what it names elsewhere).
+      def memory_paths?(entry, root)
+        overlay = field(entry, :overlay)
+        paths = [field(entry, :path), overlay.is_a?(Hash) ? field(overlay, :path) : nil].compact
+        base = File.join(File.expand_path(root.to_s), "")
+        real = File.exist?(base) ? File.join(File.realpath(base), "") : base
+        paths.all? do |path|
+          expanded = File.expand_path(path.to_s)
+          next false unless expanded.start_with?(base) && expanded.end_with?(".md")
 
-      File.expand_path(path.to_s).start_with?(File.join(File.expand_path(root.to_s), ""))
-    end
-
-    def resolution_metadata?(entry)
-      %i[requested_scope model_key fallback_model_key project_dir].all? do |key|
-        entry.key?(key) || entry.key?(key.to_s)
+          !File.exist?(expanded) || File.realpath(expanded).start_with?(real)
+        end
       end
-    end
 
-    def resolve_memory(name, entry, system_dir:)
-      return :stamped_paths unless project_dir_within_root?(field(entry, :project_dir), system_dir)
+      def project_dir_within_root?(path, root)
+        return true if path.nil?
 
-      Tools::MemoryRead.resolve(name, scope: field(entry, :requested_scope), model_key: field(entry, :model_key),
-                                fallback_model_key: field(entry, :fallback_model_key),
-                                project_dir: field(entry, :project_dir), system_dir: system_dir)
-    end
+        File.expand_path(path.to_s).start_with?(File.join(File.expand_path(root.to_s), ""))
+      end
 
-    def resolved_memory_entry(resolved)
-      { path: resolved.path, overlay: resolved.overlay_path && { path: resolved.overlay_path } }
+      def resolution_metadata?(entry)
+        %i[requested_scope model_key fallback_model_key project_dir].all? do |key|
+          entry.key?(key) || entry.key?(key.to_s)
+        end
+      end
+
+      def resolve_memory(name, entry, system_dir:)
+        return :stamped_paths unless project_dir_within_root?(field(entry, :project_dir), system_dir)
+
+        Tools::MemoryRead.resolve(name, scope: field(entry, :requested_scope), model_key: field(entry, :model_key),
+                                  fallback_model_key: field(entry, :fallback_model_key),
+                                  project_dir: field(entry, :project_dir), system_dir: system_dir)
+      end
+
+      def resolved_memory_entry(resolved)
+        { path: resolved.path, overlay: resolved.overlay_path && { path: resolved.overlay_path } }
+      end
+
+      def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
     end
 
     def event(touch, conversation, view, cwd)
@@ -526,21 +480,6 @@ module Samagotchi
     # A memory's scope by where its file is: a project's under
     # memories/projects/<key>/, a system one's in memories/.
     def memory_scope(path) = File.basename(File.dirname(path, 2)) == "projects" ? "project" : "system"
-
-    # What memory_read would answer now for +name+ (its entry and the overlay
-    # read with it, as Tools::MemoryRead.call appends it); nil when a file is
-    # gone.
-    def memory_body(name, entry, read)
-      body = read.call(field(entry, :path).to_s)
-      overlay = field(entry, :overlay)
-      return body unless overlay.is_a?(Hash)
-
-      overlay_path = field(overlay, :path).to_s
-      model_key = Tools::MemoryRead.overlay_key(name, overlay_path)
-      model_key ? Tools::MemoryRead.append_overlay(body, read.call(overlay_path), model_key) : body
-    rescue SystemCallError
-      nil
-    end
 
     # Every paired run's touches, with what +view+ sends of its output.
     def all_touches(conversation, cwd, view)
@@ -673,12 +612,12 @@ module Samagotchi
       entry = entries.is_a?(Hash) ? field(entries, key) : nil
       return false unless entry.is_a?(Hash)
 
-      if resolution_metadata?(entry)
-        resolved = resolve_memory(key, entry, system_dir: root)
+      if MemoryGuard.resolution_metadata?(entry)
+        resolved = MemoryGuard.resolve_memory(key, entry, system_dir: root)
         unless resolved == :stamped_paths
           return true unless resolved
 
-          return true unless memory_paths?(resolved_memory_entry(resolved), root)
+          return true unless MemoryGuard.memory_paths?(MemoryGuard.resolved_memory_entry(resolved), root)
 
           stamped_overlay = field(entry, :overlay)
           stamped_overlay_path = stamped_overlay.is_a?(Hash) ? field(stamped_overlay, :path) : nil
@@ -730,9 +669,6 @@ module Samagotchi
 
     private_class_method :all_touches, :touches, :failed?, :shared_with, :item, :still_sent?, :dropped?, :with_id,
                          :changed?, :memory_changed?, :same_path?, :differs?, :stamp_hash, :stamp_of, :field, :event, :body_of,
-                         :lines_of, :saved_diff, :memory_entries, :memory_paths?, :project_dir_within_root?,
-                         :resolution_metadata?, :resolve_memory, :resolved_memory_entry, :memory_part, :overlay_tail,
-                         :memory_scope, :memory_body, :memory_item_scope, :read_now, :note_now,
-                         :inside_root?
+                         :lines_of, :saved_diff, :memory_entries, :memory_part, :overlay_tail, :memory_scope, :memory_item_scope
   end
 end
