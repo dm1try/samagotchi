@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.186.0] - 2026-11-23
+
 ### Added
 
 - `reply_for` on `POST …/ask`: a thin client says what its surface can show (`"voice"`, a name from config.yml's new
@@ -21,8 +23,12 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- Peer text quoting: invisible and markdown leads, `Updated:` / `Attached:` notes, and literal `(quoted) ` prefixes stay
-  distinct while forged peer lines are marked and undone across Ruby and the web.
+- Peer text: a line in a peer's text that opens like one of chi's frames is now also quoted when it is led by an
+  invisible character (U+3164, U+2800, combining marks, variation selectors) or a markdown list, heading or table
+  mark, and so is a line that opens like chi's own `Updated:` / `Attached:` notes; a peer's own `(quoted) ` prefix
+  stays in the shown text, and a web bubble reads the same live and after a reload for openings like `ß`.
+
+Update with `chi update`.
 
 ## [0.185.0] - 2026-11-22
 
@@ -6807,7 +6813,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.185.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.186.0...HEAD
+[0.186.0]: https://github.com/dm1try/samagotchi/compare/v0.185.0...v0.186.0
 [0.185.0]: https://github.com/dm1try/samagotchi/compare/v0.184.0...v0.185.0
 [0.184.0]: https://github.com/dm1try/samagotchi/compare/v0.183.0...v0.184.0
 [0.183.0]: https://github.com/dm1try/samagotchi/compare/v0.182.0...v0.183.0
