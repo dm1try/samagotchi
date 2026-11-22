@@ -30,6 +30,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - `chi schedule enable` resets a schedule's skip and failure counts, so its next skip no longer turns it off again.
+- `chi schedule list --all` says whether a disabled schedule reached its skip or failure budget instead of always
+  attributing the disable to failures.
 - The mcp bundle: concurrent tool calls whose remote session expired now wait for one new session instead of failing
   with "the session expired (404)" or sending a half-initialized request.
 - The web's delete sheet: closing it while "Stop its worker, then delete" runs no longer leaves the worker stopped and

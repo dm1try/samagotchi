@@ -851,6 +851,7 @@ RSpec.describe Samagotchi::Schedules do
         last = schedules.tick(now: Time.now + 120).outcomes.first
         expect(last).to have_attributes(status: "skipped", disabled: true)
         expect(last.entry).to have_attributes(id: entry.id, skips: 2, enabled: false)
+        expect(last.session_id).to eq(anchor)
         expect(schedules.lookup(entry.id).enabled).to be(false)
       end
     end
@@ -934,6 +935,26 @@ RSpec.describe Samagotchi::Schedules do
           next file if kw[:strict]
 
           file.with(entries: file.entries.map { |stored| stored.is_a?(described_class::Entry) ? stored.with(enabled: false) : stored })
+        end
+
+        expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
+      end
+    end
+
+    it "does not mark a skip disabled when failures, but not skips, reached their budget" do
+      Dir.mktmpdir("schedules-disabled-other-budget") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 2, max_failures: 1)
+        busy(dir, anchor)
+        allow(schedules).to receive(:read).and_wrap_original do |original, **kw|
+          file = original.call(**kw)
+          next file if kw[:strict]
+
+          file.with(entries: file.entries.map do |stored|
+            stored.is_a?(described_class::Entry) ? stored.with(enabled: false, failures: stored.max_failures) : stored
+          end)
         end
 
         expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
@@ -1741,16 +1762,35 @@ RSpec.describe Samagotchi::Schedules do
       allow(Samagotchi::Log).to receive(:warn)
       anchor = session(dir).id
       schedules = store(dir)
-      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 1)
       outcome = schedules.tick(now: Time.now + 120).outcomes.first
       expect(outcome.status).to eq("failed")
+      expect(outcome.disabled).to be(true)
       expect(outcome.detail).to include("Errno::ENOSPC")
       after = schedules.lookup(entry.id)
       expect(after.firing_since).to be_nil
       expect(after.failures).to eq(1)
+      expect(after.enabled).to be(false)
       # The occurrence this tick tried comes back: it failed, it was not late.
       expect(Time.iso8601(after.next_due)).to eq(Time.iso8601(after.due_was))
       expect(Time.iso8601(after.next_due)).to eq(Time.iso8601(entry.next_due))
+    end
+  end
+
+  it "marks an interrupted firing disabled when it reaches max_failures" do
+    Dir.mktmpdir("schedules-interrupted-disabled") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 1)
+      now = Time.iso8601(entry.next_due) + 1
+      allow(Samagotchi::SessionContinue).to receive(:run).and_raise(Interrupt)
+
+      expect { schedules.tick(now: now) }.to raise_error(Interrupt)
+
+      outcome = schedules.tick(now: now + described_class::FIRING_TIMEOUT).outcomes.first
+      expect(outcome).to have_attributes(status: "failed", detail: "interrupted", disabled: true)
+      expect(outcome.entry).to have_attributes(failures: 1, enabled: false)
     end
   end
 

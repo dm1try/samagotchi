@@ -643,12 +643,12 @@ RSpec.describe Samagotchi::Web::Server do
       allow(Samagotchi::Web::App).to receive(:new) { |**kw| app = kw; double("app", "server_running=": nil) }
       allow(Rackup::Handler::WEBrick).to receive(:run)
       order = []
-      allow(hub).to receive(:scan) { order << :scan }
+      allow(hub).to receive(:scan) { |tick: true| order << [:scan, tick] }
       allow(hub).to receive(:subscribe) { |sink, **kw| order << [:subscribe, kw[:snapshot] ? sink.class : :chi]; [instance_double(Samagotchi::Web::SessionHub::Subscription, unsubscribe: true), []] }
       allow(hub).to receive(:start) { order << :start }
 
       described_class.start(port: 4999, hub: hub, public_url: public_url, token_path: File.join(start_root, "web-token"), state_dir: start_state)
-      expect(order).to eq([%i[subscribe chi], :scan, [:subscribe, Samagotchi::Web::Push::Notifier], :start])
+      expect(order).to eq([%i[subscribe chi], [:scan, false], [:subscribe, Samagotchi::Web::Push::Notifier], :start])
       expect(app[:push]).to have_attributes(origin: "https://4999.pod.test")
       expect(app[:push].store.dir).to eq(File.join(start_root, "samagotchi", "web-push"))
       expect(File.stat(app[:push].store.key_path).mode & 0o777).to eq(0o600)

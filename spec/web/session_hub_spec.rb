@@ -58,6 +58,14 @@ RSpec.describe Samagotchi::Web::SessionHub do
   end
 
   describe "#scan" do
+    it "can seed the projection without launching a schedule tick" do
+      allow(hub).to receive(:schedule_tick)
+
+      hub.scan(tick: false)
+
+      expect(hub).not_to have_received(:schedule_tick)
+    end
+
     it "runs at most one retention sweep outside the projection lock" do
       entered = Queue.new
       release = Queue.new
@@ -806,22 +814,28 @@ RSpec.describe Samagotchi::Web::SessionHub do
     it "emits one schedule_disabled per outcome that disabled its schedule, for the notifier" do
       hub, schedules = hub_with(true)
       hub.subscribe(->(event) { events << event })
+      tick_now = Time.utc(2026, 11, 22, 12, 34, 56)
       entry = Struct.new(:skips, :failures).new(12, 0)
+      bad = Samagotchi::Schedules::Outcome.new(id: "bad", status: "failed", detail: "bad event", disabled: true)
       off = Samagotchi::Schedules::Outcome.new(id: "abc123", title: "Heartbeat", status: "skipped",
-                                               detail: "the session is running a turn", entry: entry, disabled: true)
+                                               detail: "the session is running a turn", entry: entry, disabled: true,
+                                               session_id: "sess-1")
       plain = Samagotchi::Schedules::Outcome.new(id: "def456", status: "skipped", detail: "busy", entry: entry)
-      allow(schedules).to receive(:tick).and_return(Samagotchi::Schedules::Tick.new(outcomes: [plain, off]))
-      allow(schedules).to receive(:session_of).with(entry).and_return("sess-1")
-      allow(Samagotchi::Log).to receive(:warn)
+      allow(Time).to receive(:now).and_return(tick_now)
+      expect(schedules).to receive(:tick).with(now: tick_now)
+                                         .and_return(Samagotchi::Schedules::Tick.new(outcomes: [bad, plain, off]))
+      expect(Samagotchi::Log).to receive(:warn).with(
+        :web, "schedule_disabled_failed", hash_including(id: "bad", error: "NoMethodError")
+      ).once
+      expect(Samagotchi::Log).not_to receive(:warn).with(:web, "schedule_tick_failed", anything)
 
       hub.send(:run_schedule_tick)
 
       disabled = events.select { |event| event.type == "schedule_disabled" }
       expect(disabled.map(&:data)).to match([
         { id: "abc123", title: "Heartbeat", kind: "skipped", count: 12, reason: "the session is running a turn",
-          session_id: "sess-1", at: a_string_matching(/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/) }
+          session_id: "sess-1", at: tick_now.utc.iso8601 }
       ])
-      expect(Samagotchi::Log).not_to have_received(:warn)
     end
 
     it "emits nothing and logs nothing for a tick result that is not a Tick" do

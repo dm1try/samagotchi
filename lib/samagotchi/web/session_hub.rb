@@ -152,7 +152,7 @@ module Samagotchi
       # +full_probe_interval+ it also probes every session's owner and
       # gives the retention sweep its chance (it used to run on
       # GET /api/sessions, which the page no longer calls).
-      def scan
+      def scan(tick: true)
         full = @monitor.synchronize do
           full = full_probe_due?
           SessionContinue.repair_interrupted(state_dir: @state_dir)
@@ -165,7 +165,7 @@ module Samagotchi
         end
         sweep_if_due if full
         # Outside the projection's lock: a firing can wait for a recap.
-        schedule_tick
+        schedule_tick if tick
         nil
       end
 
@@ -390,7 +390,7 @@ module Samagotchi
         schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
         now = Time.now
         result = schedules.tick(now: now)
-        publish_disabled(schedules, result, now) if result.is_a?(Samagotchi::Schedules::Tick)
+        publish_disabled(result, now) if result.is_a?(Samagotchi::Schedules::Tick)
       rescue StandardError => e
         Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
       ensure
@@ -403,14 +403,17 @@ module Samagotchi
       # A recurring schedule this tick turned off (Schedules::Outcome#disabled):
       # one `schedule_disabled` event each, for the Push::Notifier (the page has
       # no listener), emitted the way #publish_notice does. +at+ is the tick's
-      # time; +session_id+ is the session the schedule acts on (Schedules#session_of).
-      def publish_disabled(schedules, result, now)
+      # time; +session_id+ is the session the schedule acts on.
+      def publish_disabled(result, now)
         result.outcomes.select(&:disabled).each do |outcome|
           entry = outcome.entry
           kind = outcome.status == "skipped" ? "skipped" : "failed"
-          data = { id: outcome.id, title: outcome.title, kind: kind, count: kind == "skipped" ? entry.skips : entry.failures,
-                   reason: outcome.detail, session_id: schedules.session_of(entry), at: now.utc.iso8601 }
+          data = { id: outcome.id, title: outcome.title, kind: kind,
+                   count: kind == "skipped" ? entry.skips : entry.failures,
+                   reason: outcome.detail, session_id: outcome.session_id, at: now.utc.iso8601 }
           @monitor.synchronize { emit("schedule_disabled", data) }
+        rescue StandardError => e
+          Log.warn(:web, "schedule_disabled_failed", id: outcome.id, error: e.class.name, msg: e.message)
         end
       end
 
