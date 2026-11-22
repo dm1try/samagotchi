@@ -121,6 +121,16 @@ RSpec.describe Samagotchi::ModelNotes do
     expect(notes("m", fallback_key: "typed").first.body).to include("Typed overlay.")
   end
 
+  it "keeps a fallback key's raw spelling in the overlay's label and the stripped one in its path (prompt bytes)" do
+    write(system_dir, "model_notes_a", "models: *\nA.\n")
+    write(system_dir, "model_notes_a.typed", "  Typed overlay.\n")
+    path = File.join(system_dir, "model_notes_a.md")
+    expect(described_class.body_at(path, [nil, " typed "], dir: system_dir))
+      .to eq("A.\n\n---\n\nModel-specific guidance ( typed ):\nTyped overlay.")
+    expect(described_class.body_at(path, %w[m typed], dir: system_dir))
+      .to eq("A.\n\n---\n\nModel-specific guidance (typed):\nTyped overlay.")
+  end
+
   it "reads a note's overlay from the env it is given, not the process's (chi self)" do
     other = File.join(tmp, "other")
     other_system = File.join(other, "samagotchi", "memories")

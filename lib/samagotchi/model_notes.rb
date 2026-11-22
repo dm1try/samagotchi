@@ -145,16 +145,26 @@ module Samagotchi
     # by name through memory_read (whose names are comma lists). +dir+: the
     # scope's folder the overlay sits in.
     def with_overlay(body, stem, keys, dir:)
+      overlay, overlay_key = overlay_path(stem, keys, dir: dir)
+      return body unless overlay
+
+      # The key as given in the label (prompt bytes), stripped in the path.
+      "#{body}#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (#{overlay_key}):\n" \
+        "#{File.read(overlay, encoding: "UTF-8").strip}"
+    end
+
+    # The note +stem+'s model overlay file in +dir+ for the first of +keys+
+    # that has one: [path, the key as given (unstripped)], or nil. The
+    # build (#with_overlay) and the working set's files of a note part
+    # (WorkingSet::Locator#composed).
+    def overlay_path(stem, keys, dir:)
       keys.compact.each do |overlay_key|
         next if overlay_key.to_s.strip.empty?
 
         overlay = File.join(dir, "#{stem}.#{overlay_key.to_s.strip}.md")
-        next unless File.file?(overlay)
-
-        return "#{body}#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (#{overlay_key}):\n" \
-               "#{File.read(overlay, encoding: "UTF-8").strip}"
+        return [overlay, overlay_key] if File.file?(overlay)
       end
-      body
+      nil
     end
 
     # A model overlay of a note (`model_notes_a.<key>.md`) is read with

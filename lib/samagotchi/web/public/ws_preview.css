@@ -46,6 +46,16 @@
 .ws-row .st.ws-pstale{color:var(--warn-text)}
 .ws-tab.warn,.ws-tab.warn.on{color:var(--warn-text)}
 @media(hover:hover){.ws-tab.warn:not(.on):hover{color:var(--warn-bright)}}
+/* A prompt row whose source chi changed itself: "edited" in the plain secondary colour (not the warn one); a
+   phone's sheet drops its part words (D7), and a part row keeps "edited" where it drops its sub text. The
+   peek's copy lines under the diff: when chi gets the new text, and (warn) chi's edit it changed again after. */
+.ws-row .st.ws-pedited{color:var(--text-2)}
+.ws-popover.sheet .ws-pwords{display:none}
+.ws-popover.sheet .ws-row.part .st.ws-pedited{display:block}
+.ws-peek-copy{padding:7px 12px 9px;border-top:1px solid var(--border);font-size:12px;line-height:1.45;color:var(--text-2)}
+.ws-peek-copy.warn{color:var(--warn-text)}
+.ws-peek-copy.warn+.ws-peek-copy{border-top:0;padding-top:0}
+.ws-popover.sheet .ws-tabs{flex-wrap:wrap}
 
 /* A tool row's way in. */
 .activity-ws{flex:none;padding:0 6px;border:1px solid var(--ws-act-border);border-radius:4px;background:transparent;font-size:11px;line-height:16px;color:var(--ws-muted);cursor:pointer;opacity:0}
