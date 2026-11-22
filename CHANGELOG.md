@@ -31,6 +31,9 @@ and commands may change between minor versions. How releases are made:
   id) instead of echoing it back.
 - chi as an MCP server answers a message that has an id but no method with JSON-RPC -32600, so the host isn't left
   waiting on it.
+- A thin client's ask and an MCP host's `chi_ask` over `POST /api/mcp` answer within about 40 s even when the
+- A thin client's ask and an MCP host's `chi_ask` over `POST /api/mcp` answer within about 45 s even when the
+  session's worker hangs taking the message in (it could take more than a minute, past Claude Code's 60 s HTTP limit).
 
 ## [0.183.0] - 2026-11-22
 

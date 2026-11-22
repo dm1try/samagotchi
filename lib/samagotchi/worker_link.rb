@@ -58,8 +58,8 @@ module Samagotchi
       # The client for this worker (BridgeClient.for_sidecar: its port and its
       # secret from this one read).
       # @return [BridgeClient]
-      def client(session_id, host: BridgeClient::HOST, read_timeout: BridgeClient::READ_TIMEOUT)
-        BridgeClient.for_sidecar(session_id, sidecar, host: host, read_timeout: read_timeout)
+      def client(session_id, host: BridgeClient::HOST, read_timeout: BridgeClient::READ_TIMEOUT, deadline_margin: nil)
+        BridgeClient.for_sidecar(session_id, sidecar, host: host, read_timeout: read_timeout, deadline_margin: deadline_margin)
       end
 
       def port = sidecar.port

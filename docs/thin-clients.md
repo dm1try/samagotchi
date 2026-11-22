@@ -54,9 +54,9 @@ the `question`. Answer it first (below).
 
 Each call answers within **35 seconds** of its request, whatever it waits for
 (a continue in flight, a worker starting, the answer), so a proxy or a Shortcut
-with a 60 s limit is safe. The one exception is a worker that hangs while it
-takes the message in: chi web gives it up to 25 s more, then answers 504
-`worker_timeout`. A turn still running then answers
+with a 60 s limit is safe. A worker that hangs while it takes the message in
+is given at most 8 s past that, then the call answers 504 `worker_timeout`; the
+message was not taken. A turn still running then answers
 `"status": "timeout"` with a `"token": "w1.…"`. Send that token back until the
 status is something else:
 

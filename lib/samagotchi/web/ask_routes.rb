@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "delegate"
+require_relative "../bridge_client"
 require_relative "../client_id"
 require_relative "../reply_wait"
 require_relative "../session"
@@ -25,9 +26,18 @@ module Samagotchi
       # One ask answers within this many seconds from its request's start,
       # whatever it waits for (a continue in flight, the Bridge of a worker
       # starting, the wait's slice): a proxy or a Shortcut with a 60 s limit
-      # is safe. Only the post to a live worker isn't drawn from it: it is
-      # instant unless the worker hangs (BridgeClient's 25 s deadline).
+      # is safe. The post to a live worker draws on it too (#ask_bridge), but
+      # never under POST_FLOOR, so a call ends within about 44 s.
       ASK_MAX_SECONDS = 35.0
+      # The shortest read a post to a live worker gets (#ask_bridge),
+      # however little of the deadline is left: a healthy but loaded worker
+      # still reads the message in time.
+      POST_FLOOR = 8.0
+      # The fewest seconds the post's body deadline leaves before its read
+      # times out (BridgeClient's deadline_margin): a worker that took the
+      # turn just in time still has that long to answer 202, so a 504 means
+      # it was not taken.
+      POST_MARGIN = 2.5
       # A wait route answers within this many seconds (status timeout); the
       # client asks again until its own --timeout. SessionAccessRoutes'
       # (which includes this module) too.
@@ -82,7 +92,7 @@ module Samagotchi
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
 
-        bridge = ->(sid) { live_bridge_client(sid, within: deadline - ask_clock) }
+        bridge = ->(sid) { ask_bridge(sid, deadline) }
         access = AskAccess.new(session_access, manager: @manager, bridge: bridge, poll_interval: @wait_poll_interval)
         stopping = -> { !@server_running.call }
         exchange = SessionAccess::Exchange.new(access, continuing_wait: [SessionAccess::Exchange::CONTINUING_WAIT,
@@ -282,6 +292,25 @@ module Samagotchi
       end
 
       def plain_exchange = SessionAccess::Exchange.new(session_access)
+
+      # The worker's Bridge client for an ask's delivery (App's
+      # live_bridge_client, drawn from +deadline+): a worker starting is
+      # waited for out of what is left, and the post's read is what is left
+      # after that but MIN_SLICE, within POST_FLOOR..READ_TIMEOUT. The
+      # client's body deadline is a share of that read (DEADLINE_SHARE, at
+      # least POST_MARGIN short of it), so
+      # a worker that reads the message late drops it (408
+      # deadline_passed) rather than run it after the call gave up.
+      # @param deadline [Numeric] ask_clock's seconds the call ends by
+      # @return [BridgeClient, nil] nil: no live worker in time
+      def ask_bridge(sid, deadline)
+        link = worker_link(sid)
+        link = await_worker_link(sid, timeout: [@bridge_wait_timeout.to_f, deadline - ask_clock].min.clamp(0.0..)) unless link.live?
+        return nil unless link.live?
+
+        read = (deadline - ask_clock - SessionAccess::Ask::MIN_SLICE).clamp(POST_FLOOR, BridgeClient::READ_TIMEOUT)
+        link.client(sid, host: App::DEFAULT_HOST, read_timeout: read, deadline_margin: POST_MARGIN)
+      end
 
       # The ask's deadline clock (the Exchange's: monotonic seconds).
       def ask_clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)

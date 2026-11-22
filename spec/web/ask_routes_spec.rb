@@ -243,15 +243,60 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
         bridge.call
         accepted("t1")
       end
+      app.instance_variable_set(:@bridge_wait_timeout, 30)
+      allow(app).to receive(:worker_link).and_return(Samagotchi::WorkerLink::None.new)
       lefts = []
-      allow(app).to receive(:live_bridge_client) do |_id, within: 5.0|
-        lefts << within
-        nil
+      allow(app).to receive(:await_worker_link) do |_id, timeout:|
+        lefts << timeout
+        Samagotchi::WorkerLink::None.new
       end
 
       ask(session, { prompt: "hi", timeout: 0.1 })
       expect(lefts.size).to eq(1)
       expect(lefts.first).to be_between(0, 1.2)
+    end
+
+    describe "the post to a live worker" do
+      # A live link whose client records the read it was given.
+      def live_link(reads)
+        link = Object.new
+        link.define_singleton_method(:live?) { true }
+        link.define_singleton_method(:client) do |_sid, host:, read_timeout:, deadline_margin:|
+          reads << [host, read_timeout, deadline_margin]
+          nil
+        end
+        link
+      end
+
+      def read_for(max)
+        stub_const("Samagotchi::Web::AskRoutes::ASK_MAX_SECONDS", max) if max
+        session = make
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, bridge:, **|
+          bridge.call
+          accepted("t1")
+        end
+        reads = []
+        allow(app).to receive(:worker_link).and_return(live_link(reads))
+        ask(session, { prompt: "hi", timeout: 0.1 })
+        expect(reads.size).to eq(1)
+        expect(reads.first.first).to eq(described_class::DEFAULT_HOST)
+        # The body deadline leaves the worker time to answer 202.
+        expect(reads.first.last).to eq(Samagotchi::Web::AskRoutes::POST_MARGIN)
+        reads.first[1]
+      end
+
+      it "reads for what is left of the deadline but the slice, under the old 30 s" do
+        floor = Samagotchi::Web::AskRoutes::POST_FLOOR
+        expect(read_for(20.0)).to be_between(floor, 20.0 - Samagotchi::SessionAccess::Ask::MIN_SLICE)
+      end
+
+      it "never reads for less than POST_FLOOR" do
+        expect(read_for(1.2)).to eq(Samagotchi::Web::AskRoutes::POST_FLOOR)
+      end
+
+      it "reads for at most READ_TIMEOUT on the default deadline" do
+        expect(read_for(nil)).to eq(Samagotchi::BridgeClient::READ_TIMEOUT)
+      end
     end
 
     it "refuses a bad body: no prompt, an empty or too long one, a UI-only command, a bad timeout, queue or client_id" do

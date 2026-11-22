@@ -90,6 +90,29 @@ RSpec.describe Samagotchi::Web::App, "POST /api/mcp" do
                                         "content" => [{ "type" => "text", "text" => "over http" }])
     end
 
+    it "cuts a chi_ask's post to a live worker to the call's deadline (AskRoutes#ask_bridge)" do
+      session = make
+      reads = []
+      link = Object.new
+      link.define_singleton_method(:live?) { true }
+      link.define_singleton_method(:client) do |_sid, host:, read_timeout:, deadline_margin:|
+        reads << read_timeout
+        nil
+      end
+      allow(app).to receive(:worker_link).and_return(link)
+      stub_const("Samagotchi::McpServer::Tools::CAP", 20)
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, bridge:, **|
+        bridge.call
+        Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(id, state_dir: state_dir), "ok", enqueued_id: "t1")
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "enqueued_id" => "t1" })
+      end
+
+      modern(2, "tools/call", { name: "chi_ask", arguments: { session: session.id, prompt: "hi" } }, name: "chi_ask")
+      expect(reads.size).to eq(1)
+      expect(reads.first).to be_between(Samagotchi::Web::AskRoutes::POST_FLOOR,
+                                        20 - Samagotchi::SessionAccess::Ask::MIN_SLICE)
+    end
+
     it "answers a prompt over 16 KiB with the tool's error, even JSON-escaped past 64 KiB (not chi web's 413)" do
       session = make
       prompt = "\u00e9" * 12_000
