@@ -1476,7 +1476,9 @@ RSpec.describe Samagotchi::Bridge do
                                   { type: :generation_chunk, iteration: 1, thinking: "hm", content: "" },
                                   conversation: [{ role: "model", content: "done" }])
         turn = Thread.new { run_turn_sync(@engine, @session, "thinking one") }
-        wait_for("the generation in the snapshot") { @bridge.snapshot.dig(:current_turn, :generation) }
+        wait_for("the generation's thinking-only phase in the snapshot") do
+          @bridge.snapshot.dig(:current_turn, :generation, :thinking_only)
+        end
 
         live = @bridge.snapshot[:current_turn][:generation]
         release << true
