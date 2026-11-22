@@ -415,7 +415,6 @@
     "createDeleteSheet",
     "deleteChoices",
     "deleteSheetTemplate",
-    "deleteToast",
     "isChained",
     "listAfterDelete",
     "loadingTemplate",
@@ -1065,7 +1064,6 @@
   "running_tasks.js": [
     "NAMED_MAX",
     "cutCommand",
-    "tasksConfirmText",
     "tasksCount",
     "tasksLine",
     "tasksStoppedSuffix"

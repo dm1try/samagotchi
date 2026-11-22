@@ -8,43 +8,43 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.184.0] - 2026-11-22
+
 ### Added
 
-- The web's working set: every "From the start" row now has a ▸ that shows the text chi was sent for that part of
-  its prompt (a memory, AGENTS.md, the base prompt, the tools' names and sizes), with a tab per hold when a memory is
-  in the prompt twice or was also read. The list is 520 wide always, so opening a row no longer moves the others.
-- The web's working set: a "From the start" row whose memory or AGENTS.md changed since chi was sent it says `stale`,
-  and its peek gets a "now" tab with the difference (a stopped session too).
-- A thin client's ask takes an optional `request_id`: the same ask sent again (a retry after a dropped connection)
-  answers the first one's turn instead of queuing it twice.
+- The web's working set: every "From the start" row has a ▸ that shows the text chi was sent for that part of its
+  prompt (a memory, AGENTS.md, the base prompt, the tools' names and sizes), with a tab per hold when a memory is in
+  the prompt twice or was also read. The list is 520 wide always, so opening a row no longer moves the others.
+- The web's working set: a "From the start" row whose memory or AGENTS.md changed after chi was sent it says `stale`,
+  and its "now · changed" tab shows the difference and when chi gets the new text (a stopped session too). When chi
+  changed it itself, the row says `✎ edited` and links the call instead: chi has the new text in its conversation.
 - The phone gets a notification when chi web's schedule tick turns off a recurring schedule that kept failing or
   being skipped, with the last reason and the `chi schedule enable` that turns it back on.
+- A thin client's ask takes an optional `request_id`: the same ask sent again (a retry after a dropped connection)
+  answers the first one's turn instead of running it twice.
 
 ### Changed
 
-- Working set: a "From the start" row whose memory or AGENTS.md chi changed itself says `✎ edited` and links its
-  call, not `stale`; a stale row's now tab says when chi gets the new text; a memory chi read and then changed
-  itself stays current, and one changed after chi's `memory_write` shows stale.
-- For bundle authors, nested plugin-part names now say how to list the file; `chi bundle check` warns when an unlisted
+- An ask of `/continue yes` (a thin client's `POST …/ask`, an MCP host's `chi_ask`) waits for the continued turn and
+  answers its reply, or a wait token while it runs, instead of `status: command`.
+- The web's working set: a memory chi read and then edited itself no longer says `read · stale`.
+- For bundle authors, nested plugin-part names say how to list the file; `chi bundle check` warns when an unlisted
   `.rb` under a subdirectory won't be installed (but not under `spec/` or `test/`).
-- An ask of `/continue yes` (a thin client's `POST …/ask`, an MCP host's `chi_ask`) now waits for the continued turn
-  and answers its reply, or a wait token while it runs, instead of `status: command`.
 
 ### Fixed
 
-- `chi schedule enable` resets a schedule's skip and failure counts, so its next skip no longer turns it off again.
-- `chi schedule list --all` says whether a disabled schedule reached its skip or failure budget instead of always
-  attributing the disable to failures.
-- The mcp bundle: concurrent tool calls whose remote session expired now wait for one new session instead of failing
-  with "the session expired (404)" or sending a half-initialized request.
-- The web's delete sheet: closing it while "Stop its worker, then delete" runs no longer leaves the worker stopped and
-  the session in place; the delete goes on and says how it went in a toast.
-- chi as an MCP server refuses a request whose id is an object, an array or a boolean (JSON-RPC -32600 with a null
-  id) instead of echoing it back.
-- chi as an MCP server answers a message that has an id but no method with JSON-RPC -32600, so the host isn't left
-  waiting on it.
 - A thin client's ask and an MCP host's `chi_ask` over `POST /api/mcp` answer within about 45 s even when the
-  session's worker hangs taking the message in (it could take more than a minute, past Claude Code's 60 s HTTP limit).
+  session's worker hangs taking the message in (it could take more than a minute, past Claude Code's 60 s limit).
+- The mcp bundle: concurrent tool calls whose remote session expired wait for one new session instead of failing with
+  "the session expired (404)" or sending a half-initialized request.
+- chi as an MCP server refuses a request id that is an object, an array or a boolean (JSON-RPC -32600) instead of
+  echoing it, and answers a message with an id but no method with -32600 instead of leaving the host waiting.
+- The web's delete sheet: closing it during "Stop its worker, then delete" no longer leaves the worker stopped and the
+  session in place; the delete goes on and a toast says how it went.
+- `chi schedule enable` resets a schedule's skip and failure counts, so its next skip no longer turns it off again;
+  `chi schedule list --all` says whether skips or failures turned a schedule off.
+
+Update with `chi update` (the mcp bundle is now 0.9.1).
 
 ## [0.183.0] - 2026-11-22
 
@@ -6748,7 +6748,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.183.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.184.0...HEAD
+[0.184.0]: https://github.com/dm1try/samagotchi/compare/v0.183.0...v0.184.0
 [0.183.0]: https://github.com/dm1try/samagotchi/compare/v0.182.0...v0.183.0
 [0.182.0]: https://github.com/dm1try/samagotchi/compare/v0.181.0...v0.182.0
 [0.181.0]: https://github.com/dm1try/samagotchi/compare/v0.180.0...v0.181.0
