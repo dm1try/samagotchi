@@ -525,6 +525,40 @@ RSpec.describe Samagotchi::Web::App, "working set" do
       expect(stale_keys(session)).to eq([])
     end
 
+    it "adds the source now and its diff from the sent text on &now=1: changed, unchanged, gone, scrubbed" do
+      session = built_session
+      preload = keys[@built.prompt_parts.index(part_of("preloads"))]
+      now_call = ->(key) { call("/api/sessions/#{session.id}/working_set/part?key=#{URI.encode_www_form_component(key)}&now=1").last }
+      expect(part_call(session, preload).last).not_to have_key("now")
+      same = now_call.call(preload)
+      expect(same["sent"]["text"]).to eq("be brief\n\n\n---\n\nModel-specific guidance (fb):\nFallback overlay.")
+      expect(same["now"]).to include("text" => same["sent"]["text"], "gone" => false)
+      expect(same["now"]["diff"]).to include("text" => "", "added" => 0, "removed" => 0, "new_file" => false)
+
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "be terse\n")
+      changed = now_call.call(preload)
+      expect(changed["now"]["text"]).to start_with("be terse\n")
+      expect(changed["now"]["diff"]).to include("added" => 1, "removed" => 1)
+      expect(changed["now"]["diff"]["text"]).to include("-be brief", "+be terse")
+      expect(changed["now"]["diff"]["text"]).not_to include("No newline")
+
+      File.binwrite(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"), "bad \xFF byte\n")
+      expect(now_call.call(preload)["now"]["text"]).to start_with("bad \uFFFD byte")
+
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"))
+      expect(now_call.call(preload)["now"]).to eq("text" => nil, "diff" => nil, "gone" => true)
+      # Chi's own text, an index: nothing to fetch.
+      expect(now_call.call("base:base prompt")).not_to have_key("now")
+      expect(now_call.call("indexes:system")).not_to have_key("now")
+    end
+
+    it "keeps a changed head's answer on &now=1: the source now, no diff (nothing sent to diff against)" do
+      session = built_session(head: "an older head")
+      body = call("/api/sessions/#{session.id}/working_set/part?key=identity:identity@system&now=1").last
+      expect(body).to include("changed" => "idle")
+      expect(body["now"]).to eq("text" => "I am chi.\n\n\n---\n\nModel-specific guidance (m):\nOverlay for m.", "gone" => false)
+    end
+
     it "says gone when the memory left, and reads nothing for crafted params outside chi web's memories" do
       session = built_session(head: "an older head")
       File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "style.md"))

@@ -2,6 +2,7 @@
 
 require_relative "context_note"
 require_relative "prompt_part"
+require_relative "text_diff"
 require_relative "version"
 require_relative "working_set_locator"
 
@@ -41,9 +42,11 @@ module Samagotchi
     # its parts still the file's until a turn builds them) gets the
     # older_chi words, which are true for it; +running+: a turn runs;
     # +root+: chi web's memories folder (MemoryPaths.system_dir); +cwd+: the
-    # session's working directory (its AGENTS.md chain).
+    # session's working directory (its AGENTS.md chain); +now+: with the
+    # sent slice, the source now and its diff from what was sent
+    # ({text, diff, gone}, the page's "now" tab), when a locator fetches it.
     # @return [Hash, nil] nil when no part has that key
-    def answer(parts:, messages:, key:, older_worker:, running:, root:, cwd:)
+    def answer(parts:, messages:, key:, older_worker:, running:, root:, cwd:, now: false)
       parts = PromptPart.list(parts)
       index = PromptPart.keys(parts).index(key.to_s)
       return nil unless index
@@ -65,11 +68,18 @@ module Samagotchi
 
       if PromptPart.digest_of(text, 16) != part.head
         changed = running ? :running : :idle
-        now = now_of(part, root: root, cwd: cwd)
-        return shown.merge(note: WORDS[changed], reason: changed.to_s, changed: changed.to_s, now: now).compact
+        source = now_of(part, root: root, cwd: cwd)
+        return shown.merge(note: WORDS[changed], reason: changed.to_s, changed: changed.to_s, now: source).compact
       end
 
-      shown.merge(sent: sent_of(part, parts, text))
+      sent = sent_of(part, parts, text)
+      source = now && now_of(part, root: root, cwd: cwd)
+      return shown.merge(sent: sent) unless source
+
+      # Each side ends its last line: a stripped note's or file's text would draw "\ No newline" markers otherwise.
+      lined = ->(text) { text.end_with?("\n") ? text : "#{text}\n" }
+      diff = source[:gone] ? nil : TextDiff.unified(lined.call(sent[:text]), lined.call(source[:text])).merge(new_file: false)
+      shown.merge(sent: sent, now: source.merge(diff: diff))
     end
 
     # The parts of +parts+ (a saved or wire list) whose source changed
@@ -128,7 +138,8 @@ module Samagotchi
     # chain, never an appended file).
     def now_of(part, root:, cwd:)
       now = WorkingSet::Locator.of_part(part).fetch(root: root, cwd: cwd)
-      now && { text: now.text, gone: now.gone }
+      # The file's bytes as they are: JSON wants them valid (the saved head was scrubbed at save).
+      now && { text: now.text && TextDiff.clean(now.text), gone: now.gone }
     end
 
     private_class_method :sent_of, :now_of

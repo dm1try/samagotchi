@@ -110,10 +110,11 @@ module Samagotchi
         json_response(200, body)
       end
 
-      # GET /api/sessions/:id/working_set/part?key=: one "From the start" part
-      # as chi sent it (WorkingSetPart.answer: the slice of the saved head,
-      # or the line that says why not and, under a changed head, the source
-      # now). Owner only: participants see no prompt text. The parts and
+      # GET /api/sessions/:id/working_set/part?key=[&now=1]: one "From the
+      # start" part as chi sent it (WorkingSetPart.answer: the slice of the
+      # saved head, or the line that says why not and, under a changed head,
+      # the source now). +now+: with the slice, the source now and its diff
+      # (a stale row's "now" tab). Owner only: participants see no prompt text. The parts and
       # messages[0] come from one source: a live worker's snapshot frame
       # (session_state_snapshot's prompt_parts, the snapshot's messages),
       # else the session file. One session-file parse, no Bridge route.
@@ -127,7 +128,7 @@ module Samagotchi
         body = WorkingSetPart.answer(parts: parts, messages: messages, key: key,
                                      older_worker: !live.nil? && WorkingSetPart.older_worker?(live.dig("snapshot", "chi_version")),
                                      running: !live&.dig("snapshot", "current_turn").nil?, root: MemoryPaths.system_dir,
-                                     cwd: session.working_directory)
+                                     cwd: session.working_directory, now: req.GET["now"] == "1")
         return error_response(404, "unknown_part", WorkingSetPart::UNKNOWN) unless body
 
         json_response(200, body)
