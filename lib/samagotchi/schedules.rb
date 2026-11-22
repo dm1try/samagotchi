@@ -507,7 +507,8 @@ module Samagotchi
         if verdict
           kind, reason = verdict
           status = kind == :skip ? "skipped" : "failed"
-          updated = status == "skipped" ? skipped(current, reason) : failed(current, reason)
+          updated = status == "skipped" ? skipped(current, reason) : failed(current, reason) if current.enabled
+          updated ||= current.with(last_result: reason)
           file.entries[position] = updated
           outcome = Outcome.new(id: current.id, title: current.title, status: status, detail: reason, entry: updated)
           next
@@ -1194,8 +1195,8 @@ module Samagotchi
       Outcome.new(id: entry.id, title: entry.title, status: status, detail: message, entry: entry)
     end
 
-    # A run-now refused before anything was tried: the same counters a tick
-    # moves for a skip or a failure. `due_was` is untouched — run-now is not a
+    # A run-now refused before anything was tried: an enabled schedule moves
+    # the same counters a tick does. `due_was` is untouched — run-now is not a
     # scheduled occurrence, so there is no occurrence to put the clock back to.
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.

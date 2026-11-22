@@ -199,7 +199,8 @@ whole budget again, not one skip.
 
 A recurring schedule the owner has disabled stays off when an in-flight skip or
 failure is recorded. A `date` one-off is the exception: a skip or failure puts its
-moment back and re-enables it.
+moment back and re-enables it. `run-now` still tries a disabled schedule, but a
+refusal records its result without moving the skip or failure counters.
 
 The tick line that disabled an entry ends `(disabled)` (`chi schedule tick`,
 `run-now`), and `tick --format json` gives that outcome `"disabled": true`

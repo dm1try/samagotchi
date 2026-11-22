@@ -1648,6 +1648,23 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "does not count a run-now refusal for an already-disabled schedule" do
+    Dir.mktmpdir("schedules-disabled-run-now-refusal") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(anchor, state_dir: dir), prompt: "wait for me")
+      schedules.disable(entry.id)
+
+      outcome = schedules.run_now(entry.id)
+
+      expect(outcome).to have_attributes(status: "skipped", disabled: false)
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, skips: 0, failures: 0)
+      expect(schedules.lookup(entry.id).last_result).to eq(outcome.detail)
+    end
+  end
+
   it "uses a weekday interval for a run-now pending turn's expiry window" do
     Dir.mktmpdir("schedules-run-now-weekday-window") do |root|
       dir = File.join(root, "sessions")
