@@ -248,7 +248,18 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
         ask(session, { prompt: "hi" })
         ask(session, { prompt: "hi", reply_for: { formatting: "markdown", detail: true } })
         ask(session, { prompt: "/model x", reply_for: "voice" })
-        expect(deliveries.map { |_, options| options.key?(:anchors) }).to eq([false, false, false])
+        ask(session, { prompt: "!ls", reply_for: "voice" })
+        expect(deliveries.map { |_, options| options.key?(:anchors) }).to eq([false, false, false, false])
+      end
+
+      it "sends the anchor for a /word line the worker would run as a message, by the Bridge's rule" do
+        session = make
+        worker(accepted("t1"), reply: "ok")
+
+        ask(session, { prompt: "/tmp is full, what now?", reply_for: "voice" })
+        # A command line from a sender that may not send commands is a message to the Bridge too.
+        ask(session, { prompt: "/model x", reply_for: "voice", client_id: "schedule:nightly" })
+        expect(deliveries.map { |_, options| options[:anchors]&.reply_for&.room }).to eq(%w[short short])
       end
     end
 

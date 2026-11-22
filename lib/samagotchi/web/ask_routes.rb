@@ -4,6 +4,7 @@ require "delegate"
 require_relative "../bridge_client"
 require_relative "../agent_caller"
 require_relative "../client_id"
+require_relative "../command_intake"
 require_relative "../reply_wait"
 require_relative "../session"
 require_relative "../session_command_catalog"
@@ -90,8 +91,8 @@ module Samagotchi
       # message's, not a command's) names its turn: a retry whose turn the
       # session knows waits on it again, nothing sent and no second history
       # line (SessionAccess::Ask#call). A reply_for (ReplyFor.parse: a name
-      # or the values) rides a message's turn as its anchor (a command's
-      # runs as the command: kept in hand only). 200 wait_result_json's fields +
+      # or the values) rides a message's turn as its anchor (a line the
+      # Bridge runs as a command, #runs_as_command?: kept in hand only). 200 wait_result_json's fields +
       # session_id (+ asked, the id given, when another link ran it; +
       # token when the status is timeout: POST …/wait {token} goes on; +
       # request_id when one was given); 200 {status: command} for a session
@@ -110,7 +111,7 @@ module Samagotchi
         reply_for, error = ask_reply_for(body)
         return error if error
 
-        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !command_line?(prompt)
+        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !runs_as_command?(prompt, client_id)
 
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
@@ -172,8 +173,19 @@ module Samagotchi
         [nil, error_response(400, "invalid_ask", e.message)]
       end
 
+      # Whether the Bridge runs +prompt+ from +sender+ as a session command
+      # or a shell line (Bridge#handle_post_turn's rule: the registry's
+      # command? and CommandIntake.allowed?), so a turn's anchor would be
+      # dropped: an unknown /word ("/tmp is full, what now?") is a message
+      # and keeps it. chi web knows the built-ins only, so a bundle's command
+      # carries the anchor too, which the worker ignores as it runs it.
+      def runs_as_command?(prompt, sender)
+        SessionCommandCatalog.builtin_registry.command?(prompt) && CommandIntake.allowed?(sender)
+      end
+
       # A line a worker may run as a session command or a shell line, by its
-      # shape (COMMAND_SHAPE): not a message.
+      # shape (COMMAND_SHAPE): a request_id is refused for it (#ask_request_id),
+      # a bundle's command included.
       def command_line?(prompt)
         line = prompt.strip
         line.start_with?("!") || COMMAND_SHAPE.match?(line)
