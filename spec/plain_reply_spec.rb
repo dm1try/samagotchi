@@ -28,6 +28,14 @@ RSpec.describe Samagotchi::PlainReply do
       "Like this:\n```ruby\nputs 1\n```\nDone.",
       "Like this:\nputs 1\nDone."
     ],
+    "a fence's content untouched: its marks and indentation stay" => [
+      "**Init:**\n```py\ndef __init__(self):\n    # set up `x`\n    - a ** b\n```\n- done",
+      "Init:\ndef __init__(self):\n    # set up `x`\n    - a ** b\ndone"
+    ],
+    "a fence first, a ~~~ one, and one never closed (it runs to the end)" => [
+      "```\n  indented\n```\n~~~sh\n**x**\n~~~\n**y**\n```\n# open",
+      "  indented\n**x**\ny\n# open"
+    ],
     "headings, quotes and a rule" => [
       "## Status\n> quoted line\n>> nested\n---\nEnd.",
       "Status\nquoted line\nnested\nEnd."
