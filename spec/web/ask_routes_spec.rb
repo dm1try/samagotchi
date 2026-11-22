@@ -103,6 +103,54 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
                                  manager: Samagotchi::SessionManager, bridge: be_a(Proc), state_dir: state_dir)
     end
 
+    describe "reply_for" do
+      let(:voice) { { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false } }
+
+      it "delivers a name's values (or the values) as the turn's anchor" do
+        session = make
+        worker(accepted("t1"), reply: "ok")
+
+        expect(ask(session, { prompt: "hi", reply_for: "voice" }).first).to eq(200)
+        expect(ask(session, { prompt: "hi", reply_for: { room: "one_line" } }).first).to eq(200)
+        expect(deliveries.map { |_, options| options[:anchors].reply_for.to_file }).to eq(
+          [voice, { "formatting" => "markdown", "room" => "one_line", "choices" => "many", "detail" => true }]
+        )
+      end
+
+      it "resolves a name from config.yml's surfaces: when the ask comes in" do
+        session = make
+        worker(accepted("t1"), reply: "ok")
+        with_config_home(File.join(@tmp, "config")) do
+          File.write(File.join(@tmp, "config", "samagotchi", "config.yml"),
+                     YAML.dump("surfaces" => { "watch" => { "room" => "one_line", "choices" => 2 } }))
+          expect(ask(session, { prompt: "hi", reply_for: "watch" }).first).to eq(200)
+        end
+        expect(deliveries.last.last[:anchors].reply_for).to have_attributes(room: "one_line", choices: 2)
+      end
+
+      it "refuses an unknown name, key or value with 400 invalid_ask, nothing sent" do
+        session = make
+        worker(accepted("t1"), reply: "ok")
+
+        [["phone", /unknown name "phone"/], [{ colour: "red" }, /unknown key "colour"/], [{ room: "tiny" }, /room is/]].each do |value, words|
+          status, body = ask(session, { prompt: "hi", reply_for: value })
+          expect([status, body["error"]]).to eq([400, "invalid_ask"])
+          expect(body["detail"]).to match(words)
+        end
+        expect(deliveries).to be_empty
+      end
+
+      it "sends no anchor for none, for values full everywhere, or for a command line (kept in hand only)" do
+        session = make
+        worker(accepted("t1"), reply: "ok")
+
+        ask(session, { prompt: "hi" })
+        ask(session, { prompt: "hi", reply_for: { formatting: "markdown", detail: true } })
+        ask(session, { prompt: "/model x", reply_for: "voice" })
+        expect(deliveries.map { |_, options| options.key?(:anchors) }).to eq([false, false, false])
+      end
+    end
+
     context "with a manager of chi web's own (not SessionManager, the delivery's default)" do
       let(:manager) { SimpleDelegator.new(Samagotchi::SessionManager) }
 

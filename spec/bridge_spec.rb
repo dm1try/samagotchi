@@ -737,6 +737,18 @@ RSpec.describe Samagotchi::Bridge do
       expect(queued.first["verify"]).to eq("turn_id" => verify[:turn_id], "quote" => verify[:quote])
     end
 
+    it "keeps an ask's reply_for in the queued input, as its own turn (a queue), and names the feature" do
+      start_bridge(input_format: 2)
+      voice = { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false }
+      post_turn(JSON.generate(session_id: @session.id, prompt: "status?", reply_for: voice))
+
+      input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      queued = Dir.glob(File.join(input_dir, "*.json")).map { |file| JSON.parse(File.read(file)) }
+      expect(queued.map { |input| input.values_at("reply_for", "delivery") }).to eq([[voice, "queue"]])
+      expect(Samagotchi::SessionInbox.turn_end_data?(queued.first)).to be(true)
+      expect(described_class::FEATURES).to include(Samagotchi::ReplyFor::FEATURE)
+    end
+
     it "keeps a valid Revise draft in the queued input, and drops a malformed one" do
       start_bridge(input_format: 2)
       revises = { turn_id: "123e4567-e89b-12d3-a456-426614174000" }

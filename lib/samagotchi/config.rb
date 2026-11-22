@@ -442,7 +442,9 @@ module Samagotchi
       "hosts" => %w[host port url api api_key_env auth dialect profile first_token_timeout stream_idle_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
       "models" => %w[profile vision sampling thinking reasoning_history window_tokens steer_cut_after llm_context_strategy llm_context_apply
-                     llm_context_budget_tokens].freeze
+                     llm_context_budget_tokens].freeze,
+      # A thin client's reply_for names (ReplyFor.names; values checked when an ask names one).
+      "surfaces" => %w[formatting room choices detail].freeze
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
     HOST_MODEL_KEYS = %w[price served].freeze

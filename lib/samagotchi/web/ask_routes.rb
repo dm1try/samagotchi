@@ -12,6 +12,8 @@ require_relative "../turn_flow"
 require_relative "../session_access/ask"
 require_relative "../session_access/exchange"
 require_relative "../session_access/exchange/token"
+require_relative "../reply_for"
+require_relative "../turn_anchors"
 require_relative "request_body"
 
 module Samagotchi
@@ -82,12 +84,14 @@ module Samagotchi
       private
 
       # POST /api/sessions/:id/ask {prompt, timeout, queue, client_id,
-      # request_id}: the message delivered (to a chain's newest link; a
+      # request_id, reply_for}: the message delivered (to a chain's newest link; a
       # running session queues it as its own turn unless queue is false) and
       # its answer waited for, all within ASK_MAX_SECONDS. A request_id (a
       # message's, not a command's) names its turn: a retry whose turn the
       # session knows waits on it again, nothing sent and no second history
-      # line (SessionAccess::Ask#call). 200 wait_result_json's fields +
+      # line (SessionAccess::Ask#call). A reply_for (ReplyFor.parse: a name
+      # or the values) rides a message's turn as its anchor (a command's
+      # runs as the command: kept in hand only). 200 wait_result_json's fields +
       # session_id (+ asked, the id given, when another link ran it; +
       # token when the status is timeout: POST …/wait {token} goes on; +
       # request_id when one was given); 200 {status: command} for a session
@@ -102,6 +106,11 @@ module Samagotchi
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         prompt, client_id, options, error = ask_request(id, body)
         return error if error
+
+        reply_for, error = ask_reply_for(body)
+        return error if error
+
+        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !command_line?(prompt)
 
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
@@ -153,6 +162,23 @@ module Samagotchi
         [nil, nil, nil, error_response(400, "invalid_prompt", e.message)]
       end
 
+      # The body's reply_for: [nil or a ReplyFor, nil] or [nil, a 400
+      # invalid_ask]. A name is resolved here (config.yml's surfaces:, read
+      # now), so the session saves values: a later config edit leaves old
+      # turns as they were.
+      def ask_reply_for(body)
+        [ReplyFor.parse(body["reply_for"]), nil]
+      rescue ReplyFor::Invalid => e
+        [nil, error_response(400, "invalid_ask", e.message)]
+      end
+
+      # A line a worker may run as a session command or a shell line, by its
+      # shape (COMMAND_SHAPE): not a message.
+      def command_line?(prompt)
+        line = prompt.strip
+        line.start_with?("!") || COMMAND_SHAPE.match?(line)
+      end
+
       # The body's request_id: [nil or it, nil] or [nil, a 400]. A session
       # command never runs as a turn of that id (the Bridge's command path
       # takes none), so a retry would run it again: refused. Any line the
@@ -165,8 +191,7 @@ module Samagotchi
           return [nil, error_response(400, "invalid_ask", "request_id is 1 to 128 printable ASCII characters")]
         end
 
-        line = prompt.strip
-        if line.start_with?("!") || COMMAND_SHAPE.match?(line)
+        if command_line?(prompt)
           return [nil, error_response(400, "invalid_ask", "request_id is for messages, not session commands")]
         end
 

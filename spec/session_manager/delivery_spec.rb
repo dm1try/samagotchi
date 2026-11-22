@@ -434,6 +434,58 @@ RSpec.describe Samagotchi::SessionManager do
         expect(input_files).to be_empty
       end
 
+      describe "an ask's reply_for (a vouched anchor)" do
+        let(:voice) { { reply_for: { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false } } }
+
+        it "is refused by a live worker without the feature (409 reply_for_unavailable), nothing posted or written" do
+          own("worker")
+          bridge = client_naming(Samagotchi::Bridge::FEATURES - [Samagotchi::ReplyFor::FEATURE])
+          expect(bridge).not_to receive(:post_turn)
+
+          result = described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "hi", anchors: voice, state_dir: tmpdir,
+                                                            bridge: -> { bridge })
+
+          expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::ReplyFor::UNAVAILABLE)
+          expect(result.ack["detail"]).to include("update chi if needed").and include("restart")
+          expect(input_files).to be_empty
+        end
+
+        it "posts it to a worker with the feature, which queues it as its own turn" do
+          own("worker")
+          bridge = client_naming(Samagotchi::Bridge::FEATURES)
+          allow(bridge).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "hi", anchors: voice, state_dir: tmpdir,
+                                                          bridge: -> { bridge }).status).to eq(:accepted)
+          expect(bridge).to have_received(:post_turn).with(hash_including(anchors: Samagotchi::TurnAnchors.from(voice)))
+        end
+
+        it "writes no file with no Bridge unless the sidecar vouches: none is a retry, one without it the 409" do
+          allow(described_class).to receive(:resume_session)
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "a", anchors: voice, state_dir: tmpdir,
+                                                          bridge: -> {}))
+            .to have_attributes(status: :timeout, ack: include("error" => "worker_timeout"))
+          Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid, features: Samagotchi::Bridge::FEATURES - %w[reply_for]).write(session_dir)
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "b", anchors: voice, state_dir: tmpdir,
+                                                          bridge: -> {}))
+            .to have_attributes(status: :refused, code: 409, ack: Samagotchi::ReplyFor::UNAVAILABLE)
+          expect(input_files).to be_empty
+
+          Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid, features: Samagotchi::Bridge::FEATURES).write(session_dir)
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "c", anchors: voice, state_dir: tmpdir,
+                                                          bridge: -> {}).status).to eq(:accepted)
+          expect(input_files.map { |path| JSON.parse(File.read(path)).values_at("prompt", "reply_for") })
+            .to eq([["c", voice[:reply_for]]])
+        end
+
+        it "leaves a message without one as it was: the file goes with no sidecar" do
+          allow(described_class).to receive(:resume_session)
+          expect(described_class.deliver_turn(session.id, client_id: "web:unnamed", prompt: "plain", state_dir: tmpdir,
+                                                          bridge: -> {}).status).to eq(:accepted)
+          expect(input_files.size).to eq(1)
+        end
+      end
+
       it "refuses a Revise turn to a worker without the revise feature" do
         own("worker")
         bridge = client_naming(%w[delivery review_turns verify])

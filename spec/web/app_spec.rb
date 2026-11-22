@@ -4412,6 +4412,8 @@ RSpec.describe Samagotchi::Web::App do
         _status, _headers, info = app.call(env_for("/api/info"))
         expect(JSON.parse(info.first)["features"]).to include(Samagotchi::Web::App::DELETE_PLAN_FEATURE)
         expect(Samagotchi::Web::App::DELETE_PLAN_FEATURE).to eq("delete_plan_all")
+        # A thin client tells an older chi web (which ignores reply_for) by this.
+        expect(JSON.parse(info.first)["features"]).to include("reply_for")
       end
 
       it "previews a folder whose session file is gone, which the delete still takes" do

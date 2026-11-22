@@ -810,7 +810,7 @@ module Samagotchi
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
                 Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE,
                 WorkingSet::ITEM_FEATURE, BlockFix::FEATURE, Delivery::AGENT_FEATURE,
-                Delivery::ASK_FEATURE].freeze
+                Delivery::ASK_FEATURE, ReplyFor::FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
