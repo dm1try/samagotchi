@@ -24,6 +24,7 @@ class Plugin
     ACCEPT = "application/json, text/event-stream"
     # How long #close's DELETE of a legacy session may take.
     CLOSE_TIMEOUT = 2
+    RENEWAL_POLL_INTERVAL = 0.01
     # The most of a JSON error answer read for its JSON-RPC error.
     ERROR_BODY_BYTES = 64 * 1024
 
@@ -158,7 +159,7 @@ class Plugin
     def request(method, params = nil, timeout:, cancelled: nil)
       budget = Budget.for(timeout)
       if state.era == :expired
-        @renewal.synchronize { renew(budget, cancelled) if state.era == :expired }
+        with_renewal(budget, cancelled, method) { renew(budget, cancelled) if state.era == :expired }
       end
       sent_state = state
       raise Client::Error, "#{method} before the handshake" unless %i[modern legacy].include?(sent_state.era)
@@ -167,7 +168,7 @@ class Plugin
     rescue Expired
       raise if @renewal.owned?
 
-      @renewal.synchronize do
+      with_renewal(budget, cancelled, method) do
         current = state
         if current.era == :legacy && !current.equal?(sent_state)
           sent_state = current
@@ -207,6 +208,22 @@ class Plugin
       raise Client::Unavailable, e.message
     ensure
       publish(State.new(:expired, nil, nil)) unless state.era == :legacy
+    end
+
+    def with_renewal(budget, cancelled, method)
+      acquired = false
+      until acquired
+        raise Client::Cancelled, "#{method} was cancelled" if cancelled&.cancelled?
+
+        left = budget.left
+        raise Client::Timeout, timed_out(method, budget) unless left.positive?
+
+        acquired = @renewal.try_lock
+        sleep([left, RENEWAL_POLL_INTERVAL].min) unless acquired
+      end
+      yield
+    ensure
+      @renewal.unlock if acquired
     end
 
     # initialize, then notifications/initialized, in one +budget+.

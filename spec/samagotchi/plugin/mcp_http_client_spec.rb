@@ -441,6 +441,80 @@ RSpec.describe "The mcp bundle's HTTP client" do
 
     def elapsed_since(started) = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
+    def hold_renewal
+      server.enqueue("/mcp", status: 405)
+      legacy_answers(2, session: "s1")
+      client.handshake(timeout: 5, cancelled: nil)
+      server.enqueue("/mcp", status: 404)
+      server.enqueue("/mcp", sse: [], hold: true)
+      renewer = Thread.new do
+        client.request("tools/call", { name: "expired" }, timeout: 10)
+      rescue errors::Error => e
+        e
+      end
+      SpecWaiting.wait_for("the renewal to be held", timeout: 10) { server.holding.positive? }
+      renewer
+    end
+
+    it "keeps a second expired request within its timeout while renewal is held" do
+      renewer = hold_renewal
+      server.enqueue("/mcp", status: 404)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      error = nil
+      waiter = Thread.new do
+        client.request("tools/list", nil, timeout: 0.3)
+      rescue errors::Error => e
+        error = e
+      end
+      SpecWaiting.join!(waiter, "the timed-out request", timeout: 1)
+
+      expect(waiter).not_to be_alive
+      expect(error).to be_a(errors::Timeout)
+      expect(error.message).to eq("tools/list timed out after 0.3s")
+      expect(elapsed_since(started)).to be < time_bound(0.5, below: 0.8)
+      server.release
+      expect(renewer.value).to be_a(errors::Error)
+    ensure
+      server.release
+      waiter&.join
+      renewer&.join
+    end
+
+    it "cancels a second expired request waiting for renewal" do
+      renewer = hold_renewal
+      server.enqueue("/mcp", status: 404)
+      stop = Samagotchi::CancellationController.new
+      waiting_thread = nil
+      waiting = Queue.new
+      allow(client).to receive(:with_renewal).and_wrap_original do |original, *args, &block|
+        waiting << true if Thread.current.equal?(waiting_thread)
+        original.call(*args, &block)
+      end
+      error = nil
+      start = Queue.new
+      waiter = Thread.new do
+        start.pop
+        client.request("tools/list", nil, timeout: 5, cancelled: stop)
+      rescue errors::Error => e
+        error = e
+      end
+      waiting_thread = waiter
+      start << true
+      SpecWaiting.wait_for("the request to wait for renewal", timeout: 2) { !waiting.empty? }
+      stop.cancel!
+      SpecWaiting.join!(waiter, "the cancelled request", timeout: 1)
+
+      expect(waiter).not_to be_alive
+      expect(error).to be_a(errors::Cancelled)
+      expect(error.message).to eq("tools/list was cancelled")
+      server.release
+      expect(renewer.value).to be_a(errors::Error)
+    ensure
+      server.release
+      waiter&.join
+      renewer&.join
+    end
+
     it "holds the budget by the clock: a keep-alive just before its end doesn't buy another read" do
       modern_discover
       client.handshake(timeout: 5, cancelled: nil)

@@ -27,6 +27,7 @@ and commands may change between minor versions. How releases are made:
 - Config-preloaded prompt memories no longer appear held twice or open on an empty read tab in the web's working set.
 - An owner's disable stays off after an in-flight skip or failure; a `date` one-off still returns after a skip, and
   run-now refusals on disabled schedules leave their counters alone.
+- The mcp bundle bounds waits for a concurrent session re-handshake by the request's timeout and Stop (0.9.2).
 
 ## [0.184.0] - 2026-11-22
 
