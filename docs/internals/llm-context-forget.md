@@ -73,3 +73,9 @@ lets the model forget its own tool outputs. The pieces:
 - **Persistence**: the edits ride on the entries (plan D3), so `--resume`, rollbacks and forks keep the stubs and the
   restores; `/stats` counts each applied batch's re-prefill.
 - **Measuring**: the bench's `forget_outputs` strategy (internals/llm-context-bench.md).
+- **A peer's note text is history, not a tool output.** A peer agent's answer comes with its text in its context
+  note (`ContextAbsorber.peer_block`, [context.md](../context.md#peer-sources-the-peer-loop)), so the model needs no
+  `context_read` for it. No layer stubs a note: neither `forget` nor `stale` acts on it, and it stays for the
+  session's life. Before, the text came as a `context_read` result that `forget_outputs` could drop (`stale` never
+  covered it). The caps bound it: a waking answer holds up to the tool output cap, and an answer over it is still a
+  `context_read` (forgettable as ever).

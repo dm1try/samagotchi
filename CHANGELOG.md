@@ -8,6 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- claude-peer's `pair-remote`: Claude pairs with a chi on another machine over SSH in one call (the socket forward in
+  the background, ended by the next run or the command it prints); when ssh needs a password or 2FA it prints the
+  commands to run instead.
+
+### Changed
+
+- A paired Claude's or Codex's answer is in chi's conversation with its whole text (up to the tool output cap,
+  10,000 characters by default, for one that wakes chi; up to 2,000 for one that doesn't), so chi no longer reads the
+  outbox for it and every answer keeps its text; the web's answer bubble shows it. A message the peer starts by itself
+  wakes chi when it asks, under the same `context.peer_turns` count (claude-peer 0.6.0, codex-peer 0.5.0: their
+  skills say when to wake).
+
 ## [0.184.0] - 2026-11-22
 
 ### Added
