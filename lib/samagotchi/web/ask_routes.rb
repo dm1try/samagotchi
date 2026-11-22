@@ -45,6 +45,14 @@ module Samagotchi
       # GET /api/info's feature: this chi web has the ask route, wait
       # tokens, the answer's wait and the create's token.
       ASK_FEATURE = "ask"
+      # A line a worker may run as a session command (#ask_request_id): a
+      # / name (Registry::UNKNOWN_COMMAND_WORD's shape, which every
+      # built-in a worker runs and a bundle's COMMAND_NAME fits) followed by
+      # whitespace or nothing, so "/Users/x/a.rb fails" is a message. A !
+      # line is the shell's.
+      COMMAND_SHAPE = %r{\A/[A-Za-z][A-Za-z0-9_-]*(?:\s|\z)}
+      # An ask's request_id: 1 to 128 printable ASCII characters.
+      REQUEST_ID = /\A[\x21-\x7e]{1,128}\z/
       # The wait body's own fields, which a token replaces.
       TOKEN_EXCLUDES = %w[cursor baseline turn queued ended_before owner_grace].freeze
 
@@ -72,15 +80,20 @@ module Samagotchi
 
       private
 
-      # POST /api/sessions/:id/ask {prompt, timeout, queue, client_id}: the
-      # message delivered (to a chain's newest link; a running session
-      # queues it as its own turn unless queue is false) and its answer
-      # waited for, all within ASK_MAX_SECONDS. 200 wait_result_json's
-      # fields + session_id (+ asked, the id given, when another link ran
-      # it; + token when the status is timeout: POST …/wait {token} goes
-      # on); 200 {status: command} for a session command. 404 not_found,
-      # 400 ambiguous_id, 409 busy / waiting / continuing / owned_by_tui,
-      # the turn route's delivery refusals, 503 server_stopping.
+      # POST /api/sessions/:id/ask {prompt, timeout, queue, client_id,
+      # request_id}: the message delivered (to a chain's newest link; a
+      # running session queues it as its own turn unless queue is false) and
+      # its answer waited for, all within ASK_MAX_SECONDS. A request_id (a
+      # message's, not a command's) names its turn: a retry whose turn the
+      # session knows waits on it again, nothing sent and no second history
+      # line (SessionAccess::Ask#call). 200 wait_result_json's fields +
+      # session_id (+ asked, the id given, when another link ran it; +
+      # token when the status is timeout: POST …/wait {token} goes on; +
+      # request_id when one was given); 200 {status: command} for a session
+      # command. 404 not_found, 400 ambiguous_id / invalid_ask, 409 busy /
+      # waiting / continuing / owned_by_tui / enqueued_id_conflict (the
+      # same request_id, another prompt), the turn route's delivery
+      # refusals, 503 server_stopping.
       def handle_ask(req, id)
         # One deadline from the request's start: the gate, the continue
         # waits, the Bridge wait and the slice all draw on it.
@@ -100,14 +113,15 @@ module Samagotchi
         outcome = SessionAccess::Ask.new(access, exchange: exchange)
                                     .call(id, prompt: prompt, client_id: client_id, cap: deadline - ask_clock,
                                               cancelled: stopping, **options)
-        record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused)
-        ask_response(id, outcome)
+        rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
+        record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
+        ask_response(id, outcome, request_id: options[:request_id])
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end
 
-      # The ask's body read: [prompt, client_id, {queue:, timeout:}, nil] or
-      # [.., a 400 response].
+      # The ask's body read: [prompt, client_id, {queue:, timeout:,
+      # request_id:}, nil] or [.., a 400 response].
       def ask_request(id, body)
         return [nil, nil, nil, error_response(400, "missing_fields", "prompt is required")] unless body["prompt"].is_a?(String)
 
@@ -128,9 +142,34 @@ module Samagotchi
         client_id = body["client_id"]
         return [nil, nil, nil, error_response(400, "invalid_ask", "client_id is a string")] unless client_id.nil? || client_id.is_a?(String)
 
-        [prompt, ask_sender(client_id, prompt), { queue: queue, timeout: [timeout, WAIT_MAX_SECONDS].min }, nil]
+        request_id, error = ask_request_id(body, prompt)
+        return [nil, nil, nil, error] if error
+
+        options = { queue: queue, timeout: [timeout, WAIT_MAX_SECONDS].min }
+        options[:request_id] = request_id if request_id
+        [prompt, ask_sender(client_id, prompt), options, nil]
       rescue SessionInbox::NoteRejected => e
         [nil, nil, nil, error_response(400, "invalid_prompt", e.message)]
+      end
+
+      # The body's request_id: [nil or it, nil] or [nil, a 400]. A session
+      # command never runs as a turn of that id (the Bridge's command path
+      # takes none), so a retry would run it again: refused. Any line the
+      # worker may run as one, by its shape (COMMAND_SHAPE): chi web can't
+      # see a bundle's commands, which only the worker's registry has.
+      def ask_request_id(body, prompt)
+        request_id = body["request_id"]
+        return [nil, nil] if request_id.nil?
+        unless request_id.is_a?(String) && REQUEST_ID.match?(request_id)
+          return [nil, error_response(400, "invalid_ask", "request_id is 1 to 128 printable ASCII characters")]
+        end
+
+        line = prompt.strip
+        if line.start_with?("!") || COMMAND_SHAPE.match?(line)
+          return [nil, error_response(400, "invalid_ask", "request_id is for messages, not session commands")]
+        end
+
+        [request_id, nil]
       end
 
       # Who asks: the owner (WEB_UNNAMED) unless the body names a sender
@@ -161,8 +200,9 @@ module Samagotchi
         nil
       end
 
-      # The ask's answer for an Ask value.
-      def ask_response(id, outcome)
+      # The ask's answer for an Ask value (+request_id+ echoed when given:
+      # the client sees this chi web used it).
+      def ask_response(id, outcome, request_id: nil)
         case outcome
         when SessionAccess::Ask::Ran then json_response(200, { status: "command", session_id: outcome.session_id })
         when SessionAccess::Ask::Refused then ask_refused(id, outcome)
@@ -173,6 +213,7 @@ module Samagotchi
           json = wait_result_json(result, session_access.parent_strategy(outcome.session_id)).merge(session_id: outcome.session_id)
           json[:asked] = outcome.asked if outcome.asked && outcome.asked != outcome.session_id
           json[:token] = outcome.token if outcome.token
+          json[:request_id] = request_id if request_id
           json_response(200, json)
         end
       end

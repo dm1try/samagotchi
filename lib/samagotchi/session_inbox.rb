@@ -4,6 +4,7 @@ require "fileutils"
 require "json"
 require "time"
 require "securerandom"
+require "digest"
 require_relative "atomic_file"
 require_relative "context_note"
 require_relative "delivery"
@@ -255,6 +256,20 @@ module Samagotchi
     ENQUEUED_ID_UUID = /\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/i
 
     def self.new_enqueued_id = SecureRandom.uuid
+
+    # The enqueued id a client's own key names (an ask's request_id): the
+    # same key always gives the same id, shaped as a UUID v5 (SHA-256's
+    # first 128 bits, the version and variant bits set), so a Bridge keeps
+    # it (ENQUEUED_ID_UUID) and dedupes a retry.
+    # @param key [String]
+    # @return [String]
+    def self.enqueued_id_for(key)
+      bytes = Digest::SHA256.digest(key.to_s).bytes.first(16)
+      bytes[6] = (bytes[6] & 0x0f) | 0x50
+      bytes[8] = (bytes[8] & 0x3f) | 0x80
+      hex = bytes.pack("C*").unpack1("H*")
+      "#{hex[0, 8]}-#{hex[8, 4]}-#{hex[12, 4]}-#{hex[16, 4]}-#{hex[20, 12]}"
+    end
 
     def self.valid_enqueued_id?(id) = id.is_a?(String) && ENQUEUED_ID_UUID.match?(id)
 

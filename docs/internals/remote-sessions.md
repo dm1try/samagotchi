@@ -102,6 +102,14 @@ command, on an idle session with its offer standing and a live worker, is bound 
 instead, the offer's turn id from `ReplyWait.own_turn`, as chi answer follows it; the worker's ack is not read): chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and `McpServer::Tools` reuses `SessionAccess::Ask` / `Exchange` through the MCP server without chi web.
+An ask's `request_id` becomes its turn's enqueued id (`SessionInbox.enqueued_id_for("ask:" + it)`, a UUID v5 shape a
+Bridge keeps): `Ask#call` first reads `prepare_wait(turn: E)`, and a `known_turn` (running, a queued input file, the
+last to end, a reply file, settled, merged) is waited on again with `Target.wait_only(start, requested: E).with(queued:)`, nothing
+sent (`Reply#rebound`, so the route skips the history line), unless E only waits as an input file and no worker runs
+(`Local#waiting_turn?`): then it is sent again with E, which wakes one (the worker runs an id once: `input_taken?`,
+`TurnState#claim_enqueued_id`); else `Exchange#attempt(enqueued_id: E)` carries it to
+`deliver_turn`, and the Bridge's H6 dedupe answers a copy it still remembers with the original ack (409
+`enqueued_id_conflict` for another prompt; a known turn is rebound without a prompt check). A retry on a newer link (a continue) is not deduped.
 The routes: [thin-clients.md](../thin-clients.md); the MCP protocol: [mcp-server.md](../mcp-server.md).
 
 ## One request, end to end

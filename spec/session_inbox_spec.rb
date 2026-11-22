@@ -24,6 +24,18 @@ RSpec.describe Samagotchi::SessionInbox do
     end
   end
 
+  describe ".enqueued_id_for" do
+    it "is stable for one key, different for two, and shaped as a UUID v5 a Bridge keeps" do
+      one = described_class.enqueued_id_for("ask:r1")
+      expect(described_class.enqueued_id_for("ask:r1")).to eq(one)
+      expect(described_class.enqueued_id_for("ask:r2")).not_to eq(one)
+      expect(one).to match(described_class::ENQUEUED_ID_UUID)
+      expect(described_class.valid_enqueued_id?(one)).to be(true)
+      expect(one[14]).to eq("5")
+      expect(one[19]).to match(/\A[89ab]\z/)
+    end
+  end
+
   describe "input files" do
     let(:session_dir) { Samagotchi::Session.session_dir("abc", state_dir: tmpdir) }
     let(:input_dir) { File.join(session_dir, described_class::INPUT_DIR) }

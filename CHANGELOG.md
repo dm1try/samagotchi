@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
   in the prompt twice or was also read. The list is 520 wide always, so opening a row no longer moves the others.
 - The web's working set: a "From the start" row whose memory or AGENTS.md changed since chi was sent it says `stale`,
   and its peek gets a "now" tab with the difference (a stopped session too).
+- A thin client's ask takes an optional `request_id`: the same ask sent again (a retry after a dropped connection)
+  answers the first one's turn instead of queuing it twice.
 
 ### Changed
 

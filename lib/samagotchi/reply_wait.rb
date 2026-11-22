@@ -196,15 +196,18 @@ module Samagotchi
     end
 
     # Whether +turn+ is a turn the caller can wait for: running now, queued
-    # as its own turn, the last one to have ended, or an input a turn's
-    # drain merged (its merge record: the wait follows it to that turn).
+    # as its own turn, the last one to have ended, one that ended with its
+    # reply file (SessionInbox.input_taken?'s evidence) or was settled, or
+    # an input a turn's drain merged (its merge record: the wait follows it
+    # to that turn).
     def known_turn?(session, session_dir:, turn:)
       id = turn.to_s
       return false if id.empty?
 
       running = session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == id
       queued = SessionInbox.waiting_input(session_dir, id) == :turn_end
-      ended = session.last_turn&.enqueued_id == id || !TurnCheckpoint.settled_turn(session_dir, id).nil?
+      ended = session.last_turn&.enqueued_id == id || !SessionInbox.reply_for(session_dir, id).nil? ||
+              !TurnCheckpoint.settled_turn(session_dir, id).nil?
       running || queued || ended || !SessionInbox.merged_into(session_dir, id).nil?
     end
 

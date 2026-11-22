@@ -1047,6 +1047,13 @@ RSpec.describe Samagotchi::ReplyWait do
           expect(described_class.known_turn?(loaded, session_dir: dir, turn: "y2")).to be(false)
         end
 
+        it "names a turn that ended with its reply a known turn, though another turn ended since" do
+          Samagotchi::SessionInbox.write_output(dir, "y3 answer", enqueued_id: "y3")
+          loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          expect(loaded.last_turn&.enqueued_id).not_to eq("y3")
+          expect(described_class.known_turn?(loaded, session_dir: dir, turn: "y3")).to be(true)
+        end
+
         it "never follows a queued input's record (it runs as its own turn)" do
           queue_input("q1")
           base = baseline

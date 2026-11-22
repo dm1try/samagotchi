@@ -92,6 +92,12 @@ module Samagotchi
       # @return [OwnerLock::Owner, nil] the worker or one-turn chi run that owns it
       def owner(id) = SessionManager.session_owner(id, **dir)
 
+      # Whether +turn+ (an enqueued id) waits as an unclaimed input file of
+      # session +id+ (Ask's request_id check: such a turn with no worker
+      # running is delivered again, which wakes one; the worker runs the id
+      # once). This machine's only: Remote never takes a request_id.
+      def waiting_turn?(id, turn) = !SessionInbox.waiting_input(session_dir(id), turn).nil?
+
       # SessionManager.session_rows: the SessionRows chi sessions list
       # prints and chi note --all reaches (chi web's summaries route answers
       # their #to_summary_h).
@@ -196,8 +202,11 @@ module Samagotchi
       # @param bridge [#call, nil] the worker's Bridge client (chi web's
       #   live_bridge_client: POST …/ask delivers as POST …/turn does); nil:
       #   SessionManager's own wait
-      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false, manager: nil, bridge: nil)
-        routing = { manager: manager, bridge: bridge }.compact
+      # @param enqueued_id [String, nil] the turn's id (an ask's request_id's);
+      #   nil: SessionManager mints one
+      def deliver_turn(id, prompt:, client_id:, images:, delivery: nil, follow: false, manager: nil, bridge: nil,
+                       enqueued_id: nil)
+        routing = { manager: manager, bridge: bridge, enqueued_id: enqueued_id }.compact
         SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
                                         follow: follow, **routing, **dir)
       end
