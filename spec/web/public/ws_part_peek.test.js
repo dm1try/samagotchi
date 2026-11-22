@@ -54,7 +54,9 @@ function page({ states = null } = {}) {
     return Promise.resolve((opts.now ? NOW_ANSWERS[key] : null) || ANSWERS[key] || { part: {}, note: "?" });
   };
   const items = [{ kind: "file", key: "/p/a.rb", state: "live", tokens: 100 }, { kind: "memory", key: "style", scope: "system", state: "live", tokens: 10 }];
-  const getWorkingSet = states ? () => Promise.resolve({ items, at: 4, running: false, parts: states }) : undefined;
+  // The GET's states, changed by a test (null: no field).
+  const gets = { states };
+  const getWorkingSet = states ? () => Promise.resolve({ items, at: 4, running: false, ...(gets.states ? { parts: gets.states } : {}) }) : undefined;
   const getItem = (_id, kind, key) => Promise.resolve({ kind, key, events: [{ tool_id: "t5", op: "memory_read", step: 1, sent: true, text: "be brief" }] });
   const preview = createWorkingSetPreview({ centerEl: center, session: () => "s1", state: () => ({ dir: "/p" }), getItem, getPart });
   const current = { preloadedMemories: [], mutedMemories: [], usedMemories: [], dir: "/p", promptParts: PARTS, ctxTokens: 30000, ctxWindow: 128000 };
@@ -74,7 +76,7 @@ function page({ states = null } = {}) {
     ws.popover.close(); center.remove(); historyEl.remove(); infoEl.remove(); pop.remove(); setTimelineWayIn(false);
     window.localStorage.removeItem("chi_ws_sections_folded:s1");
   };
-  return { ws, pop, asked, start, toggleOf, cleanup };
+  return { ws, pop, asked, start, toggleOf, cleanup, current, gets };
 }
 
 test("partPath: the part route with the key encoded whole", () => {
@@ -241,13 +243,67 @@ test("no GET parts: no stale word, no now tab (an event's set carries none)", as
   } finally { p.cleanup(); }
 });
 
-test("an event's set (no parts) after the GET's: stale goes until the list asks again", async () => {
+test("an event's set (no parts) keeps the GET's states: stale stays, an open now tab stays on its diff", async () => {
   const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale" }] });
   try {
     await tick();
-    assert.equal(p.start().querySelectorAll(".ws-pstale").length, 1);
+    p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+    await tick();
+    assert.ok(p.start().querySelector(".ws-part-peek .diff"));
     p.ws.update({ items: [{ kind: "file", key: "/p/a.rb", state: "live", tokens: 100 }], at: 5 });
     await tick();
+    assert.equal(p.start().querySelectorAll(".ws-pstale").length, 1);
+    assert.deepEqual([...p.start().querySelectorAll(".ws-tab")].map((t) => t.textContent), ["in the prompt · ~3.4k", "now · changed"]);
+    assert.ok(p.start().querySelector(".ws-part-peek .diff"), "not Loading…");
+  } finally { p.cleanup(); }
+});
+
+test("a rebuilt prompt asks the GET again: none stale now, the open now tab gives way to the part, never stuck loading", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale" }] });
+  try {
+    await tick();
+    p.ws.sessionChanged(); // the parts as built so far
+    p.toggleOf('.ws-row.part[data-ws-part^="agents"]').click();
+    await tick();
+    assert.ok(p.start().querySelector(".ws-part-peek .diff"));
+    p.gets.states = null;
+    p.current.promptParts = PARTS.map((part) => ({ ...part, head: "rebuilt" }));
+    p.ws.sessionChanged();
+    await tick();
+    await tick();
     assert.equal(p.start().querySelectorAll(".ws-pstale").length, 0);
+    assert.equal(p.start().querySelectorAll(".ws-tab").length, 0);
+    const body = p.start().querySelector(".ws-part-peek").textContent;
+    assert.doesNotMatch(body, /Loading…/);
+    assert.match(body, /Widgets now\./);
+  } finally { p.cleanup(); }
+});
+
+test("a now tab whose answer has no source now says so, never the sent text", async () => {
+  const p = page({ states: [{ key: "preloads:style@system", state: "stale" }] });
+  NOW_ANSWERS["preloads:style@system"] = { part: PARTS[5], sent: { lead: "this memory is required …\n", text: "be brief" } };
+  try {
+    await tick();
+    p.toggleOf('[data-ws-id="memory:style"]').click();
+    await tick();
+    [...p.start().querySelectorAll(".ws-tab")].find((t) => t.textContent === "now · changed").click();
+    await tick();
+    const body = p.start().querySelector(".ws-part-peek").textContent;
+    assert.match(body, /Couldn't fetch its source now\./);
+    assert.doesNotMatch(body, /be brief/);
+  } finally {
+    NOW_ANSWERS["preloads:style@system"] = { part: PARTS[5], sent: { lead: "this memory is required …\n", text: "be brief" }, now: { text: null, diff: null, gone: true } };
+    p.cleanup();
+  }
+});
+
+test("a GET an event overtook still gives its states (the event's set kept, the GET's parts on it)", async () => {
+  const p = page({ states: [{ key: "agents:/p/AGENTS.md", state: "stale" }] });
+  try {
+    // The list's open asked the GET; an event lands before it answers.
+    p.ws.update({ items: [{ kind: "file", key: "/p/a.rb", state: "stale", tokens: 100 }], at: 9 });
+    await tick();
+    assert.equal(p.start().querySelectorAll(".ws-pstale").length, 1);
+    assert.ok(p.pop.querySelector('.ws-sec.read .ws-row.stale[data-ws-id="file:/p/a.rb"]'), "the event's set kept");
   } finally { p.cleanup(); }
 });

@@ -9,7 +9,7 @@
 // view ignores the new peek's part and still finds PEEK_WIDTH. Goes at the next release, with PEEK_WIDTH (kept
 // for an older cached view in ws_peek.js). Build 2's stale states: chi web's GET's parts reach the start rows
 // through ws_sections.js (an option, no new export); 0.183.0's ws_sections.js and stream_handlers.js beside
-// this view say no stale and throw nothing.
+// this view say no stale and throw nothing; with this page's modules an event (no parts) keeps the GET's states.
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -112,13 +112,13 @@ test("this view with 0.183.0's ws_sections.js and stream_handlers.js: a GET's st
   } finally { v.cleanup(); }
 });
 
-test("this page's modules: the GET's stale parts show stale; an event through the handler (no parts) clears it", async () => {
+test("this page's modules: the GET's stale parts show stale; an event through the handler (no parts) keeps them", async () => {
   const modules = await mixedPage([]);
   const v = open(modules, "m5", { states: [{ key: "identity:identity@system", state: "stale" }] });
   try {
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 1);
     handlersOf(modules[3], v.ws).working_set_updated({ items: [], at: 3 });
-    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 0);
+    assert.equal(v.pop.querySelectorAll(".ws-pstale").length, 1);
   } finally { v.cleanup(); }
 });
