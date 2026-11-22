@@ -179,15 +179,18 @@ module Samagotchi
     # its parts, notes and index from one object (Engine#system_prompt): a
     # #reset! on another thread may land right after, and the readers
     # below (#prompt_parts…) would then answer nothing.
+    # @param record [Boolean] whether this build becomes the prompt's last-build record
     # @return [Built]
-    def built_for(chat: false, thinking: nil, layers: [])
+    def built_for(chat: false, thinking: nil, layers: [], record: true)
       key = [chat, thinking, layers]
       cache = @cache
       built = cache[key] || (cache[key] = build_prompt(chat: chat, thinking: thinking, layers: layers))
       @memory_index = built.memory_index
-      @last = built
-      @last_prompt_memory_names = built.memory_names
-      @last_prompt_memories = built.prompt_memories
+      if record
+        @last = built
+        @last_prompt_memory_names = built.memory_names
+        @last_prompt_memories = built.prompt_memories
+      end
       built
     end
 
