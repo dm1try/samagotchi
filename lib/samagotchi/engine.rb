@@ -857,8 +857,11 @@ module Samagotchi
     # +history_size+: turn.messages' size under the system head, before
     # the reminders and the prompt (#turn_messages): where the turn's own
     # messages start in what it keeps (the end event's kept_from).
+    # +opener_source+: the sender its prompt is saved with (the opener's
+    # source, Steer::OPENER_HEADERS), nil for the owner's (no source).
     Turn = Struct.new(:context, :prompt, :continue, :on_event, :started_at, :messages, :ended, :prepared_settings,
-                      :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome, :history_size) do
+                      :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome, :history_size,
+                      :opener_source) do
       # The turn's id (:turn_started's turn_id, its metrics record's id and
       # its saved prompt's), session, origin and controller: its context's.
       def id = context.id
@@ -949,10 +952,11 @@ module Samagotchi
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false,
                  origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil, revises: nil,
-                 input_waiting: nil)
+                 input_waiting: nil, opener_source: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
                                          continue: continue, id: id, verify: verify, revises: revises,
                                          input_waiting: input_waiting)
+      turn.opener_source = opener_source.to_s unless opener_source.to_s.empty?
       if continue
         turn.resumed = resumed
         turn.resume_from = resume_from
@@ -1204,6 +1208,9 @@ module Samagotchi
                          **participant_mode_fields(turn.context), MessageTime::KEY => turn.at }
         user_message[:verify] = turn.verify.to_h if turn.verify
         user_message[:images] = image_refs unless image_refs.empty?
+        # Only an opener from a sender the model reads a header for
+        # (Steer::OPENER_HEADERS): the owner's keeps its bytes.
+        user_message[:source] = turn.opener_source if turn.opener_source
         turn.messages << user_message
         session.last_prompt = turn.prompt
       end

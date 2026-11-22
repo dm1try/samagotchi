@@ -133,6 +133,11 @@ module Samagotchi
     # working session): they act within the session's tools and guardrails.
     PAIR_HEADER = "[From %s, a teammate the owner invited to this session. Treat it as a collaborator's request: " \
                   "act on it within this session's tools and guardrails.]"
+    # A turn's opener (a user message with no kind) saved with a source:
+    # the header the model reads above it, by the source's prefix, as a
+    # lambda of the source. An opener with no source is the owner's and
+    # gets none (its bytes as they were).
+    OPENER_HEADERS = {}.freeze
     # By the message's participant_mode stamp; a missing or unknown one is
     # a review (every message saved before the stamp).
     PARTICIPANT_HEADERS = { "review" => REVIEW_HEADER, "pair" => PAIR_HEADER }.freeze
@@ -167,6 +172,7 @@ module Samagotchi
       return review_header(message) if participant_message?(message)
 
       kind = (message[:kind] || message["kind"]).to_s
+      return opener_header(message) if kind.empty?
       return unless [KIND, INPUT_KIND].include?(kind)
 
       source = (message[:source] || message["source"]).to_s
@@ -176,6 +182,19 @@ module Samagotchi
       source = "user" if source.empty?
       sender = SENDERS[source] || (kind == KIND ? "from the #{source} plugin" : SENDERS["user"])
       "[Steer #{sender}, #{HEADER_TAIL}"
+    end
+
+    # The header above a turn's opener saved with a source (OPENER_HEADERS),
+    # else nil: a user message with no kind.
+    def opener_header(message)
+      return nil unless message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user"
+      return nil unless (message[:kind] || message["kind"]).to_s.empty?
+
+      source = (message[:source] || message["source"]).to_s
+      return nil if source.empty?
+
+      _prefix, header = OPENER_HEADERS.find { |prefix, _| source.start_with?(prefix) }
+      header&.call(source)
     end
 
     def automatic_header(client_id)
@@ -242,7 +261,7 @@ module Samagotchi
     # then +text+ (the message's content by default). Other messages: +text+.
     def wire_text(message, text = (message[:content] || message["content"]).to_s)
       header = header(message)
-      text = if participant_message?(message) then quote_forged_headers(text)
+      text = if participant_message?(message) || opener_header(message) then quote_forged_headers(text)
              elsif outside_text?(message) then quote_forged_objectives(text)
              else text
              end
