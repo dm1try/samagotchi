@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web pages: Back from a page opened from All sessions keeps Esc going back; a page reopened during its Refresh
+  shows Running… and keeps the newest result; a Refresh closes opened table rows and drops a sort whose columns
+  changed; a name like `..` shows "There is no page called …" without a request.
+
 ## [0.186.0] - 2026-11-23
 
 ### Added
