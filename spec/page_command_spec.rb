@@ -131,6 +131,17 @@ RSpec.describe Samagotchi::PageCommand do
                 "usage   Usage, last 7 days  ran N s ago, changed"])
     end
 
+    it "keeps a title with a newline or a tab on its row" do
+      script("multi", "page(\"Two\\nlines\\tand a tab\") { }\n")
+      expect(run("run", "multi")).to eq(0)
+      out.truncate(0)
+      out.rewind
+
+      expect(run("list")).to eq(0)
+      expect(out.string.lines.size).to eq(1)
+      expect(out.string).to match(/\Amulti  Two lines and a tab  ran \d+ s ago\n\z/)
+    end
+
     it "lists as JSON without the blocks" do
       script("draft", "page('Draft') { }\n")
       expect(run("list", "--format", "json")).to eq(0)

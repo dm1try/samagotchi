@@ -191,7 +191,8 @@ module Samagotchi
 
     def print_list(pages)
       table = pages.map do |page|
-        title = page.state == :never_ran ? "(never ran)" : page.title.to_s
+        # A control character (a newline, a tab) in a title would break the row.
+        title = page.state == :never_ran ? "(never ran)" : page.title.to_s.gsub(/[[:cntrl:]]+/, " ")
         [page.name, title, [status(page), ("changed" if page.changed?)].compact.join(", ")]
       end
       widths = table.transpose.map { |column| column.map(&:length).max }
