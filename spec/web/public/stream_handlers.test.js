@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createStreamHandlers } from "../../../lib/samagotchi/web/public/stream_handlers.js";
 import { createGapClock } from "../../../lib/samagotchi/web/public/time_gaps.js";
 import { createSessionStore } from "../../../lib/samagotchi/web/public/session_store.js";
+import { elementOf, noteBubbleTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
 
 const ME = "tab-me";
 
@@ -655,4 +656,15 @@ test("a peer's note, send and command read the peers again; an ordinary note or 
   await handlers.turn_completed({ type: "turn_completed", turn_id: "T1" });
   assert.equal(page.calls.filter((c) => c[0] === "peers.touch").length, 1);
   assert.equal(page.calls.filter((c) => c[0] === "peers.refresh").length, 2);
+});
+
+test("a wake's context_added draws its note as the turn's opening, as a reload does; a plain one doesn't", () => {
+  const { page, handlers } = fakePage();
+  handlers.context_added({ type: "context_added", label: "context todo", text: "Updated", turn_start: true, turn_id: "T-wake" });
+  handlers.context_added({ type: "context_added", label: "context ci", text: "n" });
+  const [wake, plain] = page.calls.filter((c) => c[0] === "addNoteBubble").map((c) => elementOf(noteBubbleTemplate(c[1])));
+  assert.ok(wake.matches(".bubble.note.turn-start"));
+  assert.equal(wake.dataset.openingId, "T-wake");
+  assert.ok(!plain.matches(".turn-start"));
+  assert.equal(plain.dataset.openingId, undefined);
 });

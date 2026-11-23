@@ -49,7 +49,8 @@ module Samagotchi
           announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
                      label: ContextNote.label_of(message), from_session: note[:from_session],
                      from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
-                     created_at: note[:created_at], objectives: entry, peer: note[:peer] }.compact)
+                     created_at: note[:created_at], objectives: entry, peer: note[:peer],
+                     **wake_marks(message) }.compact)
           announce_objectives(session) if entry
           @objectives_stage.note(session, note, recorder: system_one_recorder, state_dir: session_state_dir)
           message
@@ -126,6 +127,16 @@ module Samagotchi
       # @return [Array<Hash>]
       def clone_messages(messages)
         Array(messages).map(&:dup)
+      end
+
+      private
+
+      # A wake note's opening marks for its :context_added (a web page draws
+      # it as the turn's opening live, as a reload does); a plain note's none.
+      def wake_marks(message)
+        return {} unless message[:turn_start]
+
+        { turn_start: true, turn_id: message[:turn_id] }
       end
     end
   end

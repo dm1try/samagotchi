@@ -68,6 +68,15 @@ RSpec.describe Samagotchi::Engine, "context notes" do
       expect(events.find { |e| e[:type] == :context_added }).to include(peer: peer, context_source: "claude-outbox")
     end
 
+    it "carries a wake note's opening marks on its :context_added; a plain note's has neither" do
+      engine.add_context_note(session, note.merge(note_id: "wake", turn_start: true, turn_id: "T-wake"))
+      engine.add_context_note(session, note.merge(note_id: "plain", turn_id: "T-other"))
+
+      wake, plain = events.select { |e| e[:type] == :context_added }
+      expect(wake).to include(note_id: "wake", turn_start: true, turn_id: "T-wake")
+      expect(plain).not_to include(:turn_start, :turn_id)
+    end
+
     it "skips a note the conversation already holds (a re-read after a crash)" do
       engine.add_context_note(session, note)
       expect(engine.add_context_note(session, note)).to be_nil
