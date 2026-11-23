@@ -147,6 +147,38 @@ test("Refresh runs once while it runs, then redraws from the answer, with the sc
   assert.deepEqual(h.events, [["copy", "line 4: boom\n\nlast words"]]);
 });
 
+test("reopening a refreshing page stays running and ignores a GET older than the run answer", async () => {
+  let reads = 0;
+  let resolveLateRead;
+  const h = harness({
+    "GET /api/pages/usage": () => {
+      reads += 1;
+      if (reads < 3) return page({ title: "Stored" });
+      return new Promise((resolve) => { resolveLateRead = resolve; });
+    },
+    "POST /api/pages/usage/run": "hold",
+  });
+  h.view.open("usage");
+  await tick();
+  h.$(".pg-refresh").click();
+
+  h.view.close();
+  h.view.open("usage");
+  await tick();
+  assert.equal(h.text(".pg-refresh"), "Running…");
+  assert.equal(h.$(".pg-refresh").disabled, true);
+
+  h.view.close();
+  h.view.open("usage");
+  const fresh = page({ title: "Run answer" });
+  h.pending.get("POST /api/pages/usage/run").resolve(fresh);
+  await tick();
+  assert.equal(h.text(".pg-title"), "Run answer");
+  resolveLateRead(page({ title: "Older stored result" }));
+  await tick();
+  assert.equal(h.text(".pg-title"), "Run answer");
+});
+
 test("Refresh's refusals: already running is a toast; a removed page says so and goes back", async () => {
   const busy = harness({ "GET /api/pages/usage": page(), "POST /api/pages/usage/run": apiError("page_busy", "page usage is already running", 409) });
   busy.view.open("usage");
