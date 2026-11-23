@@ -1,0 +1,5539 @@
+{
+  "r1-deepseek-picks-plan.1.yml": {
+    "type": "picks",
+    "data": null,
+    "lenient": false,
+    "error": "row D4: recommended \"deny project, allow system\" isn't one of its options"
+  },
+  "r1-deepseek-picks-plan.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch sessions — four decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "The scratch session file when its worker exits",
+          "options": [
+            "keep 1 h",
+            "delete at exit"
+          ],
+          "recommended": "keep 1 h",
+          "why": "recovering the lost answer needs a grace window"
+        },
+        {
+          "id": "D2",
+          "text": "Scratch sessions in chi web's session list",
+          "options": [
+            "show with scratch mark",
+            "hide"
+          ],
+          "recommended": "show with scratch mark",
+          "why": "a recoverable answer is useless if it isn't findable"
+        },
+        {
+          "id": "D3",
+          "text": "`chi --resume` on a scratch session",
+          "options": [
+            "allow while the file exists",
+            "refuse"
+          ],
+          "recommended": "allow while the file exists",
+          "why": "same recovery path, and the 1 h expiry self-limits it"
+        },
+        {
+          "id": "D4",
+          "text": "Memory writes from a scratch session",
+          "options": [
+            "system only",
+            "allow both scopes",
+            "deny all"
+          ],
+          "recommended": "system only",
+          "why": "throwaway questions shouldn't leave project notes"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-picks-plan.3.yml": {
+    "type": "picks",
+    "data": null,
+    "lenient": true,
+    "error": "row D4: recommended \"deny project, allow system\" isn't one of its options"
+  },
+  "r1-deepseek-picks-review.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with each finding",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Push fires while the owner's tab is focused and visible",
+          "options": [
+            "SW check",
+            "server hint",
+            "skip"
+          ],
+          "recommended": "SW check",
+          "why": "the service worker can check clients.matchAll for a visible, focused client and skip show()"
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml per call instead of the loaded Config",
+          "options": [
+            "inject config",
+            "memoize",
+            "skip"
+          ],
+          "recommended": "inject config",
+          "why": "a per-call file read also drifts from env overrides and breaks stubbing in specs"
+        },
+        {
+          "id": "3",
+          "text": "Push title carries the raw tool command (may hold a secret)",
+          "options": [
+            "tool name only",
+            "scrub command",
+            "skip"
+          ],
+          "recommended": "tool name only",
+          "why": "push text is lockscreen-visible; the detail belongs in the tab, not the notification"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "no-subs spec",
+            "plus 410 prune",
+            "skip"
+          ],
+          "recommended": "plus 410 prune",
+          "why": "a dead subscription (404/410) is the likelier real case, and it must not raise"
+        },
+        {
+          "id": "5",
+          "text": "Name says waiting, but it's also called for questions",
+          "options": [
+            "rename",
+            "keep + document",
+            "skip"
+          ],
+          "recommended": "rename",
+          "why": "the harness already has a name for this state — requires_action"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-deepseek-picks-review.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with each item",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Push fires even when the owner's tab is focused",
+          "options": [
+            "gate on visibility",
+            "ask user first",
+            "accept for now"
+          ],
+          "recommended": "gate on visibility",
+          "why": "in-app card plus OS banner is a duplicate; needs a client signal"
+        },
+        {
+          "id": "2",
+          "text": "config.yml re-read on every call instead of loaded Config",
+          "options": [
+            "inject Config",
+            "memoize",
+            "leave"
+          ],
+          "recommended": "inject Config",
+          "why": "file read can diverge from env overrides; disk hit per turn"
+        },
+        {
+          "id": "3",
+          "text": "Push title embeds the full tool command (may hold a secret)",
+          "options": [
+            "redact to tool label",
+            "truncate only",
+            "leave"
+          ],
+          "recommended": "redact to tool label",
+          "why": "truncation still leaks the leading token; label is safe and stable"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "add spec",
+            "skip"
+          ],
+          "recommended": "add spec",
+          "why": "assert no-op and no raise, and that config is not read"
+        },
+        {
+          "id": "5",
+          "text": "notify_waiting also covers questions",
+          "options": [
+            "rename to requires_action",
+            "keep name"
+          ],
+          "recommended": "rename to requires_action",
+          "why": "matches the existing turn state, and covers both cases"
+        },
+        {
+          "id": "6",
+          "text": "Check — expired endpoints (410/404) never pruned",
+          "options": [
+            "prune on 410",
+            "later",
+            "skip"
+          ],
+          "recommended": "prune on 410",
+          "why": "stale rows waste a request per notify and can mask real failures"
+        },
+        {
+          "id": "7",
+          "text": "Check — a re-notify stacks duplicate pushes for one turn",
+          "options": [
+            "collapse via tag",
+            "dedupe server-side",
+            "skip"
+          ],
+          "recommended": "collapse via tag",
+          "why": "same tag replaces the banner instead of piling up"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-deepseek-picks-review.3.yml": {
+    "type": "picks",
+    "data": null,
+    "lenient": false,
+    "error": "row 4: recommended \"add spec, verify no-op, then spec\" isn't one of its options"
+  },
+  "r1-deepseek-walk-decision-card.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A decision card shows up",
+      "actors": [
+        "user",
+        "chi",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "chi",
+          "does": "works in a session with an active objective",
+          "behind": "without an objective the bundle never acts"
+        },
+        {
+          "id": "s2",
+          "actor": "chi",
+          "does": "the owner's turn completes",
+          "behind": "stopped, participant and --non-interactive turns do not count"
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "checks the gate on the prose",
+          "behind": "at least 1200 chars, and a ? ending a word in the last 300 chars; code left out of both"
+        },
+        {
+          "id": "s4",
+          "actor": "chi",
+          "does": "asks a cheap model on a side thread (ctx.ask_model)",
+          "behind": "for a short summary, the question, and the objective it concerns"
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "sees": "nothing yet — the turn's end does not wait for the side request"
+        },
+        {
+          "id": "s6",
+          "actor": "model",
+          "does": "answers the side request",
+          "cases": [
+            {
+              "when": "it says nothing is asked, or leaves out the summary or the question",
+              "goto": "s9"
+            },
+            {
+              "when": "the request fails",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "sees": "a card with the summary, the question and the objective",
+          "behind": "no buttons — it lives in cards.json, so the turn's request stays byte for byte the same"
+        },
+        {
+          "id": "s8",
+          "actor": "user",
+          "does": "types the answer in the composer and sends the next turn",
+          "behind": "a pending side request is cancelled, an undelivered card dropped, and the shown card folds to \"Asked: …\""
+        },
+        {
+          "id": "s9",
+          "actor": "chi",
+          "does": "shows nothing",
+          "behind": "a failed request is only logged (no_card)"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-walk-decision-card.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a decision card shows up",
+      "actors": [
+        "user",
+        "chi",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "asks something in a session with an active objective",
+          "behind": "the turn runs; the bundle only acts when an objective is active"
+        },
+        {
+          "id": "s2",
+          "actor": "chi",
+          "does": "finishes an owner's turn",
+          "behind": "gate check — answer ≥ 1200 chars, a question mark ending a word in the last 300 chars of prose (code left out)",
+          "cases": [
+            {
+              "when": "the turn was stopped, a participant's, or started with --non-interactive",
+              "goto": "s8"
+            },
+            {
+              "when": "the answer is too short, or no question mark in the tail",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "starts a side request on a thread",
+          "behind": "ctx.ask_model asks a cheap model for a short summary, the question, and the objective it concerns",
+          "cases": [
+            {
+              "when": "a new turn starts before the reply arrives",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "model",
+          "does": "replies with the summary and the question",
+          "cases": [
+            {
+              "when": "it says the answer asks nothing, or drops the summary or the question",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "chi",
+          "does": "writes the card into cards.json",
+          "sees": "a card above the composer with the summary and question — no buttons"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "types the answer in the composer",
+          "behind": "the card never entered the conversation"
+        },
+        {
+          "id": "s7",
+          "actor": "chi",
+          "does": "starts the next turn",
+          "sees": "the card folds to one line — \"Asked: …\"",
+          "behind": "the outgoing request is byte for byte the same as it would have been"
+        },
+        {
+          "id": "s8",
+          "actor": "chi",
+          "does": "shows nothing",
+          "sees": "no card, no notice",
+          "behind": "a failed request is only logged as no_card; the turn's end never waited for the side request"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-walk-decision-card.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A decision card appears",
+      "actors": [
+        "user",
+        "chi",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "asks something in a session with an active objective",
+          "behind": "the session has an objective, so the bundle is active"
+        },
+        {
+          "id": "s2",
+          "actor": "chi",
+          "does": "finishes its turn normally",
+          "sees": "the full answer",
+          "behind": "gate check — >= 1200 chars, and a \"?\" ends a word in the last 300 chars of prose (code excluded)",
+          "cases": [
+            {
+              "when": "turn was stopped, or was a participant's, or --non-interactive",
+              "goto": "s7"
+            },
+            {
+              "when": "too short, or no question mark",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "fires a side request on a thread",
+          "behind": "ctx.ask_model asks a cheap model for a short summary, the question, and the objective it concerns"
+        },
+        {
+          "id": "s4",
+          "actor": "chi",
+          "does": "ends the turn without waiting for that answer",
+          "sees": "the normal reply, no card yet",
+          "behind": "a new turn cancels the request; a card still to come is dropped",
+          "cases": [
+            {
+              "when": "the model reports no question, or omits summary/question",
+              "goto": "s7"
+            },
+            {
+              "when": "the request fails",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "does": "reads the card",
+          "sees": "a decision card with no buttons — the composer is the way to answer",
+          "behind": "written to cards.json only; nothing enters the conversation"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "starts the next turn",
+          "sees": "the card folds down to a line \"Asked: …\"",
+          "behind": "the next request is byte for byte identical to what it would have been"
+        },
+        {
+          "id": "s7",
+          "actor": "chi",
+          "does": "no card is shown"
+        },
+        {
+          "id": "s8",
+          "actor": "chi",
+          "does": "logs no_card and says nothing",
+          "sees": "no notice, no card"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-walk-reconnect.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab reconnects to a running session",
+      "actors": [
+        "user",
+        "tab",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "laptop sleeps, or the wifi drops",
+          "sees": "a \"reconnecting\" mark on the page",
+          "behind": "the tab's SSE stream (GET /events) drops"
+        },
+        {
+          "id": "s2",
+          "actor": "tab",
+          "does": "network returns and the stream reconnects",
+          "behind": "it sends GET /events with Last-Event-ID: N"
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "looks up N in its replay buffer",
+          "cases": [
+            {
+              "when": "N is still in the buffer",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N, then resumes the live stream"
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "does": "keeps watching the turn",
+          "sees": "the missed steps appear, in order, and the turn carries on"
+        },
+        {
+          "id": "s6",
+          "actor": "tab",
+          "does": "handles the `reset` event the bridge sends",
+          "behind": "re-reads the turn snapshot (TurnAccumulator) via GET /api/sessions/:id, redraws the turn; open cards come back from CardStore",
+          "cases": [
+            {
+              "when": "the worker had exited meanwhile (idle exit after session.idle_exit_minutes)",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "sees the session as not running, then sends a new prompt",
+          "sees": "the session marked not running",
+          "behind": "the new prompt starts the worker again"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-walk-reconnect.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab reconnects to a running session",
+      "actors": [
+        "user",
+        "page",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "laptop sleeps or Wi-Fi drops mid-turn",
+          "sees": "the page shows a \"reconnecting\" mark",
+          "behind": "the tab keeps retrying GET /events with Last-Event-ID: N"
+        },
+        {
+          "id": "s2",
+          "actor": "bridge",
+          "does": "gets the reconnect with Last-Event-ID: N",
+          "cases": [
+            {
+              "when": "N is still in the replay buffer",
+              "goto": "s3"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s4"
+            },
+            {
+              "when": "the worker exited meanwhile (idle exit)",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "replays the events after N, then the live stream continues",
+          "sees": "the missed steps appear, the turn goes on as normal"
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "sends a reset event",
+          "behind": "N fell out of the buffer, so replay is not possible"
+        },
+        {
+          "id": "s5",
+          "actor": "page",
+          "does": "re-reads the turn snapshot (TurnAccumulator) via GET /api/sessions/:id and redraws the turn",
+          "sees": "the turn is back in full, no missed steps",
+          "behind": "open cards come back from CardStore"
+        },
+        {
+          "id": "s6",
+          "actor": "page",
+          "does": "shows the session as not running",
+          "sees": "the session marked as not running",
+          "behind": "reconciliation (replay or reset) still runs first"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "types a new prompt",
+          "sees": "the session running again",
+          "behind": "the new prompt starts the worker again"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-walk-reconnect.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses a session and comes back",
+      "actors": [
+        "user",
+        "web",
+        "worker"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "closes the laptop / the network drops",
+          "sees": "the page shows a \"reconnecting\" mark",
+          "behind": "the tab's SSE stream (GET /events) to the worker's Bridge dies"
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "reconnects the stream",
+          "behind": "sends GET /events with Last-Event-ID: N",
+          "cases": [
+            {
+              "when": "N is still in the Bridge's replay buffer",
+              "goto": "s3"
+            },
+            {
+              "when": "N is too old and the buffer no longer holds it",
+              "goto": "s4"
+            },
+            {
+              "when": "the worker exited meanwhile (idle exit after session.idle_exit_minutes)",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "worker",
+          "does": "replays the events after N, then keeps streaming live",
+          "sees": "the missed steps appear in the turn"
+        },
+        {
+          "id": "s4",
+          "actor": "web",
+          "does": "receives a reset event, then re-reads the turn snapshot",
+          "sees": "the turn is redrawn, open cards come back",
+          "behind": "GET /api/sessions/:id for the TurnAccumulator, open cards from CardStore"
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "does": "types a new prompt",
+          "sees": "the page says the session is not running, then the worker starts again"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-deepseek-walk-review.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "Review with a participant, end to end",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "behind": "ReviewStart opens a review session; Guardrails::ReviewPaths vets the subject"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share`",
+          "behind": "a grant is made — a chp_ token, scoped to that one session, stored only as a digest"
+        },
+        {
+          "id": "s3",
+          "actor": "owner",
+          "does": "sends the link to the teammate",
+          "sees": "the token in the link (the only time it's readable)"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes — nothing else"
+        },
+        {
+          "id": "s5",
+          "actor": "participant",
+          "does": "writes a message in the session",
+          "behind": "it runs as a read-only review turn; Guardrails::ReviewBoundary denies any write",
+          "cases": [
+            {
+              "when": "the owner revoked the grant",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "agent",
+          "does": "answers in the review turn",
+          "sees": "proposed changes, described as text — nothing applied"
+        },
+        {
+          "id": "s7",
+          "actor": "participant",
+          "does": "replies; the discussion continues",
+          "behind": "still read-only on both sides"
+        },
+        {
+          "id": "s8",
+          "actor": "owner",
+          "does": "watches the conversation, then presses Apply",
+          "behind": "ReviewApply runs as the owner's own turn and makes the changes"
+        },
+        {
+          "id": "s9",
+          "actor": "participant",
+          "does": "retries the link after revocation",
+          "sees": "the link no longer works"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-deepseek-walk-review.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "behind": "ReviewStart opens a review session; Guardrails::ReviewPaths vets the subject"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` and sends the link over",
+          "sees": "a single chp_ link",
+          "behind": "a grant is made for one session; only its digest is stored"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes, nothing else"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "writes a message in the thread",
+          "sees": "the agent answers with proposed changes as text",
+          "behind": "each message is a read-only review turn; Guardrails::ReviewBoundary denies any write"
+        },
+        {
+          "id": "s5",
+          "actor": "owner",
+          "does": "watches the conversation, then presses Apply",
+          "sees": "the proposed changes are made",
+          "behind": "ReviewApply runs as the owner's own turn"
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "revokes the grant whenever they want",
+          "sees": "the link stops working"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-deepseek-walk-review.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant, end to end",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session is open",
+          "behind": "ReviewStart starts the session; Guardrails::ReviewPaths vets the subject paths"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share`",
+          "sees": "a link to hand to the participant",
+          "behind": "creates a grant — a chp_ token bound to that one session, stored only as a digest"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes, nothing else",
+          "behind": "the presented token is checked against the stored digest"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "asks a question in the thread",
+          "behind": "the turn runs read-only; Guardrails::ReviewBoundary denies any write",
+          "cases": [
+            {
+              "when": "the turn tries to write anyway",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "agent",
+          "does": "answers and proposes the change as text",
+          "sees": "a proposal in the conversation, not an applied edit"
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "reads the thread, then presses Apply",
+          "sees": "the change lands",
+          "behind": "ReviewApply runs as the owner's own turn — the owner is the one who writes"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "revokes the grant whenever they like",
+          "sees": "the link stops working",
+          "behind": "the digest is invalidated; the grant covers one session regardless"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-picks-plan.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch sessions - open decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "When the worker exits: A delete the file, B keep it 1 h",
+          "options": [
+            "A",
+            "B"
+          ],
+          "recommended": "B",
+          "why": "A would not fix the lost-answer complaint"
+        },
+        {
+          "id": "D2",
+          "text": "Web list: A hide scratch sessions, B show with a scratch mark",
+          "options": [
+            "A",
+            "B"
+          ],
+          "recommended": "B",
+          "why": "users need to find the session again; the mark keeps it distinct"
+        },
+        {
+          "id": "D3",
+          "text": "chi --resume: A refuse, B allow while the file exists",
+          "options": [
+            "A",
+            "B"
+          ],
+          "recommended": "B",
+          "why": "matches D1; otherwise the kept file can't be reopened"
+        },
+        {
+          "id": "D4",
+          "text": "Memory writes: A allow all, B deny project scope, allow system",
+          "options": [
+            "A",
+            "B"
+          ],
+          "recommended": "B",
+          "why": "throwaway sessions shouldn't add to a repo's shared project notes"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-picks-plan.2.yml": {
+    "type": "picks",
+    "data": null,
+    "lenient": false,
+    "error": "row D4: recommended \"B deny project, allow system\" isn't one of its options"
+  },
+  "r1-sonnet-picks-plan.3.yml": {
+    "type": "picks",
+    "data": null,
+    "lenient": false,
+    "error": "row D4: recommended \"B deny project, allow system\" isn't one of its options"
+  },
+  "r1-sonnet-picks-review.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with the findings",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Push is sent even when the owner's tab is focused and visible",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "a push on top of a card already on screen is noise; skip it if a visible tab is connected"
+        },
+        {
+          "id": "2",
+          "text": "config.yml is read on every call instead of the loaded Config",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "it bypasses overrides and defaults and adds file I/O to each notification"
+        },
+        {
+          "id": "3",
+          "text": "Push title includes the full tool command, which may hold a secret",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "use a fixed title like \"Approval needed\" plus the tool name, and keep the command out of the payload"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "it's the most common case and should send nothing and not raise"
+        },
+        {
+          "id": "5",
+          "text": "\"notify_waiting\" is also called for questions",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "rename it to something like notify_attention_needed while there are few callers, or document that it covers both"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-sonnet-picks-review.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with each problem",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Push is sent while the owner's tab is focused and visible",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "duplicates what the approval card already shows; needs a presence signal from the tab"
+        },
+        {
+          "id": "2",
+          "text": "config.yml is read on every call instead of the loaded Config",
+          "options": [
+            "fix",
+            "skip"
+          ],
+          "recommended": "fix",
+          "why": "bypasses overrides and test config, and adds a disk read per push"
+        },
+        {
+          "id": "3",
+          "text": "Push title includes the full tool command (may hold a secret)",
+          "options": [
+            "fix",
+            "skip"
+          ],
+          "recommended": "fix",
+          "why": "use a generic title like \"Approval needed\"; show the command only after the user opens the app"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "fix",
+            "skip"
+          ],
+          "recommended": "fix",
+          "why": "it's the common case, and the spec should check that nothing is sent and nothing raises"
+        },
+        {
+          "id": "5",
+          "text": "notify_waiting is also called for questions",
+          "options": [
+            "rename",
+            "skip",
+            "later"
+          ],
+          "recommended": "rename",
+          "why": "a name like notify_needs_input matches both callers and avoids confusion later"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-picks-review.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Review of Notifier#notify_waiting",
+      "rows": [
+        {
+          "id": "3",
+          "text": "Push title includes the full tool command (secret leak)",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "use a fixed title like \"Approval needed\" plus the tool name only; keep the command in the in-app card"
+        },
+        {
+          "id": "1",
+          "text": "Push is sent while the owner's tab is focused and visible",
+          "options": [
+            "fix",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix",
+          "why": "skip the push when a tab reports visible, using a presence or heartbeat signal; this needs a small client signal"
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml on every call instead of the loaded Config",
+          "options": [
+            "fix",
+            "skip"
+          ],
+          "recommended": "fix",
+          "why": "inject or use the loaded Config; this removes the disk read and stops it disagreeing with runtime overrides"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "fix",
+            "skip"
+          ],
+          "recommended": "fix",
+          "why": "add a spec that it returns quietly and sends nothing; this is the most common real case"
+        },
+        {
+          "id": "5",
+          "text": "Name says \"waiting\" but it's also called for questions",
+          "options": [
+            "rename",
+            "document",
+            "skip"
+          ],
+          "recommended": "rename",
+          "why": "rename to something like notify_attention_needed, or notify_blocked, while there are few callers"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-approval.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tool call hits an \"ask\" rule",
+      "actors": [
+        "model",
+        "guardrails",
+        "judge",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "model",
+          "does": "calls a tool",
+          "behind": "guardrail rules return allow, ask or deny",
+          "cases": [
+            {
+              "when": "rule says allow",
+              "goto": "s6"
+            },
+            {
+              "when": "rule says deny",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "guardrails",
+          "does": "rule says ask",
+          "behind": "in a review turn, ReviewBoundary denies writes before any card",
+          "cases": [
+            {
+              "when": "review turn and the call is a write",
+              "goto": "s7"
+            },
+            {
+              "when": "System 1 is off",
+              "goto": "s4"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "judge",
+          "does": "System 1 is asked first, timeout_ms 2000",
+          "sees": "an auto-allowed mark on the step if it allows",
+          "cases": [
+            {
+              "when": "judge says allow",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "user",
+          "does": "gets an approval card (Allow / Deny)",
+          "sees": "a web push too if away; the turn waits",
+          "behind": "the judge was unsure or timed out",
+          "cases": [
+            {
+              "when": "user denies",
+              "goto": "s7"
+            },
+            {
+              "when": "user stops the turn",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "does": "clicks Allow"
+        },
+        {
+          "id": "s6",
+          "actor": "guardrails",
+          "does": "the call runs",
+          "cases": [
+            {
+              "when": "always",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "guardrails",
+          "does": "the call is denied",
+          "behind": "the model gets an error or denial and continues",
+          "cases": [
+            {
+              "when": "always",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s8",
+          "actor": "guardrails",
+          "does": "the turn is cancelled"
+        },
+        {
+          "id": "s9",
+          "actor": "model",
+          "does": "continues the turn"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-decision-card.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A decision card in chi web",
+      "actors": [
+        "user",
+        "web",
+        "bundle",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "sends a message in a session with an active objective",
+          "sees": "the answer streams in as usual",
+          "behind": "the owner's turn runs; the bundle does nothing without an active objective"
+        },
+        {
+          "id": "s2",
+          "actor": "bundle",
+          "does": "checks the gate when the owner's turn completes",
+          "behind": "stopped, participant and --non-interactive turns are skipped. Needs >= 1200 chars and a '?' ending a word in the last 300 chars of prose (code excluded)",
+          "cases": [
+            {
+              "when": "the gate fails",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bundle",
+          "does": "starts a side request (ctx.ask_model) on a thread",
+          "sees": "nothing yet; the turn is already finished",
+          "behind": "the turn's end doesn't wait for it",
+          "cases": [
+            {
+              "when": "the user starts a new turn first",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "model",
+          "does": "a cheap model returns summary, question and the objective it concerns",
+          "behind": "the answer may ask nothing, or the summary or question may be missing",
+          "cases": [
+            {
+              "when": "it asks nothing or leaves out summary or question",
+              "goto": "s7"
+            },
+            {
+              "when": "the request fails (only logged as no_card, no notice)",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "web",
+          "does": "shows the card, with no buttons",
+          "sees": "a card with the summary, the question and the objective",
+          "behind": "stored in cards.json; nothing enters the conversation"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "answers in the composer and sends",
+          "sees": "the card folds to a line \"Asked: …\"",
+          "behind": "the fold happens when the next turn starts; the next request is byte for byte the same as without the card"
+        },
+        {
+          "id": "s7",
+          "actor": "web",
+          "does": "no card; the user just sees the answer",
+          "behind": "reached only through the branches above"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-sonnet-walk-decision-card.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A decision card in chi web",
+      "actors": [
+        "user",
+        "web",
+        "worker",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "sends a message in a session with an active objective",
+          "sees": "the answer streams in as usual",
+          "behind": "the decision-card bundle does nothing without an active objective"
+        },
+        {
+          "id": "s2",
+          "actor": "worker",
+          "does": "the owner's turn completes and the gate is checked",
+          "behind": "needs >= 1200 chars, and a '?' ending a word in the last 300 chars of prose (code excluded)",
+          "cases": [
+            {
+              "when": "the gate fails",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "worker",
+          "does": "starts a side request on a thread (ctx.ask_model)",
+          "sees": "the turn ends normally, with no waiting and no spinner",
+          "behind": "asks a cheap model for a short summary, the question and the objective it concerns",
+          "cases": [
+            {
+              "when": "the user starts a new turn first",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "model",
+          "does": "returns summary, question and objective",
+          "behind": "no card if the answer asks nothing or the summary or question is missing; a failed request is only logged as no_card",
+          "cases": [
+            {
+              "when": "nothing asked, a field missing, or the request failed",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "web",
+          "does": "shows the decision card",
+          "sees": "a card with summary and question, with no buttons",
+          "behind": "the card is saved in cards.json; nothing enters the conversation"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "answers in the composer and sends",
+          "sees": "the card folds to a line \"Asked: …\"",
+          "behind": "the next request is byte for byte the same as without the card"
+        },
+        {
+          "id": "s7",
+          "actor": "web",
+          "does": "no card is shown",
+          "sees": "nothing, with no notice even on failure",
+          "behind": "a card still to come is dropped when a new turn cancels the side request"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-sonnet-walk-decision-card.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A decision card, from answer to fold",
+      "actors": [
+        "user",
+        "web",
+        "bundle",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "bundle",
+          "does": "checks the gate when the owner's turn completes",
+          "sees": "the answer shows as usual",
+          "behind": "needs >= 1200 chars and a \"?\" ending a word in the last 300 chars of prose (code left out)",
+          "cases": [
+            {
+              "when": "the gate fails",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "bundle",
+          "does": "starts a side request (ctx.ask_model) on a thread",
+          "sees": "the turn ends normally, with no waiting",
+          "behind": "a new turn cancels it, and a card still to come is dropped",
+          "cases": [
+            {
+              "when": "the user starts a new turn first",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "model",
+          "does": "a cheap model returns a summary, the question and the objective",
+          "behind": "a failed request is only logged (no_card), with no notice",
+          "cases": [
+            {
+              "when": "the answer asks nothing, or the summary or question is missing",
+              "goto": "s7"
+            },
+            {
+              "when": "the request fails",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "web",
+          "does": "shows the card",
+          "sees": "a card with summary, question and objective, and no buttons",
+          "behind": "stored in cards.json, and nothing enters the conversation"
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "does": "answers in the composer",
+          "sees": "the card stays visible while they type"
+        },
+        {
+          "id": "s6",
+          "actor": "web",
+          "does": "folds the card when the user's next turn starts",
+          "sees": "one line, \"Asked: …\"",
+          "behind": "the next request is byte for byte the same, since the card isn't in the history",
+          "cases": [
+            {
+              "when": "done",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "web",
+          "does": "no card shows",
+          "sees": "nothing changes, and there is no error notice",
+          "behind": "a failed request leaves only a no_card log line"
+        },
+        {
+          "id": "s8",
+          "actor": "user",
+          "does": "carries on with the conversation"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r1-sonnet-walk-reconnect.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses its connection and comes back",
+      "actors": [
+        "user",
+        "web",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "loses the connection (network drop, laptop asleep)",
+          "sees": "the page shows a \"reconnecting\" mark",
+          "behind": "the SSE stream GET /events breaks"
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "reconnects to the worker",
+          "behind": "sends GET /events with Last-Event-ID N, the last event it saw",
+          "cases": [
+            {
+              "when": "N is still in the replay buffer",
+              "goto": "s3"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s4"
+            },
+            {
+              "when": "the worker exited (idle exit)",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "replays the events after N",
+          "sees": "the missed steps appear and the mark goes away",
+          "behind": "the live stream continues after the replay",
+          "cases": [
+            {
+              "when": "replay done",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "sends a reset event",
+          "behind": "N is no longer in the replay buffer"
+        },
+        {
+          "id": "s5",
+          "actor": "web",
+          "does": "re-reads the turn and redraws it",
+          "sees": "the turn is redrawn and open cards come back",
+          "behind": "GET /api/sessions/:id returns the TurnAccumulator snapshot, and cards come from CardStore",
+          "cases": [
+            {
+              "when": "redraw done",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "web",
+          "does": "finds the worker gone after session.idle_exit_minutes",
+          "sees": "the session shows as not running",
+          "behind": "a new prompt starts the worker again"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "carries on, or sends a new prompt",
+          "sees": "the session is current again"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-reconnect.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses its connection and comes back",
+      "actors": [
+        "user",
+        "web",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "loses the connection (sleep, network drop)",
+          "sees": "the page shows a \"reconnecting\" mark",
+          "behind": "the SSE stream, GET /events on the worker's Bridge, breaks"
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "reconnects to GET /events with Last-Event-ID N",
+          "behind": "the Bridge compares N with its replay buffer and checks that the worker is alive",
+          "cases": [
+            {
+              "when": "N is still in the replay buffer",
+              "goto": "s3"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s4"
+            },
+            {
+              "when": "the worker exited meanwhile",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "replays the events after N, then continues the live stream",
+          "sees": "the missed steps appear on their own",
+          "cases": [
+            {
+              "when": "replay is done",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "sends a reset event",
+          "sees": "the turn is redrawn and open cards reappear",
+          "behind": "the page re-reads the TurnAccumulator snapshot via GET /api/sessions/:id; cards come back from CardStore",
+          "cases": [
+            {
+              "when": "the page is redrawn",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "web",
+          "does": "finds the worker gone (idle exit after session.idle_exit_minutes)",
+          "sees": "the session shows as not running"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "sends a new prompt",
+          "sees": "the session starts again",
+          "behind": "the prompt starts a new worker"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "keeps working on the live stream",
+          "sees": "the \"reconnecting\" mark is gone"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-reconnect.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses its session connection and returns",
+      "actors": [
+        "user",
+        "web",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "loses the connection (network drop, laptop sleep)",
+          "sees": "the page shows a \"reconnecting\" mark",
+          "behind": "the SSE stream GET /events to the worker's Bridge breaks"
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "reconnects to the event stream",
+          "behind": "the tab sends GET /events with Last-Event-ID N, the last event it saw"
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "looks up N in its replay buffer",
+          "behind": "the answer depends on how long the tab was away, and on whether the worker is still alive",
+          "cases": [
+            {
+              "when": "N is still in the replay buffer",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s5"
+            },
+            {
+              "when": "the worker exited while the tab was away",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N, then continues the live stream",
+          "sees": "the missed steps appear and the \"reconnecting\" mark goes away",
+          "cases": [
+            {
+              "when": "always",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "bridge",
+          "does": "sends a `reset` event",
+          "behind": "the buffer no longer reaches back to N, so replay is impossible"
+        },
+        {
+          "id": "s6",
+          "actor": "web",
+          "does": "re-reads the turn snapshot and redraws the turn",
+          "sees": "the whole turn is redrawn, and open cards come back",
+          "behind": "GET /api/sessions/:id returns the TurnAccumulator snapshot; cards are restored from CardStore",
+          "cases": [
+            {
+              "when": "always",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "web",
+          "does": "shows the session as not running",
+          "sees": "the session is marked not running; a new prompt starts the worker again",
+          "behind": "the worker made an idle exit after session.idle_exit_minutes, so no Bridge answers"
+        },
+        {
+          "id": "s8",
+          "actor": "user",
+          "does": "carries on with the session",
+          "sees": "live updates stream in as before"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-review.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session starts",
+          "behind": "ReviewStart creates the session; Guardrails::ReviewPaths checks the subject"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "sees": "a link for the participant",
+          "behind": "a grant is made (chp_ token, tied to this one session, stored only as a digest)"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "runs a read-only review turn; Guardrails::ReviewBoundary denies any write"
+        },
+        {
+          "id": "s5",
+          "actor": "agent",
+          "does": "answers and proposes changes as text",
+          "sees": "the reply in the conversation, with no files touched",
+          "cases": [
+            {
+              "when": "the discussion goes on",
+              "goto": "s4"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "reads the conversation and presses Apply",
+          "sees": "the changes made in their workspace",
+          "behind": "ReviewApply runs as the owner's own turn, so the writes use the owner's permissions"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "revokes the grant (possible at any time)",
+          "sees": "the participant's link stops working",
+          "behind": "the grant is invalidated, so the chp_ token no longer authenticates"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-review.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "chi"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session starts",
+          "behind": "ReviewStart creates the session; Guardrails::ReviewPaths checks the subject",
+          "cases": [
+            {
+              "when": "the subject fails the ReviewPaths check",
+              "goto": "s1"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "sees": "a link to give to the participant",
+          "behind": "a grant is made (chp_ token, tied to one session, only a digest is stored)"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes",
+          "behind": "the token is checked against the stored digest"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "runs a read-only review turn; Guardrails::ReviewBoundary denies any write",
+          "cases": [
+            {
+              "when": "the owner has revoked the grant",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "chi",
+          "does": "answers and proposes changes as text only",
+          "sees": "the discussion grows; the participant can reply again",
+          "behind": "nothing on disk changes",
+          "cases": [
+            {
+              "when": "the participant keeps discussing",
+              "goto": "s4"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "reads the conversation and presses Apply",
+          "sees": "the changes are made",
+          "behind": "ReviewApply runs as the owner's own turn, with the owner's permissions"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "revokes the grant (possible at any time)",
+          "sees": "the participant's link stops working",
+          "behind": "the grant is invalidated, so the token no longer resolves"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r1-sonnet-walk-review.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session is started",
+          "behind": "ReviewStart creates the session; Guardrails::ReviewPaths checks the subject"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "sees": "a link for the participant",
+          "behind": "makes a grant, a chp_ token for this one session, stored only as a digest"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "runs a read-only review turn; Guardrails::ReviewBoundary denies any write"
+        },
+        {
+          "id": "s5",
+          "actor": "agent",
+          "does": "answers and proposes changes as text",
+          "sees": "the proposal in the conversation; no files are changed",
+          "cases": [
+            {
+              "when": "the discussion goes on",
+              "goto": "s4"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "reads the conversation and presses Apply",
+          "sees": "the changes are made",
+          "behind": "ReviewApply runs as the owner's own turn, so the write is the owner's"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "revokes the grant (possible at any time)",
+          "sees": "the participant's link stops working",
+          "behind": "the grant is no longer valid, so the token is rejected"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-free-plan.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Cost in the info bar — open decisions",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Show the chip for local models (cost 0)?",
+          "options": [
+            "show $0.000",
+            "hide the chip entirely",
+            "show a \"local\" label instead"
+          ],
+          "recommended": "show $0.000",
+          "why": "hiding it reads as \"cost tracking is broken\" when you switch models"
+        },
+        {
+          "id": "2",
+          "text": "Who sees the cost?",
+          "options": [
+            "owner only",
+            "everyone sees the session total",
+            "everyone sees their own share"
+          ],
+          "recommended": "owner only",
+          "why": "cost exposes your key's usage; simplest permission model, and matches who /stats is for"
+        },
+        {
+          "id": "3",
+          "text": "Precision in the bar",
+          "options": [
+            "always 3 decimals",
+            "cents (2 decimals)",
+            "adaptive, 2 below $0.10"
+          ],
+          "recommended": "always 3 decimals",
+          "why": "most single turns are sub-cent, so cents shows a frozen $0.00"
+        },
+        {
+          "id": "4",
+          "text": "Warn at 80 % of the cost cap?",
+          "options": [
+            "yes, owner only",
+            "yes, everyone in the session",
+            "no warning, number only"
+          ],
+          "recommended": "yes, owner only",
+          "why": "a cap is your budget concern, and participants can't act on it anyway"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-free-plan.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Four open calls on the cost chip",
+      "rows": [
+        {
+          "id": "local",
+          "text": "Local models where cost is 0",
+          "options": [
+            "hide the chip",
+            "show \"$0.00\"",
+            "show token count instead"
+          ],
+          "recommended": "hide the chip",
+          "why": "a permanent $0.00 reads as a bug"
+        },
+        {
+          "id": "participants",
+          "text": "Who sees the number",
+          "options": [
+            "same session total for everyone",
+            "session owner only",
+            "hidden unless the owner opts in"
+          ],
+          "recommended": "same session total for everyone",
+          "why": "it's the session's spend, one rule beats three"
+        },
+        {
+          "id": "precision",
+          "text": "Chip precision",
+          "options": [
+            "cents, rounded up",
+            "exact 3 decimals",
+            "3 decimals below $0.01, else cents"
+          ],
+          "recommended": "cents, rounded up",
+          "why": "glanceable; exact figure lives in /stats"
+        },
+        {
+          "id": "cap",
+          "text": "The 80% cost-cap warning",
+          "options": [
+            "chip turns amber on the crossing",
+            "separate toast notification",
+            "leave it out for now"
+          ],
+          "recommended": "chip turns amber on the crossing",
+          "why": "state on the chip, not another alert channel"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-free-plan.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Open decisions on the cost chip",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Local models / zero cost",
+          "options": [
+            "hide the chip entirely",
+            "quiet \"$0.00\"",
+            "show \"local\" / \"free\""
+          ],
+          "recommended": "hide the chip entirely",
+          "why": "\"$0.00\" reads like a bug; don't reserve bar space for a concept the session lacks"
+        },
+        {
+          "id": "2",
+          "text": "Who sees the cost",
+          "options": [
+            "owner and participants, hidden for anonymous/read-only viewers",
+            "everyone who can open the session",
+            "only the owner"
+          ],
+          "recommended": "owner and participants, hidden for anonymous/read-only viewers",
+          "why": "a public share link shouldn't leak spend; collaborators on the session can see it"
+        },
+        {
+          "id": "3",
+          "text": "Precision in the bar",
+          "options": [
+            "cents, but \"&lt;$0.01\" for a nonzero sub-cent total",
+            "always 3 decimals",
+            "cents only"
+          ],
+          "recommended": "cents, but \"&lt;$0.01\" for a nonzero sub-cent total",
+          "why": "plain cents shows \"$0.00\" for ten cheap turns, then jumps; exact value in tooltip and /stats"
+        },
+        {
+          "id": "4",
+          "text": "80% cost-cap warning",
+          "options": [
+            "warning colour at 80%, distinct \"over cap\" state at 100%",
+            "only at 100%",
+            "skip it"
+          ],
+          "recommended": "warning colour at 80%, distinct \"over cap\" state at 100%",
+          "why": "it's a pure function of the cost you already send, so it costs nothing extra"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-free-review.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do about the risky parts",
+      "rows": [
+        {
+          "id": "1",
+          "text": "participants.json no longer locked",
+          "options": [
+            "temp-file + rename",
+            "revert the lock removal",
+            "keep as is"
+          ],
+          "recommended": "temp-file + rename",
+          "why": "non-atomic writes truncate on crash, readers can see partial JSON"
+        },
+        {
+          "id": "2",
+          "text": "expired-grant spec deleted",
+          "options": [
+            "move the spec to the gate",
+            "keep one at Grants#find too",
+            "leave it deleted"
+          ],
+          "recommended": "move the spec to the gate",
+          "why": "coverage should move with the logic, not vanish"
+        },
+        {
+          "id": "3",
+          "text": "digest compared with ==",
+          "options": [
+            "secure_compare",
+            "leave as is"
+          ],
+          "recommended": "secure_compare",
+          "why": "one-line change, removes the timing oracle"
+        },
+        {
+          "id": "4",
+          "text": "prefix check now only in Grants.parse",
+          "options": [
+            "verify status codes + all callers",
+            "assume unchanged"
+          ],
+          "recommended": "verify status codes + all callers",
+          "why": "find may now accept tokens it used to reject"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-free-review.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Three follow-ups from this review",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Existing plaintext grants stop verifying after this change",
+          "options": [
+            "backfill digests",
+            "accept both during a transition",
+            "skip, nothing stored yet"
+          ],
+          "recommended": "backfill digests",
+          "why": "one-off SHA256 of the stored token, then reset"
+        },
+        {
+          "id": "2",
+          "text": "Expiry is now only enforced in the gate",
+          "options": [
+            "add a gate spec",
+            "restore find check + spec",
+            "skip, already covered"
+          ],
+          "recommended": "add a gate spec",
+          "why": "keeps the regression without duplicating the rule"
+        },
+        {
+          "id": "3",
+          "text": "participants.json writes are unlocked",
+          "options": [
+            "mutex + atomic rename",
+            "restore the file lock",
+            "skip, single writer is certain"
+          ],
+          "recommended": "mutex + atomic rename",
+          "why": "one process still has many threads; rename survives crashes"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-picks-plan.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch session decisions",
+      "rows": [
+        {
+          "id": "d1",
+          "text": "Session file lifetime after the worker exits",
+          "options": [
+            "keep 1 hour",
+            "delete at exit"
+          ],
+          "recommended": "keep 1 hour",
+          "why": "deleting at exit re-creates the complaint it fixes"
+        },
+        {
+          "id": "d2",
+          "text": "Scratch sessions in chi web's list",
+          "options": [
+            "show with a scratch mark",
+            "hide"
+          ],
+          "recommended": "show with a scratch mark",
+          "why": "an invisible session can't be reopened by a user who has no id"
+        },
+        {
+          "id": "d3",
+          "text": "chi --resume on a scratch session",
+          "options": [
+            "allow while the file exists",
+            "refuse"
+          ],
+          "recommended": "allow while the file exists",
+          "why": "resume is the recovery path; the file's lifetime bounds it"
+        },
+        {
+          "id": "d4",
+          "text": "Memory writes from a scratch session",
+          "options": [
+            "deny project, allow system",
+            "allow"
+          ],
+          "recommended": "deny project, allow system",
+          "why": "throwaway context shouldn't write shared project state"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-picks-plan.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch session lifetime — four open decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "When the worker exits, delete the session file or keep it 1 hour?",
+          "options": [
+            "A: delete at exit",
+            "B: keep 1 h"
+          ],
+          "recommended": "B: keep 1 h",
+          "why": "deleting at exit is exactly the complaint — the answer dies with the terminal"
+        },
+        {
+          "id": "D2",
+          "text": "Do scratch sessions appear in chi web's session list?",
+          "options": [
+            "A: hide",
+            "B: show with a scratch mark"
+          ],
+          "recommended": "B: show with a scratch mark",
+          "why": "a visible file that the list hides is a black hole; the mark carries the \"throwaway\" signal"
+        },
+        {
+          "id": "D3",
+          "text": "Allow chi --resume of a scratch session?",
+          "options": [
+            "A: refuse",
+            "B: allow while the file exists"
+          ],
+          "recommended": "B: allow while the file exists",
+          "why": "it needs to be reopenable to help at all; D1 already bounds how long"
+        },
+        {
+          "id": "D4",
+          "text": "Are a scratch session's memory writes allowed?",
+          "options": [
+            "A: allow project and system scope",
+            "B: deny project scope, allow system"
+          ],
+          "recommended": "A: allow project and system scope",
+          "why": "one rule for all sessions; a hidden carve-out costs more than polluted entries"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-deepseek-picks-plan.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch session open decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "Session file when the worker exits",
+          "options": [
+            "keep 1 h",
+            "delete at exit"
+          ],
+          "recommended": "keep 1 h",
+          "why": "the complaint is exactly losing the answer on an accidental close"
+        },
+        {
+          "id": "D2",
+          "text": "Scratch sessions in chi web's list",
+          "options": [
+            "show with a scratch mark",
+            "hide"
+          ],
+          "recommended": "show with a scratch mark",
+          "why": "the 1 h window is useless if the UI never surfaces it"
+        },
+        {
+          "id": "D3",
+          "text": "chi --resume of a scratch session",
+          "options": [
+            "allow while the file exists",
+            "refuse"
+          ],
+          "recommended": "allow while the file exists",
+          "why": "recovery only exists if resume can reach it"
+        },
+        {
+          "id": "D4",
+          "text": "Memory writes from a scratch session",
+          "options": [
+            "deny project scope, allow system",
+            "allow both"
+          ],
+          "recommended": "deny project scope, allow system",
+          "why": "keeps throwaway questions out of the repo's shared memories"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-picks-review.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with each finding",
+      "rows": [
+        {
+          "id": "3",
+          "text": "Push title carries the full tool command, possibly a secret",
+          "options": [
+            "send tool name only",
+            "drop payload detail",
+            "keep full command"
+          ],
+          "recommended": "send tool name only",
+          "why": "highest severity; args in a lock-screen preview are the real leak"
+        },
+        {
+          "id": "1",
+          "text": "Push sent even when the owner's tab is focused and visible",
+          "options": [
+            "suppress when client reports visible",
+            "suppress when SSE connected",
+            "leave as is"
+          ],
+          "recommended": "suppress when client reports visible",
+          "why": "only if a presence signal exists; else start with the SSE proxy"
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml on every call instead of the loaded Config",
+          "options": [
+            "inject loaded Config",
+            "memoize the read",
+            "leave as is"
+          ],
+          "recommended": "inject loaded Config",
+          "why": "cheap, and it's what makes finding 4 testable"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "spec no-op + add guard",
+            "spec current behaviour",
+            "skip"
+          ],
+          "recommended": "spec no-op + add guard",
+          "why": "decide first whether it should no-op or raise"
+        },
+        {
+          "id": "5",
+          "text": "Named notify_waiting but also called for questions",
+          "options": [
+            "rename to notify_requires_action",
+            "keep name, document it",
+            "keep"
+          ],
+          "recommended": "rename to notify_requires_action",
+          "why": "one call site today, matches the existing blocked-turn state"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-picks-review.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with the five findings",
+      "rows": [
+        {
+          "id": "secret-in-title",
+          "text": "Push title includes the full tool command",
+          "options": [
+            "fix now: drop the command (Recommended)",
+            "redact known secrets only",
+            "skip"
+          ],
+          "recommended": "fix now: drop the command (Recommended)",
+          "why": "title = tool name, body = \"open the tab\"; args can't be un-leaked once shown"
+        },
+        {
+          "id": "focused-tab",
+          "text": "Sends a push while the owner's tab is focused",
+          "options": [
+            "fix now: suppress in the service worker (Recommended)",
+            "server-side visibility heartbeat",
+            "skip"
+          ],
+          "recommended": "fix now: suppress in the service worker (Recommended)",
+          "why": "server can't see focus; a heartbeat round-trip is racy against the push"
+        },
+        {
+          "id": "reread-config",
+          "text": "Reads config.yml on every call",
+          "options": [
+            "fix now: inject the loaded Config (Recommended)",
+            "memoize inside the class",
+            "skip"
+          ],
+          "recommended": "fix now: inject the loaded Config (Recommended)",
+          "why": "I/O per notification, and the spec can pass a fake instead of a file"
+        },
+        {
+          "id": "rename",
+          "text": "Name says waiting, also fires for questions",
+          "options": [
+            "fix now: notify_requires_action (Recommended)",
+            "keep the name, document it",
+            "skip"
+          ],
+          "recommended": "fix now: notify_requires_action (Recommended)",
+          "why": "matches the existing requires_action turn state"
+        },
+        {
+          "id": "no-sub-spec",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "empty case + a 410 prune case (Recommended)",
+            "just the empty case",
+            "skip"
+          ],
+          "recommended": "empty case + a 410 prune case (Recommended)",
+          "why": "empty should be a silent no-op, not an error; 410 is the case that bites live"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-deepseek-picks-review.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with the review findings",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Push fires even when the owner's tab is focused",
+          "options": [
+            "suppress when a visible tab is connected",
+            "always push",
+            "soften (silent / replaces itself)"
+          ],
+          "recommended": "suppress when a visible tab is connected",
+          "why": "a push for something already on screen trains the owner to ignore pushes"
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml on every call",
+          "options": [
+            "use the loaded Config",
+            "inject config once at construction",
+            "leave as is"
+          ],
+          "recommended": "use the loaded Config",
+          "why": "per-call file reads are slow and can pick up a half-written file"
+        },
+        {
+          "id": "3",
+          "text": "Title carries the full tool command, which may hold a secret",
+          "options": [
+            "title = tool name only",
+            "redact env-var-looking tokens",
+            "truncate to N chars"
+          ],
+          "recommended": "title = tool name only",
+          "why": "pushes land on lock screens and push servers; truncating does not help"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "add spec: no-op, no raise",
+            "skip"
+          ],
+          "recommended": "add spec: no-op, no raise",
+          "why": "cheapest of the five, and it pins the empty-subscription path"
+        },
+        {
+          "id": "5",
+          "text": "Name says waiting, but it is also called for questions",
+          "options": [
+            "rename to notify_attention",
+            "keep name, add a kind parameter",
+            "leave the name"
+          ],
+          "recommended": "rename to notify_attention",
+          "why": "renaming costs nothing now, and it reads wrong at every future call site"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-deepseek-walk-approval.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a tool call needs approval",
+      "actors": [
+        "model",
+        "guardrails",
+        "system1",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "model",
+          "does": "proposes a tool call",
+          "behind": "every call goes through the guardrail rules first"
+        },
+        {
+          "id": "s2",
+          "actor": "guardrails",
+          "does": "matches the call against the rules",
+          "behind": "in a review turn, ReviewBoundary denies writes before any card is shown",
+          "cases": [
+            {
+              "when": "the rule says allow",
+              "goto": "s3"
+            },
+            {
+              "when": "the rule says ask",
+              "goto": "s4"
+            },
+            {
+              "when": "the rule says deny",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "next": "s10"
+        },
+        {
+          "id": "s4",
+          "actor": "system1",
+          "does": "judges the call, but only if System 1 is on",
+          "behind": "answers within timeout_ms 2000",
+          "cases": [
+            {
+              "when": "it says allow",
+              "goto": "s5"
+            },
+            {
+              "when": "it is unsure, times out, or System 1 is off",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "sees": "the turn's step shows an auto-allowed mark",
+          "next": "s10"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "sees": "an approval card with Allow / Deny, plus a web push if you're away",
+          "behind": "the turn waits on the card; a stop during the wait cancels the turn"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "picks Allow or Deny",
+          "cases": [
+            {
+              "when": "Allow",
+              "goto": "s8"
+            },
+            {
+              "when": "Deny",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s8",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "next": "s10"
+        },
+        {
+          "id": "s9",
+          "actor": "guardrails",
+          "does": "returns the denial or error to the model",
+          "next": "s10"
+        },
+        {
+          "id": "s10",
+          "actor": "model",
+          "does": "continues the turn with the result"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-approval.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a tool call needs your approval",
+      "actors": [
+        "model",
+        "guardrail",
+        "judge",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "model",
+          "does": "requests a tool call",
+          "next": "s2"
+        },
+        {
+          "id": "s2",
+          "actor": "guardrail",
+          "does": "checks the call against its rules",
+          "cases": [
+            {
+              "when": "the rule is allow",
+              "goto": "s3"
+            },
+            {
+              "when": "the rule is deny",
+              "goto": "s4"
+            },
+            {
+              "when": "the rule is ask",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "guardrail",
+          "does": "runs the call",
+          "next": "s8"
+        },
+        {
+          "id": "s4",
+          "actor": "guardrail",
+          "does": "returns an error to the model",
+          "next": "s8"
+        },
+        {
+          "id": "s5",
+          "actor": "judge",
+          "does": "System 1 judge is asked, timeout_ms 2000",
+          "cases": [
+            {
+              "when": "it says allow",
+              "goto": "s6"
+            },
+            {
+              "when": "it is unsure or times out",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "guardrail",
+          "does": "runs the call",
+          "sees": "the turn's step shows an auto-allowed mark",
+          "next": "s8"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "decides on the card: Allow or Deny",
+          "sees": "an approval card, plus a web push if they are away",
+          "behind": "the turn waits on the card",
+          "cases": [
+            {
+              "when": "Allow",
+              "goto": "s9"
+            },
+            {
+              "when": "Deny",
+              "goto": "s10"
+            }
+          ]
+        },
+        {
+          "id": "s9",
+          "actor": "guardrail",
+          "does": "runs the call",
+          "next": "s8"
+        },
+        {
+          "id": "s10",
+          "actor": "guardrail",
+          "does": "returns the denial to the model",
+          "next": "s8"
+        },
+        {
+          "id": "s8",
+          "actor": "model",
+          "does": "continues the turn"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-approval.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a tool call needs your approval",
+      "actors": [
+        "chi",
+        "guardrail",
+        "system1",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "chi",
+          "does": "proposes a tool call"
+        },
+        {
+          "id": "s2",
+          "actor": "guardrail",
+          "does": "matches the call against the rules",
+          "cases": [
+            {
+              "when": "a rule says allow",
+              "goto": "s3"
+            },
+            {
+              "when": "a rule says ask",
+              "goto": "s4"
+            },
+            {
+              "when": "it is a write in a review turn (ReviewBoundary)",
+              "goto": "s9"
+            },
+            {
+              "when": "a rule says deny",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "runs the call — no card, no wait",
+          "next": "s8"
+        },
+        {
+          "id": "s4",
+          "actor": "system1",
+          "does": "judges the call first (timeout 2000 ms)",
+          "cases": [
+            {
+              "when": "it says allow",
+              "goto": "s5"
+            },
+            {
+              "when": "it is unsure or times out",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "chi",
+          "does": "runs the call",
+          "sees": "the step shows an auto-allowed mark",
+          "next": "s8"
+        },
+        {
+          "id": "s6",
+          "actor": "chi",
+          "does": "waits — the turn is parked on the card",
+          "sees": "an approval card with Allow / Deny (a web push if you are away)",
+          "behind": "stopping during the wait cancels the turn",
+          "next": "s7"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "clicks Allow or Deny",
+          "cases": [
+            {
+              "when": "Allow",
+              "goto": "s8"
+            },
+            {
+              "when": "Deny",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s8",
+          "actor": "chi",
+          "does": "uses the result and the turn goes on"
+        },
+        {
+          "id": "s9",
+          "actor": "chi",
+          "does": "gets a denial where the result would have been",
+          "sees": "the model reads it and continues the turn"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-decision-card.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a decision card shows up",
+      "actors": [
+        "user",
+        "turn",
+        "side",
+        "web"
+      ],
+      "steps": [
+        {
+          "id": "s0",
+          "actor": "user",
+          "does": "sends the task in the composer",
+          "behind": "an owner's turn runs; the bundle acts only in a session with an active objective",
+          "next": "s1"
+        },
+        {
+          "id": "s1",
+          "actor": "turn",
+          "does": "finishes the answer",
+          "cases": [
+            {
+              "when": "the turn was stopped",
+              "goto": "s8"
+            },
+            {
+              "when": "it is a participant's turn, or --non-interactive",
+              "goto": "s8"
+            },
+            {
+              "when": "it is a normal owner turn",
+              "goto": "s2"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "turn",
+          "does": "checks the gate",
+          "behind": "at least 1200 characters, and a question mark ends a word in the last 300 characters of the prose (code left out)",
+          "cases": [
+            {
+              "when": "the gate fails",
+              "goto": "s8"
+            },
+            {
+              "when": "the gate passes",
+              "goto": "s3"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "side",
+          "does": "asks a cheap model on a thread",
+          "behind": "ctx.ask_model wants a short summary, the question and the objective it concerns; the turn's end does not wait for it",
+          "next": "s4"
+        },
+        {
+          "id": "s4",
+          "actor": "side",
+          "does": "replies",
+          "cases": [
+            {
+              "when": "a new turn started meanwhile",
+              "goto": "s8"
+            },
+            {
+              "when": "the model says the answer asks nothing",
+              "goto": "s8"
+            },
+            {
+              "when": "the summary or the question is missing",
+              "goto": "s8"
+            },
+            {
+              "when": "the request failed",
+              "goto": "s7"
+            },
+            {
+              "when": "all three came back",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "web",
+          "does": "shows the card",
+          "sees": "a card with the summary, the question, the objective — and no buttons",
+          "next": "s6"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "answers in the composer, like any other message",
+          "next": "s9"
+        },
+        {
+          "id": "s7",
+          "actor": "turn",
+          "does": "logs no_card",
+          "behind": "the failure is only in the log, the user is not told",
+          "next": "s8"
+        },
+        {
+          "id": "s8",
+          "actor": "web",
+          "does": "shows nothing",
+          "sees": "no card, and no notice that one was dropped",
+          "next": "s10"
+        },
+        {
+          "id": "s9",
+          "actor": "web",
+          "does": "folds the card to one line \"Asked: …\"",
+          "behind": "the card lives in cards.json; nothing enters the conversation, so the next request is byte for byte the same",
+          "next": "s10"
+        },
+        {
+          "id": "s10",
+          "actor": "user",
+          "does": "carries on with the task"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-deepseek-walk-decision-card.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a decision card shows up",
+      "actors": [
+        "chi",
+        "model",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "chi",
+          "does": "finishes the owner's turn",
+          "sees": "the answer is on screen",
+          "behind": "only with an active objective, and never after a stopped turn, a participant's turn, or --non-interactive",
+          "next": "s2"
+        },
+        {
+          "id": "s2",
+          "actor": "chi",
+          "does": "checks the gate",
+          "cases": [
+            {
+              "when": "the answer is under 1200 chars, or no word ends in \"?\" inside the last 300 chars of prose (code ignored)",
+              "goto": "s7"
+            },
+            {
+              "when": "both hold",
+              "goto": "s3"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "ends the turn without waiting",
+          "behind": "a side request (ctx.ask_model) on a thread asks a cheap model for a short summary, the question, the objective it concerns; a new turn cancels it and any card still to come is dropped",
+          "next": "s4"
+        },
+        {
+          "id": "s4",
+          "actor": "model",
+          "does": "answers on the thread",
+          "cases": [
+            {
+              "when": "it says the answer asks nothing, or leaves out the summary or the question",
+              "goto": "s7"
+            },
+            {
+              "when": "the request fails",
+              "goto": "s7"
+            },
+            {
+              "when": "all three come back",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "does": "sees the card appear",
+          "sees": "it has no buttons",
+          "next": "s6"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "types the answer in the composer and sends it",
+          "sees": "the card folds to \"Asked: …\"",
+          "behind": "the card lives in cards.json, nothing enters the conversation, so the next request is byte for byte the same"
+        },
+        {
+          "id": "s7",
+          "actor": "chi",
+          "does": "shows nothing",
+          "behind": "a failed request is only logged (no_card), with no notice"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-deepseek-walk-decision-card.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a decision card shows up",
+      "actors": [
+        "chi",
+        "model",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "gate",
+          "actor": "chi",
+          "does": "finishes an owner's turn",
+          "behind": "with an active objective, the bundle checks the gate — the answer has at least 1200 chars, and a question mark ends a word in its last 300 chars of prose (code left out)",
+          "cases": [
+            {
+              "when": "the turn stopped, or is a participant's or --non-interactive turn",
+              "goto": "none"
+            },
+            {
+              "when": "the answer is shorter than 1200 chars, or no question ends a word in the tail",
+              "goto": "none"
+            },
+            {
+              "when": "the gate passes",
+              "goto": "ask"
+            }
+          ]
+        },
+        {
+          "id": "ask",
+          "actor": "chi",
+          "does": "fires a side request (ctx.ask_model) on a thread",
+          "behind": "asks a cheap model for a short summary, the question, and the objective it concerns; the turn's end does not wait for it",
+          "cases": [
+            {
+              "when": "a new turn starts first",
+              "goto": "none"
+            },
+            {
+              "when": "the request fails",
+              "goto": "none"
+            },
+            {
+              "when": "the model replies",
+              "goto": "verdict"
+            }
+          ]
+        },
+        {
+          "id": "verdict",
+          "actor": "model",
+          "does": "returns the summary, the question, and the objective",
+          "cases": [
+            {
+              "when": "it says the answer asks nothing, or the summary or the question is missing",
+              "goto": "none"
+            },
+            {
+              "when": "all three come back",
+              "goto": "card"
+            }
+          ]
+        },
+        {
+          "id": "card",
+          "actor": "chi",
+          "sees": "a decision card with the summary, the question, and the objective — no buttons",
+          "behind": "the card is stored in cards.json; nothing enters the conversation",
+          "next": "answer"
+        },
+        {
+          "id": "answer",
+          "actor": "user",
+          "does": "answers in the composer",
+          "sees": "the card just sits there, no buttons to click",
+          "next": "fold"
+        },
+        {
+          "id": "none",
+          "actor": "chi",
+          "sees": "no card appears — and no notice either",
+          "behind": "the reason stays in the log (no_card), silent to the user"
+        },
+        {
+          "id": "fold",
+          "actor": "user",
+          "does": "starts the next turn",
+          "sees": "the card folds down to one line — Asked: …",
+          "behind": "the conversation never held the card, so the next request is byte for byte the same"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-reconnect.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab reconnects to a running session",
+      "actors": [
+        "user",
+        "page",
+        "bridge",
+        "worker"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "page",
+          "does": "loses the SSE stream to the worker's Bridge",
+          "sees": "a \"reconnecting\" mark on the page"
+        },
+        {
+          "id": "s2",
+          "actor": "page",
+          "does": "reconnects: GET /events with Last-Event-ID: N",
+          "cases": [
+            {
+              "when": "the worker is still running",
+              "goto": "s3"
+            },
+            {
+              "when": "the worker exited while the tab was away",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "checks whether N is still in the replay buffer",
+          "cases": [
+            {
+              "when": "N is still buffered",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N, then keeps streaming live",
+          "sees": "the missed steps appear",
+          "next": "s7"
+        },
+        {
+          "id": "s5",
+          "actor": "bridge",
+          "does": "sends a reset event",
+          "sees": "the page re-reads the turn snapshot (TurnAccumulator) via GET /api/sessions/:id and redraws the turn, with open cards restored from CardStore",
+          "next": "s7"
+        },
+        {
+          "id": "s6",
+          "actor": "page",
+          "does": "shows the session as not running"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "types a new prompt",
+          "behind": "starts the worker again"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-reconnect.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "The tab reconnects to a running session",
+      "actors": [
+        "user",
+        "page",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "loses the connection (sleep, network drop, tab frozen)",
+          "sees": "the page shows a \"reconnecting\" mark"
+        },
+        {
+          "id": "s2",
+          "actor": "page",
+          "does": "retries the stream: GET /events with Last-Event-ID: N",
+          "behind": "that stream is the SSE endpoint of the worker's Bridge"
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "checks whether N is still in the replay buffer",
+          "cases": [
+            {
+              "when": "N is still buffered",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s5"
+            },
+            {
+              "when": "the worker exited meanwhile (idle exit)",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "bridge",
+          "does": "sends a `reset` event",
+          "next": "s7"
+        },
+        {
+          "id": "s6",
+          "actor": "page",
+          "does": "shows the session as not running",
+          "sees": "the session marked as not running",
+          "next": "s8"
+        },
+        {
+          "id": "s8",
+          "actor": "user",
+          "does": "sends a new prompt",
+          "sees": "a fresh turn begins",
+          "behind": "that starts the worker again",
+          "next": "s9"
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays every event after N, then the live stream continues",
+          "sees": "the missed steps appear one by one",
+          "next": "s9"
+        },
+        {
+          "id": "s7",
+          "actor": "page",
+          "does": "re-reads the turn snapshot via GET /api/sessions/:id and redraws the turn",
+          "sees": "the turn is back and current",
+          "behind": "TurnAccumulator supplies the snapshot, CardStore the open cards",
+          "next": "s9"
+        },
+        {
+          "id": "s9",
+          "actor": "user",
+          "sees": "the page is back in sync with the session"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-reconnect.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab reconnects to a running session",
+      "actors": [
+        "user",
+        "tab",
+        "bridge",
+        "worker"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "comes back to the tab after losing the network",
+          "sees": "a \"reconnecting\" mark on the page"
+        },
+        {
+          "id": "s2",
+          "actor": "tab",
+          "does": "sends GET /events with Last-Event-ID: N",
+          "behind": "the id of the last event it managed to receive"
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "looks N up in its replay buffer",
+          "cases": [
+            {
+              "when": "N is still buffered",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N, then the live stream continues",
+          "sees": "the missed steps appear, then new ones as they happen",
+          "next": "s8"
+        },
+        {
+          "id": "s5",
+          "actor": "bridge",
+          "does": "sends a `reset` event",
+          "behind": "it can't reconstruct what the tab missed"
+        },
+        {
+          "id": "s6",
+          "actor": "tab",
+          "does": "re-reads the turn snapshot via GET /api/sessions/:id",
+          "behind": "the TurnAccumulator holds what the turn looks like now",
+          "next": "s7"
+        },
+        {
+          "id": "s7",
+          "actor": "tab",
+          "does": "redraws the turn, restoring open cards from CardStore",
+          "sees": "the turn as it stands now, no gap",
+          "next": "s8"
+        },
+        {
+          "id": "s8",
+          "actor": "tab",
+          "does": "checks whether the worker is still alive",
+          "cases": [
+            {
+              "when": "the worker is running",
+              "goto": "s9"
+            },
+            {
+              "when": "the worker idle-exited after session.idle_exit_minutes",
+              "goto": "s10"
+            }
+          ]
+        },
+        {
+          "id": "s9",
+          "actor": "tab",
+          "does": "follows the live stream again",
+          "sees": "the session continues normally"
+        },
+        {
+          "id": "s10",
+          "actor": "tab",
+          "does": "shows the session as not running",
+          "sees": "the turn as it was left, with no live stream",
+          "next": "s11"
+        },
+        {
+          "id": "s11",
+          "actor": "user",
+          "does": "types a new prompt",
+          "sees": "the worker starts again and the session resumes"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-deepseek-walk-review.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant, end to end",
+      "actors": [
+        "owner",
+        "participant",
+        "chi"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session starts",
+          "behind": "Guardrails::ReviewPaths checks the subject paths",
+          "next": "s2"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "behind": "a grant is minted (chp_ token, one session), stored as a digest only",
+          "next": "s3"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes",
+          "next": "s4"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "the message runs a read-only review turn",
+          "cases": [
+            {
+              "when": "the turn tries a write",
+              "goto": "s5"
+            },
+            {
+              "when": "the turn stays read-only",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "chi",
+          "does": "the write is denied by Guardrails::ReviewBoundary",
+          "sees": "the denial, with nothing changed",
+          "next": "s6"
+        },
+        {
+          "id": "s6",
+          "actor": "participant",
+          "does": "discusses the subject with the agent",
+          "sees": "the agent proposes changes as text only",
+          "next": "s7"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "reads the conversation and presses Apply",
+          "behind": "ReviewApply runs as the owner's own turn and makes the changes",
+          "next": "s8"
+        },
+        {
+          "id": "s8",
+          "actor": "owner",
+          "does": "revokes the grant at any time",
+          "sees": "the link stops working"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-review.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "chi",
+        "participant",
+        "web"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs chi review <subject>",
+          "behind": "ReviewStart opens a review session; Guardrails::ReviewPaths checks the subject"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs chi share",
+          "behind": "creates a grant — a chp_ token for that one session, stored as a digest only"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "runs a read-only review turn",
+          "cases": [
+            {
+              "when": "the turn tries to write",
+              "goto": "s5"
+            },
+            {
+              "when": "it only talks",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "chi",
+          "does": "refuses the write",
+          "behind": "Guardrails::ReviewBoundary denies it",
+          "next": "s6"
+        },
+        {
+          "id": "s6",
+          "actor": "chi",
+          "does": "replies and proposes changes as text",
+          "next": "s7"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "watches the conversation in their own session",
+          "cases": [
+            {
+              "when": "they want the proposed change",
+              "goto": "s8"
+            },
+            {
+              "when": "they want to keep discussing",
+              "goto": "s4"
+            }
+          ]
+        },
+        {
+          "id": "s8",
+          "actor": "owner",
+          "does": "presses Apply",
+          "behind": "ReviewApply runs as the owner's own turn and makes the changes"
+        },
+        {
+          "id": "s9",
+          "actor": "owner",
+          "does": "revokes the grant",
+          "sees": "the link stops working"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-deepseek-walk-review.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant, end to end",
+      "actors": [
+        "owner",
+        "participant",
+        "chi",
+        "guards"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session opens",
+          "behind": "Guardrails::ReviewPaths checks the subject paths first"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "sees": "a link with a chp_ token",
+          "behind": "a grant bound to that one session, stored as a digest only"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes",
+          "behind": "the token's digest is matched to the grant"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "chi runs a read-only review turn",
+          "cases": [
+            {
+              "when": "the turn tries to write",
+              "goto": "s5"
+            },
+            {
+              "when": "the turn only reads",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "guards",
+          "does": "Guardrails::ReviewBoundary denies the write",
+          "sees": "the participant is refused; nothing changes on disk",
+          "next": "s6"
+        },
+        {
+          "id": "s6",
+          "actor": "chi",
+          "does": "replies and proposes changes as text",
+          "sees": "the discussion moves on, files untouched"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "watches the conversation and presses Apply",
+          "behind": "ReviewApply runs as the owner's own turn, so the writes are the owner's",
+          "next": "s8"
+        },
+        {
+          "id": "s8",
+          "actor": "owner",
+          "does": "can revoke the grant at any time (`chi share` lifecycle)",
+          "sees": "the link stops working"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-free-plan.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Cost indicator decisions",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Show cost for local models (cost 0)",
+          "options": [
+            "hide when 0",
+            "always show"
+          ],
+          "recommended": "hide when 0",
+          "why": "a permanent $0.00 is noise and implies tracking"
+        },
+        {
+          "id": "2",
+          "text": "Who sees the cost",
+          "options": [
+            "owner only",
+            "participants too"
+          ],
+          "recommended": "owner only",
+          "why": "easier to widen later than to retract"
+        },
+        {
+          "id": "3",
+          "text": "Rounding",
+          "options": [
+            "cents only",
+            "3 decimals",
+            "3 decimals under 1 cent"
+          ],
+          "recommended": "3 decimals under 1 cent",
+          "why": "cheap turns stay visible, normal totals stay readable"
+        },
+        {
+          "id": "4",
+          "text": "Warn at 80% of cost-cap",
+          "options": [
+            "color change in bar",
+            "popup",
+            "no warning"
+          ],
+          "recommended": "color change in bar",
+          "why": "cheap to add, doesn't interrupt the user"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-free-plan.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Cost indicator decisions",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Show cost for local models (cost 0)?",
+          "options": [
+            "hide when unpriced",
+            "always show",
+            "show only if cost > 0"
+          ],
+          "recommended": "hide when unpriced",
+          "why": "\"$0.00\" implies a measurement that never happened"
+        },
+        {
+          "id": "2",
+          "text": "Should participants see the cost?",
+          "options": [
+            "owner only",
+            "everyone",
+            "owner + config toggle"
+          ],
+          "recommended": "owner only",
+          "why": "it's the owner's spend, and it's easy to open up later"
+        },
+        {
+          "id": "3",
+          "text": "Rounding",
+          "options": [
+            "always cents",
+            "3 decimals under $1, cents above",
+            "always 3 decimals"
+          ],
+          "recommended": "3 decimals under $1, cents above",
+          "why": "cents hides early movement, since most turns cost under a cent"
+        },
+        {
+          "id": "4",
+          "text": "Warn at 80% of cost-cap?",
+          "options": [
+            "tint the bar",
+            "toast",
+            "no warning"
+          ],
+          "recommended": "tint the bar",
+          "why": "it's visible but doesn't interrupt, and only applies if a cap is set"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-sonnet-free-plan.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Cost indicator decisions",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Show cost for local models (cost 0)?",
+          "options": [
+            "hide when unpriced",
+            "always show",
+            "show $0.00"
+          ],
+          "recommended": "hide when unpriced",
+          "why": "\"$0.00\" reads as \"free\" when it may just mean no pricing data"
+        },
+        {
+          "id": "2",
+          "text": "Should participants see the cost?",
+          "options": [
+            "owner only",
+            "everyone",
+            "owner-configurable"
+          ],
+          "recommended": "owner only",
+          "why": "it is the owner's money, and /stats may expose more than the bar"
+        },
+        {
+          "id": "3",
+          "text": "Rounding",
+          "options": [
+            "cents, \"<$0.01\" when tiny",
+            "always 3 decimals",
+            "3 decimals under $1"
+          ],
+          "recommended": "cents, \"<$0.01\" when tiny",
+          "why": "a quiet bar wants a short number, and /stats can hold the precise figure"
+        },
+        {
+          "id": "4",
+          "text": "Warn at 80% of cost-cap?",
+          "options": [
+            "yes, bar color change",
+            "yes, toast once",
+            "no"
+          ],
+          "recommended": "yes, bar color change",
+          "why": "it gives early notice without interrupting, and applies only when a cap is set"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-sonnet-free-review.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Open decisions on this change",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Expired-grant spec deleted, not moved to gate spec",
+          "options": [
+            "move to gate spec",
+            "leave deleted"
+          ],
+          "recommended": "move to gate spec",
+          "why": "expiry is now untested"
+        },
+        {
+          "id": "2",
+          "text": "participants.json writes without file lock",
+          "options": [
+            "restore lock",
+            "atomic temp+rename only",
+            "keep as is"
+          ],
+          "recommended": "restore lock",
+          "why": "threads/workers can lose updates"
+        },
+        {
+          "id": "3",
+          "text": "Digest comparison with ==",
+          "options": [
+            "secure_compare",
+            "lookup by digest key",
+            "keep =="
+          ],
+          "recommended": "lookup by digest key",
+          "why": "avoids a timing side channel if find loops"
+        },
+        {
+          "id": "4",
+          "text": "Direct callers of find bypassing Grants.parse",
+          "options": [
+            "audit callers",
+            "skip"
+          ],
+          "recommended": "audit callers",
+          "why": "prefix check no longer in the route"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-free-review.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with the findings",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Drop file lock on participants.json",
+          "options": [
+            "restore lock",
+            "atomic write only",
+            "keep as is"
+          ],
+          "recommended": "restore lock",
+          "why": "threads/workers still race; crashes can corrupt the file"
+        },
+        {
+          "id": "2",
+          "text": "Removed \"rejects an expired grant\" spec",
+          "options": [
+            "move to gate spec",
+            "skip"
+          ],
+          "recommended": "move to gate spec",
+          "why": "expiry would otherwise be untested"
+        },
+        {
+          "id": "3",
+          "text": "Digest comparison with ==",
+          "options": [
+            "secure_compare",
+            "lookup by digest",
+            "skip"
+          ],
+          "recommended": "lookup by digest",
+          "why": "avoids comparison timing entirely"
+        },
+        {
+          "id": "4",
+          "text": "Existing plaintext grants after the digest change",
+          "options": [
+            "backfill migration",
+            "invalidate them",
+            "later"
+          ],
+          "recommended": "backfill migration",
+          "why": "otherwise live grants silently stop working"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-free-review.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Decisions on this change",
+      "rows": [
+        {
+          "id": "1",
+          "text": "participants.json writes without the file lock",
+          "options": [
+            "restore lock",
+            "mutex + atomic write",
+            "keep as is"
+          ],
+          "recommended": "restore lock",
+          "why": "concurrent requests can lose updates or leave a partial file"
+        },
+        {
+          "id": "2",
+          "text": "Removed \"rejects an expired grant\" spec",
+          "options": [
+            "move to gate spec",
+            "drop"
+          ],
+          "recommended": "move to gate spec",
+          "why": "expiry still needs coverage, and other callers of find may skip the gate"
+        },
+        {
+          "id": "3",
+          "text": "Existing plaintext grants after the digest switch",
+          "options": [
+            "migrate in place",
+            "invalidate all",
+            "dual-lookup for a while"
+          ],
+          "recommended": "migrate in place",
+          "why": "otherwise every live grant silently stops working"
+        },
+        {
+          "id": "4",
+          "text": "Digest comparison",
+          "options": [
+            "secure_compare",
+            "lookup by digest",
+            "keep =="
+          ],
+          "recommended": "secure_compare",
+          "why": "no cost, removes the question"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-picks-plan.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch session decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "Session file when the worker exits",
+          "options": [
+            "A delete at exit",
+            "B keep 1 h"
+          ],
+          "recommended": "B keep 1 h",
+          "why": "file is what lets users recover the lost answer"
+        },
+        {
+          "id": "D2",
+          "text": "Scratch sessions in chi web's list",
+          "options": [
+            "A hide",
+            "B show with scratch mark"
+          ],
+          "recommended": "B show with scratch mark",
+          "why": "users need to find the session they lost"
+        },
+        {
+          "id": "D3",
+          "text": "chi --resume of a scratch session",
+          "options": [
+            "A refuse",
+            "B allow while file exists"
+          ],
+          "recommended": "B allow while file exists",
+          "why": "direct fix for the accidental-close complaint"
+        },
+        {
+          "id": "D4",
+          "text": "Memory writes from a scratch session",
+          "options": [
+            "A allow",
+            "B deny project, allow system"
+          ],
+          "recommended": "B deny project, allow system",
+          "why": "throwaway sessions shouldn't change project memory"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-picks-plan.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch sessions, open decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "When the worker exits, delete the session file or keep it 1 h?",
+          "options": [
+            "A delete at exit",
+            "B keep 1 h"
+          ],
+          "recommended": "B keep 1 h",
+          "why": "without a grace period the accidental-close answer is still lost"
+        },
+        {
+          "id": "D2",
+          "text": "Show scratch sessions in chi web's list?",
+          "options": [
+            "A hide",
+            "B show with scratch mark"
+          ],
+          "recommended": "B show with scratch mark",
+          "why": "the web list is the easiest place to find the lost answer; the mark keeps them distinct"
+        },
+        {
+          "id": "D3",
+          "text": "Allow chi --resume of a scratch session?",
+          "options": [
+            "A refuse",
+            "B allow while file exists"
+          ],
+          "recommended": "B allow while file exists",
+          "why": "it pairs with D1, so resuming works only within the 1 h window"
+        },
+        {
+          "id": "D4",
+          "text": "Allow memory writes from a scratch session?",
+          "options": [
+            "A allow",
+            "B deny project, allow system"
+          ],
+          "recommended": "B deny project, allow system",
+          "why": "throwaway sessions shouldn't leave junk in project memory"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-picks-plan.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "Scratch session decisions",
+      "rows": [
+        {
+          "id": "D1",
+          "text": "When the worker exits, what happens to the session file?",
+          "options": [
+            "A delete at exit",
+            "B keep 1 h"
+          ],
+          "recommended": "B keep 1 h",
+          "why": "fixes the lost-answer complaint"
+        },
+        {
+          "id": "D2",
+          "text": "Scratch sessions in chi web's list",
+          "options": [
+            "A hide",
+            "B show with scratch mark"
+          ],
+          "recommended": "B show with scratch mark",
+          "why": "users need to find the session to recover it"
+        },
+        {
+          "id": "D3",
+          "text": "chi --resume of a scratch session",
+          "options": [
+            "A refuse",
+            "B allow while file exists"
+          ],
+          "recommended": "B allow while file exists",
+          "why": "resuming is how the answer comes back"
+        },
+        {
+          "id": "D4",
+          "text": "Memory writes from a scratch session",
+          "options": [
+            "A allow",
+            "B deny project, allow system"
+          ],
+          "recommended": "B deny project, allow system",
+          "why": "throwaway sessions shouldn't change project memory"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-picks-review.1.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with the findings",
+      "rows": [
+        {
+          "id": "3",
+          "text": "Push title includes the full tool command (secret leak)",
+          "options": [
+            "fix now",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix now",
+          "why": "push goes through third-party services and shows on lock screens. Use a generic title like \"Approval needed: <tool name>\" with no args."
+        },
+        {
+          "id": "1",
+          "text": "Push sent while the owner's tab is focused and visible",
+          "options": [
+            "fix now",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix now",
+          "why": "it's noise when the user is already looking at the card. Skip the push if a client is visible, checked in the service worker or from tracked presence."
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml on every call instead of the loaded Config",
+          "options": [
+            "fix now",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix now",
+          "why": "it does disk I/O per push and can disagree with the live config, for example after overrides or reloads. Inject or use Config."
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "fix now",
+            "skip",
+            "later"
+          ],
+          "recommended": "fix now",
+          "why": "it's the common edge case. The spec should check that it returns quietly, makes no network call and raises nothing."
+        },
+        {
+          "id": "5",
+          "text": "\"notify_waiting\" is also called for questions",
+          "options": [
+            "rename",
+            "skip",
+            "later"
+          ],
+          "recommended": "rename",
+          "why": "a name like notify_needs_attention fits both cases. Renaming is cheapest before more callers appear. The title text can still differ for approvals and questions."
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-sonnet-picks-review.2.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with each problem",
+      "rows": [
+        {
+          "id": "3",
+          "text": "Push title includes the full tool command (secret leak)",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "push goes through third-party services; use a generic title like \"Approval needed\""
+        },
+        {
+          "id": "1",
+          "text": "Push is sent while the owner's tab is focused and visible",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "skip the push when a visible tab exists; it's redundant noise"
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml on every call instead of the loaded Config",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "use the loaded Config; avoids disk reads and drift from runtime overrides"
+        },
+        {
+          "id": "4",
+          "text": "No spec for a session with no subscriptions",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "cheap spec; it should assert nothing is sent and nothing raises"
+        },
+        {
+          "id": "5",
+          "text": "notify_waiting is also called for questions",
+          "options": [
+            "rename",
+            "document",
+            "skip"
+          ],
+          "recommended": "rename",
+          "why": "a name like notify_needs_input matches both cases; update the call sites and specs"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-picks-review.3.yml": {
+    "type": "picks",
+    "data": {
+      "title": "What to do with the findings",
+      "rows": [
+        {
+          "id": "1",
+          "text": "Push sent while owner's tab is focused",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "needs a presence signal; send anyway if unknown"
+        },
+        {
+          "id": "2",
+          "text": "Reads config.yml instead of loaded Config",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "avoids disk I/O and config drift"
+        },
+        {
+          "id": "3",
+          "text": "Full tool command in push title (secret leak)",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "payload goes through third-party push services"
+        },
+        {
+          "id": "4",
+          "text": "No spec for session without subscriptions",
+          "options": [
+            "fix now",
+            "later",
+            "skip"
+          ],
+          "recommended": "fix now",
+          "why": "cheap, pins the no-op behaviour"
+        },
+        {
+          "id": "5",
+          "text": "Name says waiting, also used for questions",
+          "options": [
+            "keep name, fix doc and title",
+            "rename to notify_attention",
+            "skip"
+          ],
+          "recommended": "keep name, fix doc and title",
+          "why": "questions are also a wait on the user"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-approval.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tool call meets the guardrails",
+      "actors": [
+        "model",
+        "guardrails",
+        "judge",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "model",
+          "does": "requests a tool call"
+        },
+        {
+          "id": "s2",
+          "actor": "guardrails",
+          "does": "checks the call against the rules",
+          "behind": "in a review turn, Guardrails::ReviewBoundary denies writes before any card",
+          "cases": [
+            {
+              "when": "allow",
+              "goto": "s3"
+            },
+            {
+              "when": "deny, or a write in a review turn",
+              "goto": "s4"
+            },
+            {
+              "when": "ask",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "next": "s9"
+        },
+        {
+          "id": "s4",
+          "actor": "guardrails",
+          "does": "returns an error to the model, no card shown",
+          "next": "s9"
+        },
+        {
+          "id": "s5",
+          "actor": "judge",
+          "does": "if System 1 is on, it is asked first with timeout_ms 2000",
+          "cases": [
+            {
+              "when": "it says allow",
+              "goto": "s6"
+            },
+            {
+              "when": "unsure, timed out, or System 1 is off",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "sees": "the step shows an auto-allowed mark",
+          "next": "s9"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "gets an approval card, and a web push if away",
+          "sees": "Allow / Deny card; the turn waits",
+          "behind": "a stop during the wait cancels the turn",
+          "cases": [
+            {
+              "when": "Allow",
+              "goto": "s3"
+            },
+            {
+              "when": "Deny",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s8",
+          "actor": "guardrails",
+          "does": "returns a denial to the model",
+          "next": "s9"
+        },
+        {
+          "id": "s9",
+          "actor": "model",
+          "does": "continues the turn with the result or the denial"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-approval.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tool call hits an \"ask\" rule",
+      "actors": [
+        "model",
+        "guardrails",
+        "system1",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "model",
+          "does": "calls a tool",
+          "behind": "guardrail rules check the call",
+          "cases": [
+            {
+              "when": "rule says allow",
+              "goto": "s2"
+            },
+            {
+              "when": "rule says deny",
+              "goto": "s3"
+            },
+            {
+              "when": "rule says ask",
+              "goto": "s4"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "next": "s11"
+        },
+        {
+          "id": "s3",
+          "actor": "guardrails",
+          "does": "returns an error to the model",
+          "next": "s11"
+        },
+        {
+          "id": "s4",
+          "actor": "guardrails",
+          "does": "checks whether this is a review turn",
+          "cases": [
+            {
+              "when": "review turn (participant) and the call writes",
+              "goto": "s5"
+            },
+            {
+              "when": "normal turn",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "guardrails",
+          "does": "ReviewBoundary denies the write before any card",
+          "next": "s3"
+        },
+        {
+          "id": "s6",
+          "actor": "guardrails",
+          "does": "checks whether System 1 is on",
+          "cases": [
+            {
+              "when": "System 1 is off",
+              "goto": "s8"
+            },
+            {
+              "when": "System 1 is on",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "system1",
+          "does": "judges the call (timeout_ms 2000)",
+          "cases": [
+            {
+              "when": "says allow",
+              "goto": "s7a"
+            },
+            {
+              "when": "unsure or times out",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s7a",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "sees": "the step shows an auto-allowed mark",
+          "next": "s11"
+        },
+        {
+          "id": "s8",
+          "actor": "user",
+          "does": "gets an approval card with Allow / Deny",
+          "sees": "the turn waits on the card",
+          "behind": "a web push goes out if the user is away",
+          "cases": [
+            {
+              "when": "Allow",
+              "goto": "s9"
+            },
+            {
+              "when": "Deny",
+              "goto": "s10"
+            }
+          ]
+        },
+        {
+          "id": "s9",
+          "actor": "guardrails",
+          "does": "runs the call",
+          "next": "s11"
+        },
+        {
+          "id": "s10",
+          "actor": "guardrails",
+          "does": "returns a denial to the model",
+          "next": "s11"
+        },
+        {
+          "id": "s11",
+          "actor": "model",
+          "does": "continues the turn with the result or the denial"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-approval.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tool call meets the guardrails",
+      "actors": [
+        "model",
+        "guardrails",
+        "judge",
+        "user"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "model",
+          "does": "calls a tool"
+        },
+        {
+          "id": "s2",
+          "actor": "guardrails",
+          "does": "checks the call against the rules",
+          "cases": [
+            {
+              "when": "allow",
+              "goto": "s7"
+            },
+            {
+              "when": "deny, or a write in a review turn (ReviewBoundary)",
+              "goto": "s8"
+            },
+            {
+              "when": "ask",
+              "goto": "s3"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "guardrails",
+          "does": "checks whether System 1 is on",
+          "cases": [
+            {
+              "when": "System 1 is on",
+              "goto": "s4"
+            },
+            {
+              "when": "System 1 is off",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "judge",
+          "does": "is asked, timeout_ms 2000",
+          "cases": [
+            {
+              "when": "says allow",
+              "goto": "s5"
+            },
+            {
+              "when": "unsure or times out",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "judge",
+          "does": "auto-allows the call",
+          "sees": "the step shows an auto-allowed mark",
+          "next": "s7"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "gets an approval card, Allow / Deny",
+          "sees": "a card, plus a web push if away; the turn waits",
+          "behind": "a stop during the wait cancels the turn",
+          "cases": [
+            {
+              "when": "Allow",
+              "goto": "s7"
+            },
+            {
+              "when": "Deny",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "actor": "guardrails",
+          "does": "the call runs",
+          "next": "s9"
+        },
+        {
+          "id": "s8",
+          "actor": "guardrails",
+          "does": "returns an error or denial to the model",
+          "next": "s9"
+        },
+        {
+          "id": "s9",
+          "actor": "model",
+          "does": "continues the turn"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-decision-card.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "Life of a decision card",
+      "actors": [
+        "user",
+        "chi",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "sends a message in a session with an active objective",
+          "behind": "the decision-card bundle does nothing without an active objective"
+        },
+        {
+          "id": "s2",
+          "actor": "chi",
+          "does": "the owner's turn completes",
+          "behind": "stopped turns, participants' turns and --non-interactive turns are skipped"
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "checks the gate on the answer",
+          "behind": "at least 1200 chars, and a question mark ends a word in the last 300 chars of prose (code left out)",
+          "cases": [
+            {
+              "when": "the gate passes",
+              "goto": "s4"
+            },
+            {
+              "when": "the gate fails",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "chi",
+          "does": "fires a side request on a thread (ctx.ask_model)",
+          "behind": "the turn's end doesn't wait for it",
+          "cases": [
+            {
+              "when": "the user starts a new turn first",
+              "goto": "s8"
+            },
+            {
+              "when": "the request is still running, no new turn",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "model",
+          "does": "a cheap model returns a short summary, the question and the objective it concerns",
+          "cases": [
+            {
+              "when": "it says the answer asks nothing, or summary or question is missing",
+              "goto": "s8"
+            },
+            {
+              "when": "the request fails (only logged as no_card, no notice)",
+              "goto": "s8"
+            },
+            {
+              "when": "all fields are present",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "sees": "a decision card with the summary and question, and no buttons",
+          "behind": "the card is stored in cards.json"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "does": "answers in the composer and sends the next turn",
+          "sees": "the card folds to a line \"Asked: …\"",
+          "behind": "nothing enters the conversation, so the next request is byte for byte the same",
+          "next": "s9"
+        },
+        {
+          "id": "s8",
+          "actor": "chi",
+          "does": "no card is shown",
+          "sees": "nothing changes for the user",
+          "next": "s9"
+        },
+        {
+          "id": "s9",
+          "actor": "user",
+          "does": "the conversation goes on as usual"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-sonnet-walk-decision-card.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "When a decision card appears",
+      "actors": [
+        "user",
+        "web",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "web",
+          "does": "an owner's turn completes and the bundle checks the gate",
+          "behind": "needs an active objective. A stopped turn, a participant's turn or a --non-interactive turn doesn't count. The answer needs at least 1200 chars, and a \"?\" must end a word in the last 300 chars of prose (code left out).",
+          "cases": [
+            {
+              "when": "objective active and gate passes",
+              "goto": "s2"
+            },
+            {
+              "when": "no objective, or the gate fails",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "starts a side request on a thread",
+          "sees": "the answer appears and the turn ends right away, with no waiting",
+          "behind": "ctx.ask_model asks a cheap model for a short summary, the question and the objective it concerns"
+        },
+        {
+          "id": "s3",
+          "actor": "model",
+          "does": "replies to the side request",
+          "cases": [
+            {
+              "when": "a good summary and question come back",
+              "goto": "s4"
+            },
+            {
+              "when": "the answer asks nothing, or the summary or question is missing",
+              "goto": "s5"
+            },
+            {
+              "when": "the request fails (only logged as no_card, no notice)",
+              "goto": "s5"
+            },
+            {
+              "when": "the user starts a new turn first (request cancelled, card dropped)",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "web",
+          "does": "shows the decision card",
+          "sees": "a card with the summary, the question and the objective. It has no buttons.",
+          "behind": "the card is saved in cards.json and nothing enters the conversation",
+          "next": "s6"
+        },
+        {
+          "id": "s5",
+          "actor": "web",
+          "does": "shows no card",
+          "sees": "just the normal answer",
+          "next": "s6"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "answers in the composer and sends the next turn",
+          "sees": "if there was a card, it folds to one line \"Asked: …\"",
+          "behind": "the next request is byte for byte the same as without a card, because cards never enter the conversation"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-sonnet-walk-decision-card.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "Life of a decision card",
+      "actors": [
+        "user",
+        "chi",
+        "model"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "chi",
+          "does": "an owner's turn completes in a session with an active objective",
+          "behind": "stopped turns, participants' turns and --non-interactive turns are skipped",
+          "cases": [
+            {
+              "when": "no active objective, or stopped / participant / --non-interactive",
+              "goto": "s7"
+            },
+            {
+              "when": "owner's turn completed normally",
+              "goto": "s2"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "actor": "chi",
+          "does": "checks the gate on the prose (code left out)",
+          "behind": "at least 1200 chars, and a \"?\" ends a word in the last 300 chars",
+          "cases": [
+            {
+              "when": "gate fails",
+              "goto": "s7"
+            },
+            {
+              "when": "gate passes",
+              "goto": "s3"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "chi",
+          "does": "sends a side request on a thread (ctx.ask_model)",
+          "sees": "the answer is already readable; the turn end doesn't wait",
+          "behind": "asks a cheap model for a short summary, the question and the objective it concerns"
+        },
+        {
+          "id": "s4",
+          "actor": "model",
+          "does": "replies with summary, question and objective",
+          "cases": [
+            {
+              "when": "the user starts a new turn first (request cancelled, card dropped)",
+              "goto": "s7"
+            },
+            {
+              "when": "the answer asks nothing, or summary or question is missing",
+              "goto": "s7"
+            },
+            {
+              "when": "the request fails (only logged as no_card, no notice)",
+              "goto": "s7"
+            },
+            {
+              "when": "all fields present",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "actor": "chi",
+          "does": "shows the decision card under the answer",
+          "sees": "summary, question and objective, with no buttons",
+          "behind": "stored in cards.json"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "does": "answers in the composer and sends the next turn",
+          "sees": "the card folds to a line \"Asked: …\"",
+          "next": "s7"
+        },
+        {
+          "id": "s7",
+          "actor": "chi",
+          "does": "done; nothing was added to the conversation",
+          "sees": "on the no-card paths, just the plain answer",
+          "behind": "the next request is byte for byte the same as without the bundle"
+        }
+      ]
+    },
+    "lenient": true,
+    "error": null
+  },
+  "r2-sonnet-walk-reconnect.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses its connection and comes back",
+      "actors": [
+        "user",
+        "web",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "loses the connection (sleep, network drop)",
+          "sees": "the page shows a \"reconnecting\" mark",
+          "behind": "the SSE stream GET /events breaks"
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "reconnects with GET /events and Last-Event-ID N",
+          "cases": [
+            {
+              "when": "the worker is still running",
+              "goto": "s3"
+            },
+            {
+              "when": "the worker exited (idle exit)",
+              "goto": "s9"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "looks for N in its replay buffer",
+          "cases": [
+            {
+              "when": "N is still buffered",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N",
+          "sees": "the missed steps appear"
+        },
+        {
+          "id": "s5",
+          "actor": "bridge",
+          "does": "the live stream continues",
+          "next": "s11"
+        },
+        {
+          "id": "s6",
+          "actor": "bridge",
+          "does": "sends a reset event",
+          "behind": "the replay buffer no longer reaches back to N"
+        },
+        {
+          "id": "s7",
+          "actor": "web",
+          "does": "re-reads GET /api/sessions/:id and redraws the turn",
+          "behind": "the snapshot comes from TurnAccumulator"
+        },
+        {
+          "id": "s8",
+          "actor": "web",
+          "does": "restores open cards",
+          "sees": "the turn is redrawn and open cards are back",
+          "behind": "cards are read from CardStore",
+          "next": "s11"
+        },
+        {
+          "id": "s9",
+          "actor": "web",
+          "does": "shows the session as not running",
+          "sees": "the session is marked not running",
+          "behind": "the worker exited after session.idle_exit_minutes"
+        },
+        {
+          "id": "s10",
+          "actor": "user",
+          "does": "sends a new prompt",
+          "sees": "the session works again",
+          "behind": "the prompt starts the worker again",
+          "next": "s11"
+        },
+        {
+          "id": "s11",
+          "actor": "user",
+          "does": "carries on with the session",
+          "sees": "the \"reconnecting\" mark is gone"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-reconnect.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses its connection and comes back",
+      "actors": [
+        "user",
+        "web",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "does": "loses the connection (network drop, closed laptop)",
+          "sees": "a \"reconnecting\" mark appears on the page",
+          "behind": "the SSE stream on GET /events breaks"
+        },
+        {
+          "id": "s2",
+          "actor": "web",
+          "does": "reconnects to GET /events with Last-Event-ID N",
+          "behind": "N is the id of the last event the tab received",
+          "cases": [
+            {
+              "when": "the worker is still running",
+              "goto": "s3"
+            },
+            {
+              "when": "the worker exited (idle exit)",
+              "goto": "s8"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "looks for N in its replay buffer",
+          "cases": [
+            {
+              "when": "N is still in the buffer",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N, then continues the live stream"
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "sees": "the missed steps appear and the mark goes away",
+          "next": "s9"
+        },
+        {
+          "id": "s6",
+          "actor": "bridge",
+          "does": "sends a `reset` event"
+        },
+        {
+          "id": "s7",
+          "actor": "web",
+          "does": "re-reads GET /api/sessions/:id and redraws the turn",
+          "sees": "the turn redrawn, with open cards still there",
+          "behind": "the turn comes from the TurnAccumulator snapshot, and open cards come back from CardStore",
+          "next": "s9"
+        },
+        {
+          "id": "s8",
+          "actor": "web",
+          "does": "shows the session as not running",
+          "sees": "the session marked not running, with the reconnecting mark gone",
+          "behind": "the worker exited after session.idle_exit_minutes"
+        },
+        {
+          "id": "s8b",
+          "actor": "user",
+          "does": "sends a new prompt",
+          "behind": "the prompt starts the worker again"
+        },
+        {
+          "id": "s9",
+          "actor": "user",
+          "sees": "the live session, back where they were"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-reconnect.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A tab loses its connection and comes back",
+      "actors": [
+        "user",
+        "tab",
+        "bridge"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "tab",
+          "does": "loses the SSE stream",
+          "sees": "a \"reconnecting\" mark appears",
+          "behind": "GET /events was closed, and the tab retries"
+        },
+        {
+          "id": "s2",
+          "actor": "tab",
+          "does": "reconnects to GET /events",
+          "behind": "sends Last-Event-ID: N, the last event it saw",
+          "cases": [
+            {
+              "when": "the worker is still running",
+              "goto": "s3"
+            },
+            {
+              "when": "the worker exited (idle exit after session.idle_exit_minutes)",
+              "goto": "s7"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "actor": "bridge",
+          "does": "looks for N in its replay buffer",
+          "cases": [
+            {
+              "when": "N is still buffered",
+              "goto": "s4"
+            },
+            {
+              "when": "N is too old",
+              "goto": "s5"
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "actor": "bridge",
+          "does": "replays the events after N, then goes live",
+          "sees": "the missed steps appear",
+          "next": "s8"
+        },
+        {
+          "id": "s5",
+          "actor": "bridge",
+          "does": "sends a `reset` event"
+        },
+        {
+          "id": "s6",
+          "actor": "tab",
+          "does": "re-reads the turn and redraws it",
+          "sees": "the turn is redrawn and open cards come back",
+          "behind": "GET /api/sessions/:id returns the TurnAccumulator snapshot, and open cards come from CardStore",
+          "next": "s8"
+        },
+        {
+          "id": "s7",
+          "actor": "tab",
+          "does": "finds no worker to answer",
+          "sees": "the session shows as not running"
+        },
+        {
+          "id": "s7b",
+          "actor": "user",
+          "does": "sends a new prompt",
+          "behind": "this starts the worker again"
+        },
+        {
+          "id": "s8",
+          "actor": "tab",
+          "does": "continues on the live stream",
+          "sees": "the \"reconnecting\" mark is gone"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-review.1.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session starts",
+          "behind": "ReviewStart creates the session; Guardrails::ReviewPaths checks the subject is allowed"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite someone",
+          "sees": "a link containing a chp_ token",
+          "behind": "a grant is created for this one session; only a digest of the token is stored"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "runs a read-only review turn; Guardrails::ReviewBoundary denies any write"
+        },
+        {
+          "id": "s5",
+          "actor": "agent",
+          "does": "answers and proposes changes as text only",
+          "sees": "the owner can read the whole conversation",
+          "cases": [
+            {
+              "when": "the discussion continues",
+              "goto": "s4"
+            },
+            {
+              "when": "the owner is happy with the proposals",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "presses Apply",
+          "behind": "ReviewApply runs as the owner's own turn and makes the changes",
+          "next": "s7"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "revokes the grant (possible at any time)",
+          "sees": "the participant's link stops working",
+          "behind": "the grant is invalidated, so the chp_ token no longer matches"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-review.2.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session starts",
+          "behind": "ReviewStart creates the session; Guardrails::ReviewPaths checks the subject"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "sees": "a link containing the chp_ token",
+          "behind": "a grant is made for this one session; only a digest of the token is stored"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes",
+          "behind": "the token is checked against the stored digest and is limited to that session"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "runs a read-only review turn; Guardrails::ReviewBoundary denies any write"
+        },
+        {
+          "id": "s5",
+          "actor": "agent",
+          "does": "discusses with the participant and proposes changes as text",
+          "sees": "the proposal appears in the conversation, and no files change"
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "reads the conversation and presses Apply",
+          "sees": "the conversation, including the proposals"
+        },
+        {
+          "id": "s7",
+          "actor": "agent",
+          "does": "makes the proposed changes",
+          "behind": "ReviewApply runs as the owner's own turn, with the owner's permissions"
+        },
+        {
+          "id": "s8",
+          "actor": "owner",
+          "does": "revokes the grant (possible at any time)",
+          "sees": "the link no longer works for the participant",
+          "behind": "the grant is removed, so the token no longer matches"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  },
+  "r2-sonnet-walk-review.3.yml": {
+    "type": "walk",
+    "data": {
+      "title": "A review with a participant",
+      "actors": [
+        "owner",
+        "participant",
+        "agent"
+      ],
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "owner",
+          "does": "runs `chi review <subject>`",
+          "sees": "a review session starts",
+          "behind": "ReviewStart creates the session; Guardrails::ReviewPaths checks the subject is allowed"
+        },
+        {
+          "id": "s2",
+          "actor": "owner",
+          "does": "runs `chi share` to invite a participant",
+          "sees": "a link containing a chp_ token",
+          "behind": "a grant is created for this one session; only a digest of the token is stored"
+        },
+        {
+          "id": "s3",
+          "actor": "participant",
+          "does": "opens the link in chi web",
+          "sees": "only that session's participant routes, nothing else"
+        },
+        {
+          "id": "s4",
+          "actor": "participant",
+          "does": "sends a message",
+          "behind": "each message runs a read-only review turn; Guardrails::ReviewBoundary denies any write"
+        },
+        {
+          "id": "s5",
+          "actor": "agent",
+          "does": "answers and proposes changes as text",
+          "sees": "the owner sees the whole conversation",
+          "next": "s4",
+          "cases": [
+            {
+              "when": "the discussion goes on",
+              "goto": "s4"
+            },
+            {
+              "when": "the owner likes the proposal",
+              "goto": "s6"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "actor": "owner",
+          "does": "presses Apply",
+          "behind": "ReviewApply runs as the owner's own turn, so the writes happen with the owner's permissions"
+        },
+        {
+          "id": "s7",
+          "actor": "owner",
+          "does": "revokes the grant (possible at any time)",
+          "sees": "the participant's link stops working",
+          "behind": "the grant is invalidated, so the chp_ token no longer matches"
+        }
+      ]
+    },
+    "lenient": false,
+    "error": null
+  }
+}
