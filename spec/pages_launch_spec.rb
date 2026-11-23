@@ -147,6 +147,13 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(run("frames").page.error.message).to eq("the runner ended without a result: the real reason")
   end
 
+  it "records endless recursion as the script's failure, with its line" do
+    script("deep", "def f(n) = f(n + 1)\npage('Deep') { |ui| f(0) }\n")
+    error = run("deep").page.error
+    expect(error.message).to include("stack level too deep")
+    expect(error.line).to eq(1)
+  end
+
   it "cuts a script at the timeout, with what it started" do
     pid_file = File.join(tmp, "pids.json")
     script("slow", <<~RUBY)

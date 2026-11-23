@@ -55,7 +55,7 @@ script 152 against 73 preloaded libraries and a stale `PWD`). It costs about 70 
 on `Object`. `page(title) { |ui| … }` makes a `Builder`; a second call raises `Refused`. After the load, no `page` call
 fails the run too.
 
-It rescues `StandardError`, `ScriptError` and `SystemExit` (never a `SignalException`: a TERM is the launcher's cut,
+It rescues `StandardError`, `ScriptError`, `SystemExit`, `SystemStackError` (endless recursion) and `NoMemoryError` (never a `SignalException`: a TERM is the launcher's cut,
 recorded by the launcher). The line is the first backtrace entry inside the script file (the exact path given to
 `load`), or for a `ScriptError` the `path:LINE:` at the start of its message's first line, which every Ruby gives; the
 message drops that prefix. An `exit 3` is "the script called exit 3". A good run goes through `Store.record_run`, which

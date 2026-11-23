@@ -60,7 +60,9 @@ module Samagotchi
           ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
           Store.record_run(name, title: data["title"], blocks: data["blocks"], duration_ms: ms, script_sha: sha)
           0
-        rescue StandardError, ScriptError, SystemExit => e
+        # SystemStackError (endless recursion) and NoMemoryError are no
+        # StandardError, but a script's own bug all the same.
+        rescue StandardError, ScriptError, SystemExit, SystemStackError, NoMemoryError => e
           Store.record_failure(name, message: message(e, path), line: line(e, path), script_sha: sha)
           1
         end
