@@ -14,11 +14,11 @@ require "samagotchi/page_command"
 # every command and call it names exists, and every limit it states is the
 # constant's. The skill can't drift from Pages without one of these failing.
 RSpec.describe "The pages skill" do
-  DIR = File.expand_path("../lib/samagotchi/bundles/system", __dir__)
-  EXAMPLE = /^```ruby\n(.*?)^```$/m
-
-  let(:text) { File.read(File.join(DIR, "skill_pages.md")) }
-  let(:example) { text.scan(EXAMPLE).map(&:first) }
+  # Lets, not constants: a constant assigned in a describe block lands on
+  # Object, where inline-widgets' spec assigns one of the same name.
+  let(:dir) { File.expand_path("../lib/samagotchi/bundles/system", __dir__) }
+  let(:text) { File.read(File.join(dir, "skill_pages.md")) }
+  let(:example) { text.scan(/^```ruby\n(.*?)^```$/m).map(&:first) }
 
   # The sessions `chi sessions list --scope=all --format json` gives the
   # example in place of the real command.
@@ -45,7 +45,7 @@ RSpec.describe "The pages skill" do
 
   it "starts as a skill does and has its index line in the manifest, under 200 characters" do
     expect(text).to start_with("# Skill: pages\n")
-    description = Samagotchi::BundleManifest.read(dir: DIR).file_descriptions["skill_pages.md"]
+    description = Samagotchi::BundleManifest.read(dir: dir).file_descriptions["skill_pages.md"]
     expect(description).to include("chi page run", "#/p/NAME")
     expect(description.length).to be < 200
   end
