@@ -117,6 +117,7 @@ module Samagotchi
         readers.each { |reader| reader.wait(GRACE_SECONDS) || reader.kill }
         stdout, stderr = readers.map { |reader| reader.text(Encoding::UTF_8).scrub }
         ok = record(name, status, cut, timeout, before, stderr)
+        Store.remove_temporary_outputs(name)
         Result.new(ok: ok, page: Store.read(name), stdout: stdout, stderr: stderr, seconds: monotonic - started)
       ensure
         # Cut short (Ctrl-C, an exception): the group doesn't get the

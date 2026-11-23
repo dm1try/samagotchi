@@ -129,6 +129,14 @@ module Samagotchi
         AtomicFile.write(output_path(name), json)
       end
 
+      def remove_temporary_outputs(name)
+        dir = output_dir(name)
+        return unless File.directory?(dir)
+
+        pattern = /\A#{Regexp.escape(OUTPUT)}\.\d+\.[0-9a-f]{8}\.tmp\z/
+        Dir.children(dir).grep(pattern).each { |file| FileUtils.rm_f(File.join(dir, file)) }
+      end
+
       def read_raw(name)
         raw = JSON.parse(File.read(output_path(name), encoding: Encoding::UTF_8))
         raw.is_a?(Hash) ? raw : {}

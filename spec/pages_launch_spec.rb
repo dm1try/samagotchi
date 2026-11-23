@@ -82,6 +82,16 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(result.stderr).to eq("careful\n")
   end
 
+  it "removes leftover output temporary files after a run" do
+    script("temp", "page('Temp') { }\n")
+    FileUtils.mkdir_p(store.output_dir("temp"))
+    leftover = "#{store.output_path("temp")}.123.deadbeef.tmp"
+    File.write(leftover, "partial")
+
+    expect(run("temp")).to be_ok
+    expect(File.exist?(leftover)).to be(false)
+  end
+
   it "records a raise with its line and keeps the last good blocks" do
     script("usage", "page('Usage') { |ui| ui.text 'good' }\n")
     expect(run("usage")).to be_ok
