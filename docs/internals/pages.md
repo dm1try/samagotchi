@@ -162,6 +162,11 @@ text read on demand), and the `chi page` line in `self_map.md`. `spec/pages_skil
 through `Runner::Collector`'s DSL and pins every command, `ui` call and limit it names to the code; a change to the
 skill's text regenerates the turn goldens (`UPDATE_PROMPTS=1`).
 
+The eval behind it (2026-11-23, the local Qwen3.8-Flash-Next, `chi -p … --non-interactive` in isolated dirs, N=5 per
+task): 14 of 15 pages ran and showed the reference numbers, no ask was raised, and the task that doesn't name the
+skill read it 5 of 5 times; without the skill (`--mute skill_pages`, N=3) 1 of 3 made a page. The archive is the
+owner's `~/.claude/plans/evals/0016-pages-skill/`.
+
 ## Later builds
 
 - Not planned yet: picks on a page, a data API (`runtime`), a bundle's pages, parameters.
