@@ -91,6 +91,30 @@ module Samagotchi
       Result.new(type: nil, data: nil, lenient: lenient, error: "the block nests too deep")
     end
 
+    # A script's data (a page's walk, Pages::Builder) through the same schema
+    # as a block's YAML, so the same widget draws it: one deep conversion
+    # (DataTree) into what Tree hands Schema, then Schema unchanged, with no
+    # folds and no lenient pass. A picks id that Schema#row_id mends is mended
+    # here too, and the result still isn't lenient: there was no source to be
+    # lenient with.
+    # @return [Result]
+    def check(type, data)
+      type = type.to_s if type.is_a?(Symbol)
+      raise Refused, "the data's type #{echo(type)} isn't picks or walk" unless TYPES.include?(type)
+
+      raise Refused, "the data isn't a mapping" unless data.is_a?(Hash)
+
+      tree = DataTree.convert(data)
+      schema = Schema.new({}.compare_by_identity)
+      data = type == "picks" ? schema.picks(tree) : schema.walk(tree)
+      Result.new(type: type, data: data, lenient: false, error: nil)
+    rescue Refused => e
+      Result.new(type: TYPES.include?(type) ? type : nil, data: nil, lenient: false, error: e.message)
+    rescue SystemStackError
+      # DataTree's depth and loop guards come first; this is the backstop.
+      Result.new(type: nil, data: nil, lenient: false, error: "the data nests too deep")
+    end
+
     def echo(type)
       return "(not text)" unless type.is_a?(String)
 
@@ -171,6 +195,47 @@ module Samagotchi
         written = line&.[](key.start_column...value.end_column)
         @folds[hash] = written&.start_with?(key.value) ? written : "#{key.value}: #{value.value}"
       end
+    end
+
+    # A script's Hashes, Arrays and values as Tree would have read them from
+    # YAML: keys strings (a Symbol or a number made its text), a String kept
+    # (scrubbed to valid UTF-8), a Symbol or a number made its text, nil kept
+    # (absent). true, false and anything else are refused with the path to
+    # them (steps[2].does), since YAML text never reads as one here.
+    module DataTree
+      module_function
+
+      def convert(value, path = nil, depth = 1, open = {}.compare_by_identity)
+        raise Refused, "the data nests too deep" if depth > MAX_DEPTH || open.key?(value)
+
+        case value
+        when Hash, Array then nested(value, path, depth, open)
+        when String then value.encoding == Encoding::UTF_8 && value.valid_encoding? ? value : value.dup.force_encoding(Encoding::UTF_8).scrub
+        when Symbol, Integer, Float then value.to_s
+        when nil then nil
+        else raise Refused, "#{path || "the data"} must be text, not #{shown(value)}"
+        end
+      end
+
+      def nested(value, path, depth, open)
+        open[value] = true
+        if value.is_a?(Array)
+          value.each_with_index.map { |item, index| convert(item, "#{path || "the data"}[#{index}]", depth + 1, open) }
+        else
+          value.to_h { |key, item| [key(key, path), convert(item, path ? "#{path}.#{key}" : key.to_s, depth + 1, open)] }
+        end
+      ensure
+        open.delete(value)
+      end
+
+      def key(key, path)
+        return key if key.is_a?(String)
+        return key.to_s if key.is_a?(Symbol) || key.is_a?(Integer)
+
+        raise Refused, "#{path || "the data"} has a key that isn't text"
+      end
+
+      def shown(value) = [true, false].include?(value) ? value.to_s : "a #{value.class}"
     end
 
     # Eval 0013's lenient pass: a free-text value, or a list item that isn't a
