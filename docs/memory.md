@@ -441,6 +441,13 @@ skills`, [docs/bundles.md](bundles.md#the-skills-bundle)) adds `/skill save`,
 one-line diff after each update, and nudges a model that skips a failing
 step instead of fixing the skill.
 
+chi ships one skill itself: `skill_pages` in the system bundle
+(`lib/samagotchi/bundles/system/skill_pages.md`), how to make, check and link a
+page ([docs/pages.md](pages.md#asking-chi-for-a-page)). Its index line is in
+every prompt; its text is read only when a page is asked for. It tells chi not
+to edit it (a shipped file: a local edit would have to be merged at the next
+upgrade) but to say what differed.
+
 ## Toolkit memories
 
 A memory named `toolkit_<name>` defines a toolkit named `<name>`. Its body is

@@ -155,8 +155,13 @@ page as text or attributes, never as markup, except the server's sanitised `html
 **Not live**: no stream event and no polling. A run from a terminal shows on the next open; two tabs are not kept in
 step.
 
+## chi's side: the skill
+
+What chi knows about pages is one memory, the system bundle's `skill_pages.md` (an index line in every prompt, the
+text read on demand), and the `chi page` line in `self_map.md`. `spec/pages_skill_spec.rb` runs the skill's example
+through `Runner::Collector`'s DSL and pins every command, `ui` call and limit it names to the code; a change to the
+skill's text regenerates the turn goldens (`UPDATE_PROMPTS=1`).
+
 ## Later builds
 
-- **Build 3 (the skill):** chi writing a page (`write` + `execute chi page run NAME`), reading its own summary, and
-  linking the page in its answer.
 - Not planned yet: picks on a page, a data API (`runtime`), a bundle's pages, parameters.
