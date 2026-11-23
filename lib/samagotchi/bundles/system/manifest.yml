@@ -10,5 +10,5 @@ files:
   memory_guide.md: sha256:272443ff8292631b28239cb8431d6e8dd19aa23fc53d05e1a10c11696a0a5d8d
   delegated.md: sha256:a0d6ddcd4a8be06526d964898611775fd251cfd9d145a9d16afaccaa503597bd
   skill_pages.md:
-    sha256: sha256:f411b3387c5647be58c332ea2c7303d12ebe0fd8a21677cd6f392c97b9827c7f
+    sha256: sha256:1a2b474d39003d1c5ed1896b1d59a5d0b7e9b0237b9a61db785da55c7826f423
     description: "Make, change or remove a page in chi web (a table, text or a walk the user reopens at #/p/NAME): write the script, chi page run, check, link"

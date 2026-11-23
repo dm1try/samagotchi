@@ -103,6 +103,11 @@ RSpec.describe "The pages skill" do
       .to include("an actor must be text")
   end
 
+  it "teaches the page link as a plain Markdown link, never a code span, with the Pages group always beside it" do
+    expect(text).to include("[Title](#/p/NAME)", "All sessions, under Pages", "Never put the link in backticks")
+    expect(text).not_to include("`[Title](#/p/NAME)`")
+  end
+
   it "states each limit as its constant in Pages" do
     expect(text[/(\d+) rows \(the rest are dropped/, 1].to_i).to eq(Samagotchi::Pages::MAX_ROWS)
     expect(text[/(\d+) columns, /, 1].to_i).to eq(Samagotchi::Pages::MAX_COLUMNS)

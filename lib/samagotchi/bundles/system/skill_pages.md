@@ -19,8 +19,9 @@ question at hand: that stays in your answer.
    or a `0` that should mean "unknown" is passed as nil, not 0: it shows blank.
 5. On `error: line N: …` fix that line with edit and run again. The last good result stays meanwhile, so a
    bad edit never blanks the page.
-6. Answer in one or two lines: what the page shows, the link `[Title](#/p/NAME)`, and that Refresh on the page
-   runs it again. With Markdown off the link is plain text: also say it is in All sessions, under Pages.
+6. Answer in one or two lines: what the page shows, the link [Title](#/p/NAME) as a plain Markdown link, and
+   that Refresh on the page runs it again. Always add that it is in All sessions, under Pages: Markdown is off by
+   default, and then the link is plain text. Never put the link in backticks: a code span can't be clicked.
 7. To change a page: edit the script, run it again (steps 3-4). To remove one: `chi page rm NAME`.
 
 ## Never
