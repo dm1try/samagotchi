@@ -65,8 +65,9 @@ until the call returns (accepted).
 ## The runner
 
 `Runner.run(argv)` (requiring `pages/runner.rb` runs nothing) first makes fd 3 close-on-exec, so the lock is the
-runner's alone: a child the script starts, even one that leaves the group and outlives the run, never inherits it
-(it would keep the page "already running" for good). It arms the deadline when argv carries one (a write of the
+runner's alone: a program the script execs (`spawn`, `system`, backticks), even one that leaves the group and
+outlives the run, never inherits it (it would keep the page "already running" for good). A `fork` without an exec
+(`Process.daemon` too) keeps fd 3 and holds the lock while it lives: the stated limit. It arms the deadline when argv carries one (a write of the
 result and the deadline's record take one mutex, so a result recorded at the deadline isn't overwritten), checks the
 name and the script, then
 `load(path, dsl)`: the wrap module is a fresh `Module` defining only `page`, so the script's own `def`s land in it, not

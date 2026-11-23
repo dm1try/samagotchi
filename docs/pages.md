@@ -90,8 +90,9 @@ that breaks the rule). See [the CLI](cli.md#commands).
   when a run from chi web (a later build) might not have your shell's `PATH`.
 - What the script prints to stdout is its own: the result goes through the stored file. Its stderr shows under a
   failure.
-- **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon), but it never keeps the
-  page "already running". Anything that stays in the group is stopped.
+- **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon). A program the script
+  starts (`spawn`, `system`, backticks) never keeps the page "already running"; a Ruby `fork` (or `Process.daemon`)
+  that lives on does, until it ends. Anything that stays in the group is stopped.
 
 ## Where things are stored
 
