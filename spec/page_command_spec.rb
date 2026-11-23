@@ -85,11 +85,11 @@ RSpec.describe Samagotchi::PageCommand do
     it "fails naming the line, prints the script's stderr and says the good result is kept" do
       usage_page
       expect(run("run", "usage")).to eq(0)
-      script("usage", "warn 'about to fail'\npage 'Usage' do |ui|\n  nil.fetch(:a)\nend\n")
+      script("usage", "warn 'about to fail'\npage 'Usage' do |ui|\n  raise 'boom'\nend\n")
 
       expect(run("run", "usage")).to eq(1)
       lines = err.string.lines.map(&:chomp)
-      expect(lines[0]).to start_with("error: line 3: undefined method").and include("fetch")
+      expect(lines[0]).to eq("error: line 3: boom")
       expect(lines[1]).to eq("  about to fail")
       expect(lines[2]).to match(/\Athe result of \d{4}-\d\d-\d\d \d\d:\d\d is kept\z/)
       expect(store.read("usage").blocks.size).to eq(2)

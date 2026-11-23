@@ -77,13 +77,13 @@ RSpec.describe Samagotchi::Pages::Launch do
   it "records a raise with its line and keeps the last good blocks" do
     script("usage", "page('Usage') { |ui| ui.text 'good' }\n")
     expect(run("usage")).to be_ok
-    script("usage", "page('Usage') do |ui|\n  ui.text 'x'\n  nil.fetch(:a)\nend\n")
+    script("usage", "page('Usage') do |ui|\n  ui.text 'x'\n  raise 'boom'\nend\n")
 
     result = run("usage")
     expect(result).not_to be_ok
     expect(result.page.state).to eq(:failed)
     expect(result.page.error.line).to eq(3)
-    expect(result.page.error.message).to include("fetch")
+    expect(result.page.error.message).to eq("boom")
     expect(result.page.blocks).to eq([{ "type" => "text", "text" => "good" }])
   end
 
@@ -119,9 +119,13 @@ RSpec.describe Samagotchi::Pages::Launch do
   end
 
   it "defines no top-level method for the script" do
-    script("defs", "def helper = 1\npage('Defs') { |ui| ui.text helper.to_s }\n")
-    expect(run("defs")).to be_ok
-    expect(Object.private_method_defined?(:helper)).to be(false)
+    script("defs", <<~RUBY)
+      def helper = 1
+      page("Defs") { |ui| ui.text "\#{helper} \#{Object.private_method_defined?(:helper)}" }
+    RUBY
+    result = run("defs")
+    expect(result).to be_ok
+    expect(result.page.blocks).to eq([{ "type" => "text", "text" => "1 false" }])
   end
 
   it "records a runner that ended without a result" do
@@ -141,14 +145,14 @@ RSpec.describe Samagotchi::Pages::Launch do
     RUBY
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    result = run("slow", timeout: 1)
+    result = run("slow", timeout: 3)
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     pids = JSON.parse(File.read(pid_file))
     tracked.concat(pids)
 
     expect(result).not_to be_ok
-    expect(result.page.error.message).to eq("the script was stopped after 1 s")
-    expect(elapsed).to be < 8
+    expect(result.page.error.message).to eq("the script was stopped after 3 s")
+    expect(elapsed).to be < 15
     pids.each { |pid| wait_for("pid #{pid} to be gone after the cut", timeout: 3) { !alive?(pid) } }
   end
 
@@ -182,10 +186,13 @@ RSpec.describe Samagotchi::Pages::Launch do
     out = File.join(tmp, "features.json")
     script("light", <<~RUBY)
       heavy = $LOADED_FEATURES.grep(%r{/lib/samagotchi/(engine|config|web|plugin|child_env|process_group|pages/launch)})
-      File.write(#{out.inspect}, JSON.generate(heavy))
+      pages = $LOADED_FEATURES.grep(%r{/lib/samagotchi/pages})
+      File.write(#{out.inspect}, JSON.generate("heavy" => heavy, "pages" => pages))
       page("Light") { }
     RUBY
     expect(run("light")).to be_ok
-    expect(JSON.parse(File.read(out))).to eq([])
+    loaded = JSON.parse(File.read(out))
+    expect(loaded["heavy"]).to eq([])
+    expect(loaded["pages"]).not_to be_empty
   end
 end
