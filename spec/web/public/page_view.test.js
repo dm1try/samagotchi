@@ -23,13 +23,15 @@ function apiError(code, message, status) {
   return Object.assign(new Error(message), { code, status });
 }
 
-function harness(answers = {}) {
+function harness(answers = {}, { phone = false } = {}) {
   const root = document.createElement("section");
   document.body.replaceChildren(root);
   const calls = [];
   const toasts = [];
   const events = [];
   const pending = new Map();
+  let narrow = phone;
+  let mediaChange;
   const api = (path, opts = {}) => {
     const key = `${opts.method || "GET"} ${path}`;
     calls.push(key);
@@ -41,11 +43,15 @@ function harness(answers = {}) {
   const view = createPageView({
     root, api, toast: (text) => toasts.push(text), copyText: async (text) => { events.push(["copy", text]); return true; },
     back: () => events.push(["back"]), gone: () => events.push(["gone"]), now: () => NOW,
-    win: { matchMedia: () => null }, doc: document,
+    phone: () => narrow,
+    win: { matchMedia: () => ({ addEventListener: (_name, fn) => { mediaChange = fn; } }) }, doc: document,
   });
   const $ = (sel) => root.querySelector(sel);
   const text = (sel) => $(sel)?.textContent.replace(/\s+/g, " ").trim() ?? null;
-  return { root, view, calls, toasts, events, pending, $, text };
+  return {
+    root, view, calls, toasts, events, pending, $, text,
+    setPhone: (value) => { narrow = value; mediaChange(); },
+  };
 }
 
 test("opening draws the stored page at once: Back, the title, when it ran, Refresh, ⋯, the blocks", async () => {
@@ -177,6 +183,36 @@ test("reopening a refreshing page stays running and ignores a GET older than the
   resolveLateRead(page({ title: "Older stored result" }));
   await tick();
   assert.equal(h.text(".pg-title"), "Run answer");
+});
+
+test("Refresh clears opened rows and keeps a sort only when that table's columns stay the same", async () => {
+  const table = (count) => ({
+    type: "table",
+    columns: Array.from({ length: count }, (_value, index) => ({
+      label: `Column ${index + 1}`, ...(index === 1 ? { key_column: true } : {}),
+    })),
+    rows: [Array.from({ length: count }, (_value, index) => index === 0 ? "A" : index)],
+  });
+  for (const [columnCount, expectedSort] of [[4, null], [3, "descending"]]) {
+    const h = harness({
+      "GET /api/pages/usage": page({ blocks: [table(3)] }),
+      "POST /api/pages/usage/run": "hold",
+    }, { phone: true });
+    h.view.open("usage");
+    await tick();
+    h.setPhone(false);
+    h.$("th:nth-child(2) button").click();
+    h.setPhone(true);
+    h.$(".pg-row-main").click();
+    assert.equal(h.$(".pg-row-main").getAttribute("aria-expanded"), "true");
+
+    h.$(".pg-refresh").click();
+    h.pending.get("POST /api/pages/usage/run").resolve(page({ blocks: [table(columnCount)] }));
+    await tick();
+    assert.equal(h.$(".pg-row-main").getAttribute("aria-expanded"), "false");
+    h.setPhone(false);
+    assert.equal(h.$("th:nth-child(2)").getAttribute("aria-sort"), expectedSort);
+  }
 });
 
 test("Refresh's refusals: already running is a toast; a removed page says so and goes back", async () => {
