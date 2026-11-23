@@ -56,8 +56,10 @@ end
 - `ui.text(markdown)`: a text block.
 - `ui.table(rows, columns:, format:, key:, total:)`: `columns:` a Hash key => label in the order to show;
   `total:` a Hash by column key, shown as a last row.
-- `ui.walk(title:, actors:, steps:)`: a scenario, 2-5 actors, each step like
-  `{ id: "s1", actor: "dev", does: "tags the release", sees: "the tag on GitHub" }`.
+- `ui.walk(title:, actors:, steps:)`: a scenario, each step like
+  `{ id: "s1", actor: "developer", does: "tags the release", sees: "the tag on GitHub" }`.
+  `actors:` a list of 2-5 names as plain Strings (`["developer", "CI", "reviewer"]`), not Hashes; each step's
+  `actor:` is one of those names exactly. A step may add `next:` or `cases:`; at most 30 steps.
 
 What trips a script:
 - Call `page` once. Rows are Hashes. No `exit`: it fails the run.

@@ -89,12 +89,18 @@ RSpec.describe "The pages skill" do
     expect(walk_keys).to eq(%w[title actors steps])
   end
 
-  it "shows a walk step the walk schema takes" do
+  it "shows a walk step and actors the walk schema takes (actors as Strings, not Hashes)" do
     step = text[/each step like\s+`(\{[^`]+\})`/, 1]
+    actors = text[/`actors:` a list of [^`]*`(\[[^`]+\])`/, 1]
     expect(step).not_to be_nil
-    data = { title: "t", actors: %w[dev ci], steps: [eval(step)] } # rubocop:disable Security/Eval -- the skill's own literal
+    expect(actors).not_to be_nil
+    # rubocop:disable-next Security/Eval -- the skill's own literals
+    data = { title: "t", actors: eval(actors), steps: [eval(step)] }
+    expect(data[:actors]).to all(be_a(String))
     result = Samagotchi::InlineWidgets.check("walk", data)
     expect(result.error).to be_nil
+    expect(Samagotchi::InlineWidgets.check("walk", data.merge(actors: data[:actors].map { |a| { id: a } })).error)
+      .to include("an actor must be text")
   end
 
   it "states each limit as its constant in Pages" do
