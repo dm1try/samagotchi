@@ -756,6 +756,51 @@
   "owner_verify.js": [
     "createOwnerVerify"
   ],
+  "page_blocks.js": [
+    "WALK_HOST",
+    "blockTemplate",
+    "blocksTemplate",
+    "drawWalks"
+  ],
+  "page_links.js": [
+    "installPageLinks",
+    "pageLinkTarget"
+  ],
+  "page_model.js": [
+    "changedText",
+    "durationText",
+    "errorCopy",
+    "failureParts",
+    "keptAfterFailure",
+    "metaText",
+    "resultDate"
+  ],
+  "page_route.js": [
+    "openPageName",
+    "pageHash",
+    "pageNameFromHash"
+  ],
+  "page_table.js": [
+    "tableTemplate"
+  ],
+  "page_table_model.js": [
+    "BLANK",
+    "cellText",
+    "countText",
+    "nextSort",
+    "numericColumn",
+    "phoneColumns",
+    "sortRows"
+  ],
+  "page_view.js": [
+    "createPageView"
+  ],
+  "pages_group.js": [
+    "createPagesGroup",
+    "filterPages",
+    "pageCardMeta",
+    "pagesGroupTemplate"
+  ],
   "pan_zoom.js": [
     "BAR_ROOM",
     "FIT_PAD",
@@ -1584,6 +1629,9 @@
     "ownerLabel",
     "setViewerSelf",
     "viewerSelf"
+  ],
+  "views.js": [
+    "createViews"
   ],
   "widget_picks.js": [
     "drawPicks",

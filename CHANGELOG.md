@@ -8,11 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Fixed
+## [0.187.0] - 2026-11-23
 
-- chi web pages: Back from a page opened from All sessions keeps Esc going back; a page reopened during its Refresh
-  shows Running… and keeps the newest result; a Refresh closes opened table rows and drops a sort whose columns
-  changed; a name like `..` shows "There is no page called …" without a request.
+### Added
+
+- Pages: ask chi for "a page of …" and it writes a small Ruby script under the config's `pages/` folder that builds
+  text, a table and a walk (the shipped pages skill teaches it how). `chi page run | list | rm` runs, lists and
+  removes them; a run gets 30 s, one at a time per page, and a failed run keeps the last result under its failure
+  line. In chi web a page opens at `#/p/NAME` (All sessions → Pages, or a `#/p/` link in an answer, in place): Refresh
+  runs it again, a table sorts on a desktop and opens its rows on a phone, and ⋯ deletes it. Owner only.
+
+Update with `chi update`.
 
 ## [0.186.0] - 2026-11-23
 
@@ -6819,7 +6825,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.186.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.187.0...HEAD
+[0.187.0]: https://github.com/dm1try/samagotchi/compare/v0.186.0...v0.187.0
 [0.186.0]: https://github.com/dm1try/samagotchi/compare/v0.185.0...v0.186.0
 [0.185.0]: https://github.com/dm1try/samagotchi/compare/v0.184.0...v0.185.0
 [0.184.0]: https://github.com/dm1try/samagotchi/compare/v0.183.0...v0.184.0
