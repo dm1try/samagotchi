@@ -10,8 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- chi page: failed runs keep newer keys, text reads correctly, temp files are removed, and deadline races keep the
-  right result.
+- chi page: a run that finishes just before its 30 s cut keeps its result instead of "stopped after 30 s", and the
+  runner's own "stopped" record is no longer overwritten by "ended without a result"; text in another encoding (a
+  Latin-1 file) reads right instead of turning into `�`; a cut run leaves no `output.json.*.tmp` behind; a failed run
+  keeps fields a newer chi wrote in the page's output.
 
 ## [0.187.0] - 2026-11-23
 
