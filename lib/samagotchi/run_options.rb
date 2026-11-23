@@ -204,6 +204,7 @@ module Samagotchi
                  chi answer ID --question QID --option N   answer a question a session waits on
                  chi share ID --name NAME | ls [ID] | cap ID P D | revoke ID [P]|--all   invite people into a session
                  chi memory <ls|rm> [--scope project|system]   the memories; rm moves one to the bundle trash
+                 chi page <run|list|rm> [NAME]    pages: scripts under ~/.config/samagotchi/pages that say what to show
                  chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
                  chi guardrails replay [--dry-run] [--threshold T] [--model M]   seed System 1's record from answered approvals
                  chi guardrails rule <id>         print "asks" if that rule votes ask on this machine now
