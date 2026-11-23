@@ -1,6 +1,6 @@
 // The main page booted whole (index.html + app.js) in happy-dom, for
 // viewer_boot.test.js: run as its own process (`node page_boot.js JSON`,
-// JSON {can: [...], kind}), since app.js is the page's top-level module and
+// JSON {can: [...], kind, hash}: the hash it boots at, #/s/SID by default), since app.js is the page's top-level module and
 // would leave its globals, listeners and timers in the suite's one process.
 // chi web is faked: fetch answers by route (the session show has a running
 // turn, a question, a participant's finished turn and a revisable
@@ -19,7 +19,7 @@ const requests = [];
 const streams = [];
 
 const window = new Window({
-  url: `http://127.0.0.1:4567/#/s/${SID}`,
+  url: `http://127.0.0.1:4567/${args.hash || `#/s/${SID}`}`,
   width: 1280,
   height: 900,
   settings: { disableJavaScriptFileLoading: true, disableJavaScriptEvaluation: true, disableCSSFileLoading: true },
@@ -85,7 +85,11 @@ const show = {
   last_event_seq: 1, last_event_id: "1-1",
   timing: { turn_records: [], tool_records: [], turn_count: 2, active_turn: { id: "t3", started_at: AT }, active_tools: [] },
 };
+const PAGE = { name: "usage", title: "Usage", state: "ok", ran_at: AT, duration_ms: 800, changed: false,
+               changed_after_failure: false, script_changed_at: AT, error: null, blocks: [{ type: "text", text: "x" }] };
 const ANSWERS = [
+  [/^\/api\/pages$/, () => ({ pages: [{ name: "usage", title: "Usage", state: "ok", ran_at: AT, failed_at: null, changed: false, error_line: null }] })],
+  [/^\/api\/pages\/[^/]+$/, () => PAGE],
   [/^\/api\/sessions\/[^/]+$/, () => show],
   [/^\/api\/sessions$/, () => ({ sessions: [{ ...show.session }] })],
   [/^\/api\/models$/, () => ({ models: [], default: "TestModel" })],

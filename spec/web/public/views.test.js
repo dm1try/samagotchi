@@ -9,7 +9,7 @@ import { createViews } from "../../../lib/samagotchi/web/public/views.js";
 const ID = "d4c5c3af-a814-48dd-a59c-fffa4bc0b094";
 const OTHER = "0a1b2c3d-1111-2222-3333-444455556666";
 
-function harness({ hash = "", participant = null, selected = null, events = true } = {}) {
+function harness({ hash = "", participant = null, selected = null, events = true, pages = undefined } = {}) {
   const calls = [];
   const listeners = {};
   const location = { pathname: "/", search: "?dir=x", hash };
@@ -37,6 +37,10 @@ function harness({ hash = "", participant = null, selected = null, events = true
     chainPop: { close: () => calls.push(["chainPop.close"]) },
     familyPop: { close: () => calls.push(["familyPop.close"]) },
   };
+  const pageCalls = [];
+  const pageView = pages === null ? null : {
+    open: (name) => pageCalls.push(["open", name]), close: () => pageCalls.push(["close"]),
+  };
   const claims = { pending: (c) => calls.push(["claim.pending", c]), showPending: () => calls.push(["claim.show"]) };
   const views = createViews({
     win, doc: document, participant, store, lists,
@@ -48,8 +52,9 @@ function harness({ hash = "", participant = null, selected = null, events = true
     select: (id) => calls.push(["select", id]),
     clearSelection: () => calls.push(["clear"]),
     ownerClaim: () => claims,
+    pages: pageView,
   });
-  return { views, calls, location, listeners, store, lists };
+  return { views, calls, location, listeners, store, lists, pageCalls };
 }
 
 test("All sessions is open at #/sessions, never on a participant's page", () => {
@@ -121,4 +126,63 @@ test("the start page's hash with a session open clears it; a participant's page 
   const own = harness({ hash: `#/s/${OTHER}`, participant: { sessionId: ID } });
   own.views.selectFromHash();
   assert.deepEqual(own.calls.filter((c) => c[0] === "select"), [["select", ID]]);
+});
+
+test("a page hash opens the page view in place of the session area, and selects nothing", () => {
+  const { views, calls, pageCalls, location, listeners } = harness({ hash: "", selected: ID });
+  location.hash = "#/p/usage";
+  listeners.hashchange();
+  assert.equal(document.body.classList.contains("page-view"), true);
+  assert.equal(document.body.classList.contains("all-view"), false);
+  assert.deepEqual(pageCalls, [["open", "usage"]]);
+  assert.equal(views.pageOpen(), "usage");
+  assert.equal(calls.some((c) => c[0] === "select" || c[0] === "clear"), false);
+  location.hash = `#/s/${ID}`;
+  listeners.hashchange();
+  assert.equal(document.body.classList.contains("page-view"), false);
+  assert.deepEqual(pageCalls.at(-1), ["close"]);
+});
+
+test("no page without the capability, and none on a participant's page", () => {
+  const none = harness({ hash: "#/p/usage", pages: null });
+  none.views.applyView();
+  assert.equal(none.views.pageOpen(), null);
+  assert.equal(document.body.classList.contains("page-view"), false);
+
+  const own = harness({ hash: "#/p/usage", participant: { sessionId: ID } });
+  own.views.applyView();
+  assert.equal(own.views.pageOpen(), null);
+  assert.deepEqual(own.pageCalls, [["close"]]);
+});
+
+test("while a page is open the session's hash isn't written; a session picked leaves the page for it", () => {
+  const { views, calls, location } = harness({ hash: "#/p/usage", selected: ID });
+  views.setSessionHash(null);
+  assert.equal(calls.some((c) => c[0] === "replace"), false);
+  views.setSessionHash(OTHER);
+  assert.deepEqual(calls.find((c) => c[0] === "replace"), ["replace", `/?dir=x#/s/${OTHER}`]);
+  assert.equal(location.hash, `#/s/${OTHER}`);
+});
+
+test("Back: history.back() when this page opened it, else All sessions in its entry; the label says where", () => {
+  const pushed = harness({ hash: `#/s/${ID}`, selected: ID });
+  pushed.views.openPage("usage");
+  assert.equal(pushed.location.hash, "#/p/usage");
+  assert.equal(pushed.views.pageBackLabel(), "Back");
+  pushed.views.closePage();
+  assert.deepEqual(pushed.calls.at(-1), ["back"]);
+
+  const fromAll = harness({ hash: "#/sessions" });
+  fromAll.views.openPage("usage");
+  assert.equal(fromAll.views.pageBackLabel(), "Sessions");
+
+  const loaded = harness({ hash: "#/p/usage" });
+  assert.equal(loaded.views.pageBackLabel(), "Sessions");
+  loaded.views.closePage();
+  assert.deepEqual(loaded.calls.find((c) => c[0] === "replace"), ["replace", "/?dir=x#/sessions"]);
+  assert.equal(loaded.location.hash, "#/sessions");
+
+  const gone = harness({ hash: "#/p/usage" });
+  gone.views.leavePage();
+  assert.equal(gone.location.hash, "#/sessions");
 });

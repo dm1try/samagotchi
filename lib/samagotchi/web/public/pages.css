@@ -1,0 +1,38 @@
+/* A page, #/p/NAME (page_view.js): in place of the session area, the strip and All sessions while body.page-view.
+   The view scrolls down inside itself; it never scrolls sideways: a wide table or a walk's lanes scroll in their own box.
+   Colours are the :root tokens only (tokens.css). */
+#pageView{display:none;flex:1;min-height:0;min-width:0;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding:2px 2px 24px}
+body.page-view #pageView{display:flex}
+body.page-view :is(#center,#topStrip,#stripGrip,#allView,#sessionTitleRow){display:none}
+.pg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.pg-back{flex:none;padding:5px 10px;font-size:13px;color:var(--accent);background:transparent;border:1px solid transparent}
+@media(hover:hover){.pg-back:hover{filter:none;border-color:var(--border-strong)}}
+.pg-title{flex:1 1 160px;min-width:0;margin:0;font-size:17px;font-weight:650;line-height:1.3;color:var(--text);overflow-wrap:anywhere}
+.pg-meta{font-size:12px;color:var(--text-muted);white-space:nowrap}
+.pg-actions{display:flex;align-items:center;gap:8px;flex:none}
+.pg-actions button{padding:6px 12px;font-size:12px;font-weight:600;border-radius:8px}
+.pg-refresh:disabled{opacity:.7;cursor:default}
+.pg-menu-btn{border:1px solid var(--border-strong)}
+.pg-more{position:relative}
+.pg-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;display:flex;align-items:center;gap:8px;padding:8px;white-space:nowrap;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:10px;box-shadow:var(--shadow-strong)}
+.pg-menu .pg-delete-ask{background:transparent;color:var(--danger-text);border:1px solid transparent}
+.pg-menu .pg-delete{background:var(--danger-bg-dim);color:var(--danger-text);border:1px solid var(--danger)}
+.pg-confirm{font-size:12.5px;color:var(--text-2)}
+.pg-line{border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn-text);border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere}
+.pg-line code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.pg-line .pg-copy{margin-left:6px;padding:3px 9px;font-size:12px;border:1px solid var(--border-strong)}
+.pg-blocks{display:flex;flex-direction:column;gap:12px;min-width:0}
+.pg-kept{opacity:.62}
+.pg-text{color:var(--text-2);font-size:13.5px;line-height:1.5;min-width:0;overflow-wrap:anywhere}
+.pg-plain{white-space:pre-wrap}
+.pg-text.markdown pre{overflow:auto;padding:10px;border-radius:8px;background:var(--bg-inset);border:1px solid var(--border)}
+.pg-text.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 3px}
+.pg-text.markdown a{color:var(--accent)}
+.pg-walk{display:block;min-width:0;max-width:100%;overflow-x:auto}
+.pg-note,.pg-unknown{font-size:12.5px;color:var(--text-muted)}
+@media(max-width:600px){
+  .pg-head{gap:6px 8px}
+  .pg-title{flex:1 1 0}
+  /* The meta wraps under the title, on a line of its own. */
+  .pg-meta{order:5;flex-basis:100%;white-space:normal}
+}
