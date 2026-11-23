@@ -88,10 +88,12 @@ module Samagotchi
       # runner holds the lock alone. A child the script execs, even one that
       # leaves the group (and so outlives the run), never inherits it: it
       # would keep the page "already running" for as long as it lives. A
-      # runner started by hand has no fd 3.
+      # runner started by hand has no lock there: fd 3 is closed (EBADF) or,
+      # as Ruby keeps it for itself when nothing is inherited there, refused
+      # (ArgumentError, "RubyVM reserves it").
       def hold_lock
         IO.for_fd(LOCK_FD, autoclose: false).close_on_exec = true
-      rescue Errno::EBADF
+      rescue Errno::EBADF, ArgumentError
         nil
       end
 

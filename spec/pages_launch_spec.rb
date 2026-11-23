@@ -218,6 +218,23 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(run("orphan")).to be_ok
   end
 
+  # The runner as its header shows it, started by hand: no lock on fd 3
+  # (Ruby keeps fd 3 for itself then) and no deadline.
+  def runner_by_hand(*argv, **)
+    boot = Samagotchi::Pages::Launch::BOOT
+    Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot, *argv,
+                  in: File::NULL, out: File::NULL, err: File::NULL, **)
+  end
+
+  it "runs a page from a runner started by hand, with no fd 3" do
+    script("byhand", "page('By hand') { |ui| ui.text 'x' }\n")
+    pid = runner_by_hand("byhand")
+    tracked << pid
+    _, status = Process.wait2(pid)
+    expect(status.exitstatus).to eq(0)
+    expect(store.read("byhand").state).to eq(:ok)
+  end
+
   it "stops a run when cancelled says so, recorded as stopped" do
     script("held", "sleep 20\npage('Held') { }\n")
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
