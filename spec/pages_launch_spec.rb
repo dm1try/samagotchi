@@ -82,6 +82,16 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(result.stderr).to eq("careful\n")
   end
 
+  it "removes leftover output temporary files after a run" do
+    script("temp", "page('Temp') { }\n")
+    FileUtils.mkdir_p(store.output_dir("temp"))
+    leftover = "#{store.output_path("temp")}.123.deadbeef.tmp"
+    File.write(leftover, "partial")
+
+    expect(run("temp")).to be_ok
+    expect(File.exist?(leftover)).to be(false)
+  end
+
   it "records a raise with its line and keeps the last good blocks" do
     script("usage", "page('Usage') { |ui| ui.text 'good' }\n")
     expect(run("usage")).to be_ok
@@ -141,6 +151,27 @@ RSpec.describe Samagotchi::Pages::Launch do
     result = run("killed")
     expect(result).not_to be_ok
     expect(result.page.error.message).to start_with("the runner ended without a result")
+  end
+
+  it "keeps a new result from a normal exit at the launcher deadline" do
+    script("deadline", "page('Deadline') { }\n")
+    before = store.file_id("deadline")
+    store.record_run("deadline", title: "Deadline", blocks: [], duration_ms: 1, script_sha: store.script_sha("deadline"))
+    status = instance_double(Process::Status, exitstatus: 0)
+
+    expect(described_class.record("deadline", status, :timeout, 1, before, "")).to be(true)
+    expect(store.read("deadline").state).to eq(:ok)
+  end
+
+  it "keeps a runner-written deadline failure after a signalled exit" do
+    script("deadline", "page('Deadline') { }\n")
+    before = store.file_id("deadline")
+    store.record_failure("deadline", message: "the script was stopped after 1 s", line: nil,
+                                  script_sha: store.script_sha("deadline"))
+    status = instance_double(Process::Status, exitstatus: nil)
+
+    expect(described_class.record("deadline", status, nil, 1, before, "")).to be(false)
+    expect(store.read("deadline").error.message).to eq("the script was stopped after 1 s")
   end
 
   it "stores a message that isn't valid UTF-8 readable, with its line" do

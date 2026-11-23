@@ -117,6 +117,7 @@ module Samagotchi
         readers.each { |reader| reader.wait(GRACE_SECONDS) || reader.kill }
         stdout, stderr = readers.map { |reader| reader.text(Encoding::UTF_8).scrub }
         ok = record(name, status, cut, timeout, before, stderr)
+        Store.remove_temporary_outputs(name)
         Result.new(ok: ok, page: Store.read(name), stdout: stdout, stderr: stderr, seconds: monotonic - started)
       ensure
         # Cut short (Ctrl-C, an exception): the group doesn't get the
@@ -129,14 +130,19 @@ module Samagotchi
       # ended without its result is recorded here; the runner recorded the rest.
       def record(name, status, cut, timeout, before, stderr)
         sha = Store.script_sha(name)
+        written = Store.file_id(name)
+        fresh = !written.nil? && written != before
+        normal_exit = [0, 1].include?(status&.exitstatus)
+        return false if fresh && !normal_exit && Store.read(name).state == :failed
+
+        cut = nil if cut == :timeout && fresh && normal_exit
         if cut
           message = cut == :cancelled ? "the run was stopped" : "the script was stopped after #{seconds(timeout)} s"
           Store.record_failure(name, message: message, line: nil, script_sha: sha)
           return false
         end
 
-        written = Store.file_id(name)
-        if written.nil? || written == before || ![0, 1].include?(status&.exitstatus)
+        if !fresh || !normal_exit
           # Not a backtrace frame: a Ruby crash ends stderr with "from …" lines.
           tail = stderr.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("from ") }.last
           Store.record_failure(name, message: ["the runner ended without a result", tail].compact.join(": "), line: nil,

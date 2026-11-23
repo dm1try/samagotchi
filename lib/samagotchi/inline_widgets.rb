@@ -210,10 +210,19 @@ module Samagotchi
 
         case value
         when Hash, Array then nested(value, path, depth, open)
-        when String then value.encoding == Encoding::UTF_8 && value.valid_encoding? ? value : value.dup.force_encoding(Encoding::UTF_8).scrub
+        when String then text(value)
         when Symbol, Integer, Float then value.to_s
         when nil then nil
         else raise Refused, "#{path || "the data"} must be text, not #{shown(value)}"
+        end
+      end
+
+      def text(value)
+        value = value.to_s
+        if [Encoding::BINARY, Encoding::US_ASCII].include?(value.encoding)
+          value.dup.force_encoding(Encoding::UTF_8).scrub
+        else
+          value.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
         end
       end
 
@@ -229,8 +238,7 @@ module Samagotchi
       end
 
       def key(key, path)
-        return key if key.is_a?(String)
-        return key.to_s if key.is_a?(Symbol) || key.is_a?(Integer)
+        return text(key) if key.is_a?(String) || key.is_a?(Symbol) || key.is_a?(Integer)
 
         raise Refused, "#{path || "the data"} has a key that isn't text"
       end

@@ -105,6 +105,16 @@ RSpec.describe Samagotchi::Pages::Store do
       expect(page.script_sha).to eq(sha("usage"))
     end
 
+    it "preserves keys from a newer chi when recording a failure" do
+      script("usage")
+      FileUtils.mkdir_p(described_class.output_dir("usage"))
+      File.write(described_class.output_path("usage"), JSON.generate("name" => "usage", "params" => { "days" => 7 }))
+
+      described_class.record_failure("usage", message: "boom", line: nil, script_sha: sha("usage"))
+
+      expect(JSON.parse(File.read(described_class.output_path("usage")))).to include("params" => { "days" => 7 })
+    end
+
     it "fails a page that never ran good, with no blocks" do
       script("usage")
       described_class.record_failure("usage", message: "boom", line: nil, script_sha: sha("usage"))

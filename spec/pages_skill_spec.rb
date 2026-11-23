@@ -2,12 +2,16 @@
 
 require "spec_helper"
 require "open3"
+require "rbconfig"
 require "tmpdir"
 require "samagotchi/bundle_manifest"
 require "samagotchi/pages"
 require "samagotchi/pages/builder"
 require "samagotchi/pages/runner"
 require "samagotchi/page_command"
+require "samagotchi/sessions_command"
+require "samagotchi/schedule_command"
+require "samagotchi/session_metrics"
 
 # The system bundle's pages skill (lib/samagotchi/bundles/system/skill_pages.md)
 # against the code it teaches: its worked example runs through the builder,
@@ -41,6 +45,28 @@ RSpec.describe "The pages skill" do
       load(path, collector.dsl)
     end
     collector.builder.data
+  end
+
+  def subcommand_usage(usage, subcommand)
+    lines = usage.lines
+    index = lines.index { |line| line.match?(/\A\s+#{Regexp.escape(subcommand)}\b/) }
+    return "" unless index
+
+    indentation = lines[index].index(/\S/)
+    lines.drop(index).take_while.with_index do |line, offset|
+      offset.zero? || line.strip.empty? || line.index(/\S/).to_i > indentation
+    end.join
+  end
+
+  def expect_subcommand_flags(usage, flags, subcommands, subcommand, expected)
+    expect(subcommands).to include(subcommand)
+    section = subcommand_usage(usage, subcommand)
+    expect(section).not_to be_empty
+    expected.each do |flag|
+      name = flag.split("=").first
+      expect(section).to include(flag)
+      expect(flags.fetch(subcommand).names.flatten).to include(name)
+    end
   end
 
   it "starts as a skill does and has its index line in the manifest, under 200 characters" do
@@ -78,6 +104,40 @@ RSpec.describe "The pages skill" do
       flags.each { |flag| expect(Samagotchi::PageCommand::USAGE).to include("#{sub} ").and include(flag) }
     end
     expect(commands.map { |line| line.split.first }.uniq).to match_array(Samagotchi::PageCommand::SUBCOMMANDS)
+  end
+
+  it "pins data commands and analytics fields to their actual interfaces" do
+    expect(text).to include("chi sessions list --scope=all --format json", "chi sessions stats ID --format json",
+                            "chi schedule list --all --format json", "`chi self`")
+    expect_subcommand_flags(Samagotchi::SessionsCommand::USAGE, Samagotchi::SessionsCommand::FLAGS,
+                            Samagotchi::SessionsCommand::SUBCOMMANDS, "list", %w[--scope=all --format])
+    expect_subcommand_flags(Samagotchi::SessionsCommand::USAGE, Samagotchi::SessionsCommand::FLAGS,
+                            Samagotchi::SessionsCommand::SUBCOMMANDS, "stats", %w[--format])
+    expect_subcommand_flags(Samagotchi::ScheduleCommand::USAGE, Samagotchi::ScheduleCommand::FLAGS,
+                            Samagotchi::ScheduleCommand::SUBCOMMANDS, "list", %w[--all --format])
+    expect(text).to include("`turn_records`", "`completed_at`", "`model_ref`", "`cost`", "`cost_estimate`")
+    expect(text).to include(Samagotchi::AnalyticsFile::NAME)
+
+    metrics = Samagotchi::SessionMetrics.new(clock: -> { 0.0 }, wall_clock: -> { Time.utc(2026, 11, 23) })
+    metrics.call(type: :turn_started, session_id: "skill", prompt: "p")
+    metrics.call(type: :generation_started, iteration: 1, model_ref: "host:model",
+                 price: { input: 2.0, cache_read: 0.5, cache_write: 2.0, output: 10.0 })
+    metrics.call(type: :generation_chunk, iteration: 1,
+                 payload: { "choices" => [], "usage" => { "prompt_tokens" => 1000,
+                                                          "completion_tokens" => 40, "cost" => 0 } })
+    metrics.call(type: :generation_completed, iteration: 1)
+    metrics.call(type: :turn_completed)
+    record = JSON.parse(JSON.generate(metrics.snapshot[:turn_records].last))
+    expect(record.keys).to include("completed_at", "model_ref", "cost", "cost_estimate")
+  end
+
+  it "runs chi self and pins the flags in its own help" do
+    Dir.mktmpdir("pages-self") do |tmp|
+      env = { "HOME" => tmp, "XDG_CONFIG_HOME" => File.join(tmp, "config"), "XDG_STATE_HOME" => File.join(tmp, "state") }
+      output, status = Open3.capture2(env, RbConfig.ruby, File.expand_path("../bin/chi", __dir__), "self", "--help")
+      expect(status).to be_success
+      expect(output).to include("Usage: chi self", "--model")
+    end
   end
 
   it "names only ui calls the builder has, with its keyword names" do

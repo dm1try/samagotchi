@@ -54,8 +54,7 @@ module Samagotchi
 
       # A value as text, scrubbed to valid UTF-8.
       def self.text_of(value)
-        text = value.to_s
-        text.encoding == Encoding::UTF_8 && text.valid_encoding? ? text : text.dup.force_encoding(Encoding::UTF_8).scrub
+        InlineWidgets::DataTree.text(value)
       end
 
       private
@@ -116,8 +115,8 @@ module Samagotchi
 
       def columns(columns)
         pairs = case columns
-                when Hash then columns.map { |k, label| [k.to_s, Builder.text_of(label)] }
-                when Array then columns.map { |k| [k.to_s, k.to_s] }
+                when Hash then columns.map { |k, label| [Builder.text_of(k), Builder.text_of(label)] }
+                when Array then columns.map { |k| [Builder.text_of(k), Builder.text_of(k)] }
                 else raise Refused, "#{@where}: columns: must be a Hash of key => label or a list of keys"
                 end
         raise Refused, "#{@where}: columns: is empty" if pairs.empty?
@@ -130,7 +129,7 @@ module Samagotchi
         raise Refused, "#{@where}: format: must be a Hash of column => :money or :count" unless format.is_a?(Hash)
 
         format.to_h do |k, value|
-          k = k.to_s
+          k = Builder.text_of(k)
           raise Refused, "#{@where}: format names #{k.inspect}, which is no column" unless keys.include?(k)
           unless value.is_a?(Symbol) && FORMATS.include?(value)
             raise Refused, "#{@where}: column #{k.inspect} has format #{value.inspect} (use :money or :count)"
@@ -147,7 +146,7 @@ module Samagotchi
         rows.each_with_index.map do |row, index|
           raise Refused, "#{@where}: row #{index + 1} isn't a mapping" unless row.is_a?(Hash)
 
-          row.transform_keys(&:to_s)
+          row.transform_keys { |key| Builder.text_of(key) }
         end
       end
 
@@ -159,7 +158,7 @@ module Samagotchi
         end
 
         Array(key).map do |k|
-          k = k.to_s
+          k = Builder.text_of(k)
           raise Refused, "#{@where}: key names #{k.inspect}, which is no column" unless keys.include?(k)
 
           k
@@ -169,7 +168,7 @@ module Samagotchi
       def total(total, keys)
         raise Refused, "#{@where}: total: must be a Hash by column" unless total.is_a?(Hash)
 
-        total = total.transform_keys(&:to_s)
+        total = total.transform_keys { |key| Builder.text_of(key) }
         extra = total.keys - keys
         raise Refused, "#{@where}: total names #{extra.first.inspect}, which is no column" unless extra.empty?
 
