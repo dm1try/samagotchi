@@ -97,6 +97,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle, `chi.prompt_section`, `ctx.cache_confirm`, `ctx.secrets`, `ctx.sign_in`) → `docs/plugins.md`; their prompt place → `docs/internals/prompt-caching.md`
 - Block renderers (`block_renderers:`, `BlockRenderers`, `BlockFix`, `Engine::BlockFixPart`, `web.block_fix`, the sandboxed frame, `block_host.js`, the hard rules) → `docs/internals/block-renderers.md`; a bundle's side → `docs/plugins.md` (Block renderers)
 - Inline widgets (```` ```chi-ui ```` picks and walks, `InlineWidgets`, the lenient pass, `data-widget`) → `docs/internals/inline-widgets.md`
+- Pages (`chi page`, `Pages::Builder`/`Store`/`Runner`/`Launch`, the output file, the one launch path, the cut) → `docs/internals/pages.md`; the user side → `docs/pages.md`
 - What each shipped bundle does for a user (btw, mcp, cost-cap, work-cap, claude-peer, skills…; the bundles' own settings) → `docs/bundles.md`
 - The chi home (`ChiHome`, home.json, `Record#boot_argv`, `chi home`, `HomeDoctor`, `HomeNotice`) → `docs/architecture.md` (How chi launches itself), `docs/configuration.md` (The chi home)
 - The project env (`ProjectEnv`, `session.project_env`, the chi shim) → `docs/sessions.md` (Project env); the env tools spawn with → `docs/internals/background-tasks.md`

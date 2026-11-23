@@ -91,6 +91,8 @@ SUBCOMMANDS = {
   "desktop" => ["samagotchi/desktop_command", "DesktopCommand"],
   # list and remove memories (ls, rm; --scope, --format)
   "memory" => ["samagotchi/memory_command", "MemoryCommand"],
+  # pages: scripts that say what to show (run, list, rm)
+  "page" => ["samagotchi/page_command", "PageCommand"],
   # install, upgrade, uninstall, status, diff, list, build (--scope, --force, …)
   "bundle" => ["samagotchi/bundle_command", "BundleCommand"],
   # the System 1 record: replay the asks this machine's sessions already answered

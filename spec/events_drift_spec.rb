@@ -10,8 +10,9 @@ RSpec.describe "Events drift" do
   root = File.expand_path("..", __dir__)
   read = ->(path) { File.read(File.join(root, path)) }
   # Other Ruby structs also use `type:` for schemas, message roles and
-  # CardStore's question entry; these are not emitted event types.
-  let(:non_event_types) { %i[bool choice enum float integer noul object question string user] }
+  # CardStore's question entry; these are not emitted event types. A page's
+  # block types (Pages::Builder: text, table, walk) aren't either.
+  let(:non_event_types) { %i[bool choice enum float integer noul object question string table text user walk] }
   # Context notes reload from the session messages. Turn completion is the
   # JoinReplay fallback branch (all ends except cancel/failure), not a case.
   let(:join_replay_not_explicit) { %i[context_added turn_completed] }

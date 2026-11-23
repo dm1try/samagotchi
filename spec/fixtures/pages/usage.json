@@ -1,0 +1,9 @@
+{
+  "days": 7,
+  "totals": { "sessions": 38, "turns": 412, "prompt": 9184233, "cost": 18.1252 },
+  "groups": {
+    "claude:sonnet-5-5": { "sessions": 9, "turns": 96, "prompt": 2410577, "cost": 14.221 },
+    "openrouter:deepseek-v4": { "sessions": 12, "turns": 141, "prompt": 3801024, "cost": 3.9042 },
+    "splash:qwen3.8-flash-next": { "sessions": 17, "turns": 175, "prompt": 2972632, "cost": 0.0 }
+  }
+}
