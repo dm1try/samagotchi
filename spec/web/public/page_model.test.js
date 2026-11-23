@@ -33,6 +33,8 @@ test("the header's meta: when it ran and how long it took, never ran, none for a
   assert.equal(metaText({ state: "never_ran", ran_at: null }, NOW), "never ran");
   assert.equal(metaText({ state: "failed", ran_at: ago(2) }, NOW), null);
   assert.equal(durationText(undefined), "");
+  assert.equal(durationText(12), "< 0.1 s");
+  assert.equal(durationText(60), "0.1 s");
 });
 
 test("the failed-run line names the line and when the kept result is from", () => {
