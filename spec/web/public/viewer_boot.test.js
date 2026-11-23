@@ -123,3 +123,10 @@ test("a participant at #/p/x: their session as always, and no page call", () => 
   const { requests } = boot({ kind: "participant", can: ["send"], hash: "#/p/x" });
   assert.deepEqual(requests, [`GET /api/sessions/${SID}`]);
 });
+
+test("All sessions at #/sessions: the owner with pages reads the Pages list; without pages, no page call", () => {
+  const owner = boot({ kind: "owner", can: ALL, hash: "#/sessions" });
+  assert.ok(owner.requests.includes("GET /api/pages"), owner.requests.join(", "));
+  const without = boot({ kind: "owner", can: ALL.filter((n) => n !== "pages"), hash: "#/sessions" });
+  assert.ok(!without.requests.some((r) => r.includes("/api/pages")), without.requests.join(", "));
+});

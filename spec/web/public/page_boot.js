@@ -91,7 +91,8 @@ const ANSWERS = [
   [/^\/api\/pages$/, () => ({ pages: [{ name: "usage", title: "Usage", state: "ok", ran_at: AT, failed_at: null, changed: false, error_line: null }] })],
   [/^\/api\/pages\/[^/]+$/, () => PAGE],
   [/^\/api\/sessions\/[^/]+$/, () => show],
-  [/^\/api\/sessions$/, () => ({ sessions: [{ ...show.session }] })],
+  // GET /api/sessions answers the list itself (data.js listSessions).
+  [/^\/api\/sessions$/, () => [{ ...show.session }]],
   [/^\/api\/models$/, () => ({ models: [], default: "TestModel" })],
   [/^\/api\/history$/, () => ({ entries: [] })],
   [/^\/api\/push$/, () => ({ enabled: false })],
