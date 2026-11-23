@@ -88,6 +88,24 @@ The source is at most 16 KB, checked before the parse. After it: a picks has at 
 and 2-5 unique actors, and every string is at most 300 characters. An error repeats at most 40 characters of a bad
 `type`, and never a tag.
 
+### The data entry
+
+`InlineWidgets.check(type, data)` takes a script's Hash instead of YAML (a page's `ui.walk`,
+[pages.md](pages.md#the-data-entry-into-inlinewidgets)) and returns the same `Result`, so the same widget draws it.
+
+- **One deep conversion first** (`DataTree.convert`), into what `Tree` hands `Schema`: keys made strings (a Symbol or an
+  Integer as its text; another key is refused), a String kept (scrubbed to valid UTF-8), a Symbol or a number made its
+  text, nil kept (absent, as YAML's empty value). `true`, `false` and anything else are refused with the path to them
+  (`steps[1].sees must be text, not true`; indexes from 0). A root that isn't a Hash is refused.
+- **Its own guards:** the type is one of `TYPES` (a Symbol is taken); nesting past `MAX_DEPTH` and a Hash or Array that
+  holds itself are refused ("the data nests too deep"), with the `SystemStackError` rescue kept as the backstop.
+- **`Schema` unchanged**, built with an empty identity Hash for folds: the same caps and rules as a block (30 steps,
+  2-5 actors, 12 rows, 300 characters) and the same messages. No folds and no lenient pass: the Result's `lenient` is
+  always false, a picks id `row_id` mends included (there was no source to be lenient with).
+- The entry's own messages speak of "the data"; `parse` and its messages are untouched, which
+  `spec/inline_widgets_golden_spec.rb` pins (every fixture's type, data, lenient and error, in
+  `spec/fixtures/inline_widgets_golden.json`, beside the fixtures folder, whose files `inline_widgets_spec.rb` counts).
+
 ## The page (`inline_widgets.js`)
 
 `createWidgetDrawer` is a core drawer of `block_watch.js` (its header has the contract), wired in `app.js` ahead of the
