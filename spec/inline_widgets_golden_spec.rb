@@ -21,14 +21,14 @@ RSpec.describe "InlineWidgets.parse golden (characterization)" do
   def results(dir)
     names = YAML.load_file(File.join(dir, "manifest.yml")).keys.sort
     names.to_h do |name|
-      widget = Samagotchi::InlineWidgets.parse(File.read(File.join(dir, name)))
+      widget = Samagotchi::InlineWidgets.parse(File.read(File.join(dir, name), encoding: "UTF-8"))
       [name, { "type" => widget.type, "data" => widget.data, "lenient" => widget.lenient?, "error" => widget.error }]
     end
   end
 
   it "gives each fixture the golden's type, data, lenient? and error" do
     text = "#{JSON.pretty_generate(results(fixture_dir))}\n"
-    File.write(golden_path, text) if ENV["UPDATE_GOLDENS"] == "1"
-    expect(text).to eq(File.read(golden_path)), "a block parses differently from #{golden_path}"
+    File.write(golden_path, text, encoding: "UTF-8") if ENV["UPDATE_GOLDENS"] == "1"
+    expect(text).to eq(File.read(golden_path, encoding: "UTF-8")), "a block parses differently from #{golden_path}"
   end
 end
