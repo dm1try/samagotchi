@@ -84,7 +84,11 @@ module Samagotchi
         stored
       end
 
-      # Runs the block holding NAME's lock (flock, non-blocking).
+      # Runs the block holding NAME's lock (flock, non-blocking), with the
+      # lock's io: Launch hands it to the runner, which then holds the lock
+      # for as long as it lives (a killed launcher leaves a run that still
+      # holds it).
+      # @yieldparam lock [File]
       # @raise [Busy] another process holds it
       def locked(name)
         path = lock_path(name)
@@ -92,7 +96,7 @@ module Samagotchi
         File.open(path, File::RDWR | File::CREAT, 0o644) do |lock|
           raise Busy, name unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
-          yield
+          yield lock
         end
       end
 

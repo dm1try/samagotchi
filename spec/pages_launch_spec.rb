@@ -16,10 +16,18 @@ RSpec.describe Samagotchi::Pages::Launch do
   let(:store) { Samagotchi::Pages::Store }
   let(:fixtures) { File.expand_path("fixtures/pages", __dir__) }
   let(:tracked) { [] }
+  # Runner pids (group leaders) a spec saw: killed as a group, only while
+  # still that runner's group.
+  let(:runners) { [] }
 
   around do |example|
     with_env("XDG_CONFIG_HOME" => File.join(tmp, "config"), "XDG_STATE_HOME" => File.join(tmp, "state")) { example.run }
   ensure
+    runners.each do |pid|
+      Process.kill("KILL", -pid) if Samagotchi::ProcessGroup.leader?(pid)
+    rescue Errno::ESRCH, Errno::EPERM
+      nil
+    end
     tracked.each do |pid|
       Process.kill("KILL", pid)
     rescue Errno::ESRCH, Errno::EPERM
@@ -180,6 +188,111 @@ RSpec.describe Samagotchi::Pages::Launch do
     store.locked("usage") do
       expect { run("usage") }.to raise_error(Samagotchi::Pages::Busy, "page usage is already running")
     end
+  end
+
+  # The launcher (chi web, a terminal) killed mid-run: the runner holds the
+  # lock and stops itself at its own deadline, recording the cut.
+  it "leaves at most one bounded run when its launcher is killed mid-run" do
+    pid_file = File.join(tmp, "runner.pid")
+    script("orphan", <<~RUBY)
+      File.write(#{pid_file.inspect}, Process.pid.to_s)
+      sleep 30
+      page("Orphan") { }
+    RUBY
+    boot = 'require "samagotchi/pages/launch"; Samagotchi::Pages::Launch.run("orphan", timeout: 3)'
+    launcher = Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot,
+                             in: File::NULL, out: File::NULL, err: File::NULL)
+    tracked << launcher
+    wait_for("the runner to write its pid", timeout: 10) { File.size?(pid_file) }
+    runner = Integer(File.read(pid_file))
+    runners << runner
+    Process.kill("KILL", launcher)
+    Process.wait(launcher)
+
+    # A short timeout: on unchanged code this run starts (no Busy) and is cut.
+    expect { run("orphan", timeout: 2) }.to raise_error(Samagotchi::Pages::Busy)
+    # timeout 3 s + the grace + the margin, from the runner's start
+    wait_for("the runner to stop at its deadline", timeout: 12) { !alive?(runner) }
+    expect(store.read("orphan").error.message).to eq("the script was stopped after 3 s")
+    script("orphan", "page('Orphan') { }\n")
+    expect(run("orphan")).to be_ok
+  end
+
+  # The runner as its header shows it, started by hand: no lock on fd 3
+  # (Ruby keeps fd 3 for itself then) and no deadline.
+  def runner_by_hand(*argv, **)
+    boot = Samagotchi::Pages::Launch::BOOT
+    Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot, *argv,
+                  in: File::NULL, out: File::NULL, err: File::NULL, **)
+  end
+
+  it "runs a page from a runner started by hand, with no fd 3" do
+    script("byhand", "page('By hand') { |ui| ui.text 'x' }\n")
+    pid = runner_by_hand("byhand")
+    tracked << pid
+    _, status = Process.wait2(pid)
+    expect(status.exitstatus).to eq(0)
+    expect(store.read("byhand").state).to eq(:ok)
+  end
+
+  # The window between the result's write and the exit, held open by an
+  # at_exit past the deadline: the deadline KILLs, but the good result stays.
+  it "keeps a result recorded before the deadline fires" do
+    script("late", "at_exit { sleep 5 }\npage('Late') { |ui| ui.text 'good' }\n")
+    pid = runner_by_hand("late", "1", "1.5", pgroup: true)
+    runners << pid
+    _, status = Process.wait2(pid)
+    expect(status.termsig).to eq(Signal.list.fetch("KILL"))
+    page = store.read("late")
+    expect(page.state).to eq(:ok)
+    expect(page.blocks).to eq([{ "type" => "text", "text" => "good" }])
+  end
+
+  it "stops a run when cancelled says so, recorded as stopped" do
+    script("held", "sleep 20\npage('Held') { }\n")
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    calls = 0
+    result = described_class.run("held", timeout: 20, cancelled: -> { (calls += 1) > 5 })
+    expect(result).not_to be_ok
+    expect(result.page.error.message).to eq("the run was stopped")
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 10
+  end
+
+  # A child the script starts in a group of its own outlives the run (the
+  # stated limit), but must not inherit the lock: the page would stay
+  # "already running" for as long as the child lives.
+  it "leaves the page runnable when the script's child moves to its own group" do
+    pid_file = File.join(tmp, "child.pid")
+    script("spawner", <<~RUBY)
+      child = Process.spawn("sleep", "30", pgroup: true, in: File::NULL, out: File::NULL, err: File::NULL)
+      Process.detach(child)
+      File.write(#{pid_file.inspect}, child.to_s)
+      page("Spawner") { |ui| ui.text "x" }
+    RUBY
+    first = run("spawner")
+    expect(first.page.error).to be_nil
+    expect(first).to be_ok
+    tracked << Integer(File.read(pid_file))
+    expect(alive?(tracked.last)).to be(true)
+    expect(run("spawner")).to be_ok
+  end
+
+  it "clears the remote, worker and agent markers from the script's environment" do
+    out = File.join(tmp, "markers.json")
+    keys = %w[CHI_REMOTE SAMAGOTCHI_WORKER_SESSION CLAUDECODE CODEX_THREAD_ID AI_AGENT]
+    script("markers", <<~RUBY)
+      File.write(#{out.inspect}, JSON.generate(ENV.keys.select { |k| #{keys.inspect}.include?(k) || k.start_with?("SAMAGOTCHI_WORKER_") }))
+      page("Markers") { }
+    RUBY
+    with_env(keys.to_h { |key| [key, "1"] }) { expect(run("markers")).to be_ok }
+    expect(JSON.parse(File.read(out))).to eq([])
+  end
+
+  it "names the cleared keys from their constants" do
+    cleared = described_class.cleared_keys("SAMAGOTCHI_WORKER_X" => "1", "PATH" => "/bin")
+    expect(cleared).to include(Samagotchi::SessionAccess::Dispatch::ENV_KEY, "SAMAGOTCHI_WORKER_X",
+                               *Samagotchi::AgentCaller::VENDOR_MARKERS.map(&:first))
+    expect(cleared).not_to include("PATH")
   end
 
   it "refuses an unknown page or a bad name before taking a lock" do

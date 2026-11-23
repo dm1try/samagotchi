@@ -68,10 +68,13 @@ A rule broken fails the run with a message naming the block and the limit: `tabl
 - A run that fails (the script raised, has a syntax error, called `exit`, broke a limit, or printed more than 256 KB of
   blocks) prints `error: line 9: undefined method 'fetch' for nil`, the last lines of what the script wrote to stderr,
   and exits 1. **The result of the last good run is kept**: a bad edit never blanks the page.
-- A run still going at **30 s** is stopped, with everything it started; the error says so.
+- A run still going at **30 s** is stopped, with everything it started; the error says so. If what started the run
+  dies first (a killed terminal or chi web), the run stops itself a few seconds after its 30 s and records the same
+  error. Its output then has nowhere to go: a script that prints a lot may fail with `Broken pipe` instead (the last
+  good result is kept).
 - One run of a page at a time: a second `chi page run usage` meanwhile exits 1 with `page usage is already running`.
 - `chi page list` shows each page's title and `ran 2 min ago`, `failed 1 h ago (line 9)` or `(never ran)`, with
-  `changed` when the script changed since its result was made. `chi page rm NAME` removes the script and its result.
+  `changed` when the script changed since its result was made (the result came from an older script; nothing ran). `chi page rm NAME` removes the script and its result.
 
 Exit codes: 0 ran, 1 failed (or no such page, or already running), 2 the command line itself (an unknown flag, a name
 that breaks the rule). See [the CLI](cli.md#commands).
@@ -82,12 +85,16 @@ that breaks the rule). See [the CLI](cli.md#commands).
   `~/.config` sits in a git repository, that repository. Pass `--scope=all` to the session commands
   (`chi sessions list --scope=all --format json`) for every project.
 - **The environment is yours**, as a session's worker gets it: the XDG folders absolute, chi's own session markers and
-  guardrails settings left out, and `PWD` the pages folder. Name `chi` plainly; name other programs by absolute path
+  guardrails settings left out, and `PWD` the pages folder. `CHI_REMOTE`, a worker's `SAMAGOTCHI_WORKER_*` keys and
+  the agent markers (`CLAUDECODE`, `CODEX_THREAD_ID`, `AI_AGENT`) are left out too: a run is always on this machine,
+  and a `chi send` from a script is yours, even when chi was started from an agent's pane. Name `chi` plainly; name other programs by absolute path
   when a run from chi web (a later build) might not have your shell's `PATH`.
 - What the script prints to stdout is its own: the result goes through the stored file. Its stderr shows under a
   failure.
-- **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon). Anything that stays in
-  the group is stopped.
+- **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon). A program the script
+  starts (`spawn`, `system`, backticks) never keeps the page "already running"; a Ruby `fork` (or `Process.daemon`)
+  that lives on does, until it ends. A script that `exec`s another program hands the run to it: the 30 s cut still
+  applies, but if what started the run dies, nothing stops that program. Anything that stays in the group is stopped.
 
 ## Where things are stored
 
