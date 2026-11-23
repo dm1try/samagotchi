@@ -235,6 +235,19 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(store.read("byhand").state).to eq(:ok)
   end
 
+  # The window between the result's write and the exit, held open by an
+  # at_exit past the deadline: the deadline KILLs, but the good result stays.
+  it "keeps a result recorded before the deadline fires" do
+    script("late", "at_exit { sleep 5 }\npage('Late') { |ui| ui.text 'good' }\n")
+    pid = runner_by_hand("late", "1", "1.5", pgroup: true)
+    runners << pid
+    _, status = Process.wait2(pid)
+    expect(status.termsig).to eq(Signal.list.fetch("KILL"))
+    page = store.read("late")
+    expect(page.state).to eq(:ok)
+    expect(page.blocks).to eq([{ "type" => "text", "text" => "good" }])
+  end
+
   it "stops a run when cancelled says so, recorded as stopped" do
     script("held", "sleep 20\npage('Held') { }\n")
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)

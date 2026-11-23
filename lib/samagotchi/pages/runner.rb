@@ -56,10 +56,13 @@ module Samagotchi
         name, timeout, deadline = argv
         return 2 unless Pages.valid_name?(name) && File.file?(Pages.script_path(name))
 
-        # The deadline thread and the result's write take this in turn: a
-        # run recorded just as the deadline fires is never overwritten.
+        # The deadline thread and the result's write take this in turn, and
+        # the write sets done under it: a run recorded before the deadline
+        # fires (an at_exit still going, the exit itself) is never
+        # overwritten by the cut.
         recording = Mutex.new
-        arm_deadline(name, timeout, Float(deadline), recording) if deadline
+        done = [false]
+        arm_deadline(name, timeout, Float(deadline), recording, done) if deadline
         path = Pages.script_path(name)
         sha = Digest::SHA256.file(path).hexdigest
         collector = Collector.new
@@ -72,6 +75,7 @@ module Samagotchi
           ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
           recording.synchronize do
             Store.record_run(name, title: data["title"], blocks: data["blocks"], duration_ms: ms, script_sha: sha)
+            done[0] = true
           end
           0
         # SystemStackError (endless recursion) and NoMemoryError are no
@@ -79,6 +83,7 @@ module Samagotchi
         rescue StandardError, ScriptError, SystemExit, SystemStackError, NoMemoryError => e
           recording.synchronize do
             Store.record_failure(name, message: message(e, path), line: line(e, path), script_sha: sha)
+            done[0] = true
           end
           1
         end
@@ -98,17 +103,20 @@ module Samagotchi
       end
 
       # At +deadline+ seconds from now the cut is recorded (a dead launcher
-      # can't) and the runner's whole group is KILLed (it leads its group).
+      # can't), unless the run's own result is already written (+done+), and
+      # the runner's whole group is KILLed either way (it leads its group).
       # A Ruby thread: it can't fire while a C extension holds the GVL
       # (docs/internals/pages.md). Plain Process calls, no ProcessGroup, to
       # stay light.
-      def arm_deadline(name, timeout, deadline, recording)
+      def arm_deadline(name, timeout, deadline, recording, done)
         Thread.new do
           sleep(deadline)
           recording.lock
           begin
-            Store.record_failure(name, message: "the script was stopped after #{timeout} s", line: nil,
-                                       script_sha: Store.script_sha(name))
+            unless done[0]
+              Store.record_failure(name, message: "the script was stopped after #{timeout} s", line: nil,
+                                         script_sha: Store.script_sha(name))
+            end
           # Not an ensure: a normal exit kills this thread, and its ensure would KILL the group.
           rescue StandardError # degrade-ok: the KILL matters more than the record (a dead launcher records nothing)
             nil
