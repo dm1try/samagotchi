@@ -274,6 +274,25 @@ export function chiCli(env, args) {
   return execFileSync(path.join(CHECKOUT, "bin", "chi"), args, { cwd: env.dirs.project, env: env.childEnv, encoding: "utf8" });
 }
 
+// A page script NAME (docs/pages.md) in the env's config with +source+, and
+// +files+ beside it ({name: text}, what it reads); @return remove(), which
+// the test calls in a finally: the chi fixture is shared by a worker's
+// tests, and a page left over would put a Pages group into the next ones.
+export function usePage(env, name, source, files = {}) {
+  const dir = path.join(env.dirs.config, "samagotchi", "pages");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${name}.rb`), source);
+  for (const [file, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, file), text);
+  return () => {
+    try {
+      chiCli(env, ["page", "rm", name]); // the script, its stored result and its lock
+    } catch (_) {
+      fs.rmSync(path.join(dir, `${name}.rb`), { force: true });
+    }
+    for (const file of Object.keys(files)) fs.rmSync(path.join(dir, file), { force: true });
+  };
+}
+
 export function useScript(env, name) {
   fs.copyFileSync(path.join(SCRIPTS, `${name}.json`), path.join(env.dirs.fake, "script.json"));
 }

@@ -236,6 +236,20 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       end
     end
 
+    # Pages are the owner's alone (Web::PageRoutes, docs/internals/pages.md).
+    it "refuses a participant every page route that the owner's token answers" do
+      calls = [["GET", "/api/pages"], ["GET", "/api/pages/usage"], ["POST", "/api/pages/usage/run"],
+               ["DELETE", "/api/pages/usage"]]
+      calls.each do |verb, path|
+        status, body = json(path, method: verb)
+        expect([status, body["error"]]).to eq([403, "not_permitted"]), "#{verb} #{path}"
+      end
+      with_env("XDG_CONFIG_HOME" => File.join(root, "config"), "XDG_STATE_HOME" => File.join(root, "state")) do
+        expect(json("/api/pages", bearer: owner_token)).to eq([200, { "pages" => [] }])
+        expect(json("/api/pages/usage", bearer: owner_token).first).to eq(404)
+      end
+    end
+
     it "reaches POST …/turn as a review turn (P3b; spec/web/participant_turn_spec.rb)" do
       expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end

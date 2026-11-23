@@ -1,0 +1,77 @@
+/* A page, #/p/NAME (page_view.js): in place of the session area, the strip and All sessions while body.page-view.
+   The view scrolls down inside itself; it never scrolls sideways: a wide table or a walk's lanes scroll in their own box.
+   Colours are the :root tokens only (tokens.css). */
+#pageView{display:none;flex:1;min-height:0;min-width:0;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding:2px 2px 24px}
+body.page-view #pageView{display:flex}
+body.page-view :is(#center,#topStrip,#stripGrip,#allView,#sessionTitleRow){display:none}
+.pg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.pg-back{flex:none;padding:5px 10px;font-size:13px;color:var(--accent);background:transparent;border:1px solid transparent}
+@media(hover:hover){.pg-back:hover{filter:none;border-color:var(--border-strong)}}
+.pg-title{flex:1 1 160px;min-width:0;margin:0;font-size:17px;font-weight:650;line-height:1.3;color:var(--text);overflow-wrap:anywhere}
+.pg-meta{font-size:12px;color:var(--text-muted);white-space:nowrap}
+.pg-actions{display:flex;align-items:center;gap:8px;flex:none}
+.pg-actions button{padding:6px 12px;font-size:12px;font-weight:600;border-radius:8px}
+.pg-refresh:disabled{opacity:.7;cursor:default}
+.pg-menu-btn{border:1px solid var(--border-strong)}
+.pg-more{position:relative}
+.pg-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;display:flex;align-items:center;gap:8px;padding:8px;white-space:nowrap;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:10px;box-shadow:var(--shadow-strong)}
+.pg-menu .pg-delete-ask{background:transparent;color:var(--danger-text);border:1px solid transparent}
+.pg-menu .pg-delete{background:var(--danger-bg-dim);color:var(--danger-text);border:1px solid var(--danger)}
+.pg-confirm{font-size:12.5px;color:var(--text-2)}
+.pg-line{border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn-text);border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere}
+.pg-line code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.pg-line .pg-copy{margin-left:6px;padding:3px 9px;font-size:12px;border:1px solid var(--border-strong)}
+.pg-blocks{display:flex;flex-direction:column;gap:12px;min-width:0}
+.pg-kept{opacity:.62}
+.pg-text{color:var(--text-2);font-size:13.5px;line-height:1.5;min-width:0;overflow-wrap:anywhere}
+.pg-plain{white-space:pre-wrap}
+.pg-text.markdown pre{overflow:auto;padding:10px;border-radius:8px;background:var(--bg-inset);border:1px solid var(--border)}
+.pg-text.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 3px}
+.pg-text.markdown a{color:var(--accent)}
+.pg-walk{display:block;min-width:0;max-width:100%;overflow-x:auto}
+.pg-note,.pg-unknown{font-size:12.5px;color:var(--text-muted)}
+/* A table (page_table.js): desktop's real table in a box of its own that scrolls sideways; the phone's rows that open. */
+.pg-table{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pg-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--bg-panel)}
+.pg-scroll table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+.pg-scroll th,.pg-scroll td{padding:7px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border)}
+.pg-scroll :is(th,td).pg-num{text-align:right}
+.pg-scroll th{font-weight:600;color:var(--text-muted);background:var(--bg-inset);padding:0}
+.pg-scroll th[aria-sort]{color:var(--accent)}
+.pg-sort{all:unset;box-sizing:border-box;display:block;width:100%;padding:7px 10px;cursor:pointer;text-align:inherit;font:inherit;color:inherit}
+.pg-sort:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+@media(hover:hover){.pg-sort:hover{color:var(--text-2)}}
+.pg-scroll tfoot td{font-weight:650;border-bottom:0;border-top:1px solid var(--border-strong);color:var(--text)}
+.pg-scroll tbody tr:last-child td{border-bottom:0}
+.pg-blank{color:var(--text-faint)}
+.pg-rows{border:1px solid var(--border);border-radius:10px;background:var(--bg-panel);font-variant-numeric:tabular-nums}
+.pg-row{border-bottom:1px solid var(--border)}
+.pg-row:last-child{border-bottom:0}
+.pg-row.open{background:var(--bg-hover)}
+.pg-row-main{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) repeat(var(--pg-keys,0),auto);gap:4px 14px;align-items:baseline;width:100%;padding:9px 12px;font-size:13px;color:var(--text)}
+button.pg-row-main{cursor:pointer}
+button.pg-row-main:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pg-k{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-kv{text-align:right;white-space:nowrap}
+.pg-lab{display:block;font-size:10.5px;color:var(--text-faint)}
+.pg-total .pg-row-main{font-weight:650}
+.pg-cells{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;padding:0 12px 9px;font-size:12px;color:var(--text-2)}
+.pg-cells span{display:flex;justify-content:space-between;gap:8px;min-width:0}
+.pg-cells em{font-style:normal;color:var(--text-muted)}
+@media(max-width:600px){
+  .pg-head{gap:6px 8px}
+  .pg-title{flex:1 1 0}
+  /* The meta wraps under the title, on a line of its own. */
+  .pg-meta{order:5;flex-basis:100%;white-space:normal}
+}
+/* All sessions' Pages group (pages_group.js): one row of cards that scrolls sideways, over a "Sessions" heading. Its own
+   card rules: the session cards' are scoped to #allList .card. */
+#pagesGroup{display:flex;flex-direction:column;gap:8px;flex:none;min-width:0}
+#pagesGroup[hidden]{display:none}
+.pg-group-label{font-size:11px;font-weight:600;line-height:1;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}
+.pg-cards{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.pg-card{all:unset;box-sizing:border-box;flex:0 0 190px;display:flex;flex-direction:column;gap:2px;min-width:0;padding:9px 11px;border:1px solid var(--accent-border);border-radius:10px;background:var(--bg-panel);font-size:12.5px;color:var(--text-muted);cursor:pointer}
+.pg-card b{display:block;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-card:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@media(hover:hover){.pg-card:hover{border-color:var(--accent);background:var(--bg-hover)}}
+@media(max-width:600px){.pg-card{flex-basis:160px}}

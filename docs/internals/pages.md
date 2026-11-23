@@ -120,11 +120,43 @@ The result reaches the launcher through the file only: a `puts` in a script corr
 `ui.walk` hands its Hash to `InlineWidgets.check("walk", data)`, the same `Schema` the chat's YAML goes through, so the
 same widget draws it ([inline-widgets.md](inline-widgets.md#the-data-entry)).
 
+## chi web
+
+**The routes** (`web/page_routes.rb`, `Web::PageRoutes`, its `ROUTES` splatted into `App::ROUTES` on the models row),
+all `:owner`: a participant's token gets 403 `not_permitted` (`participant_gate_spec` sweeps them). The name capture is
+`([^/]+)`, checked with `Pages.valid_name?` before any path is built; a name that breaks the rule is no such page.
+
+| Route | Answers |
+|---|---|
+| `GET /api/pages` | `{pages: [{name, title, state, ran_at, failed_at, changed, error_line}]}`, by name (`Store.list`) |
+| `GET /api/pages/NAME` | the page (below); 404 `page_missing` with no script. Runs nothing |
+| `POST /api/pages/NAME/run` | `Launch.run(name, timeout: 30, cancelled: -> { !@server_running.call })` inside the request; the page as after the run, with `stderr` (its last 2 KB) when it failed; 409 `page_busy`, 404 `page_missing`, 503 `server_stopping` (chi web's stop ended it: "the run was stopped") |
+| `DELETE /api/pages/NAME` | `Store.remove`: `{removed: NAME}`; 409 `page_busy`, 404 `page_missing` |
+
+The page: `{name, title, state, ran_at, duration_ms, changed, changed_after_failure, script_changed_at, error:
+{message, line, at} | null, blocks}`. `changed` is `Stored#changed?`; `changed_after_failure` says the script differs
+from the one that failed (so the page needs no sha); `script_changed_at` is the script's mtime. A text block carries
+`html`, the `MarkdownRenderer`'s sanitised render, when rendering is available (`web.markdown`), else `text` only.
+The error codes' `detail` is the exception's own message.
+
+**The capability** `pages` (`Web::Viewer::CAPABILITIES`, never a participant's) makes the view, the group and the link
+handler; without it none is made and no page call goes out (`viewer_boot.test.js`).
+
+**The page's modules** (`lib/samagotchi/web/public/`): `page_route.js` (`pageHash`, `pageNameFromHash`, the open rule:
+never a participant's, never without `pages`), `views.js` (reads the page hash before the session intent:
+`body.page-view`, `openPage` / `closePage` / `leavePage`, the session hash not written while a page is open, a session
+picked leaving the page), `page_view.js` (the header, the states, the calls; an answer for a page no longer open is
+dropped, `latest.js`), `page_model.js` (the words: meta, the failed and changed lines, Copy the error), `page_blocks.js`
+(text, walk in a widget host with `drawWalk`, an unknown type as one muted line), `page_table.js` and
+`page_table_model.js` (cells, sort, the phone's rows), `pages_group.js` (All sessions' group), `page_links.js` (the
+delegated click on the turn roots and the page view for `#/p/` anchors), `pages.css`. What a script wrote reaches the
+page as text or attributes, never as markup, except the server's sanitised `html`.
+
+**Not live**: no stream event and no polling. A run from a terminal shows on the next open; two tabs are not kept in
+step.
+
 ## Later builds
 
-- **Build 2 (chi web):** a "Pages" group, `#/p/NAME` drawing the stored file (opening runs nothing), Refresh as an
-  owner-only POST that calls `Launch.run`, `:money`/`:count` formatting and numeric sort in the page, a phone table
-  showing the first and key columns.
 - **Build 3 (the skill):** chi writing a page (`write` + `execute chi page run NAME`), reading its own summary, and
   linking the page in its answer.
 - Not planned yet: picks on a page, a data API (`runtime`), a bundle's pages, parameters.

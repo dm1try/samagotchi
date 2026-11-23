@@ -13,7 +13,7 @@ const BOOT = fileURLToPath(new URL("./page_boot.js", import.meta.url));
 const SID = "11111111-1111-4111-8111-111111111111";
 // Web::Viewer::CAPABILITIES (spec/web/viewer_spec.rb pins the server's list).
 const ALL = ["sessions", "models", "prompt_history", "push", "context", "working_set", "working_set_items", "participants_admin", "rename", "images",
-  "session_controls", "revise", "answer_cards", "render", "block_renderers", "stop_any_turn", "steer_any_turn"];
+  "session_controls", "revise", "answer_cards", "render", "block_renderers", "stop_any_turn", "steer_any_turn", "pages"];
 
 function boot(viewer) {
   const out = execFileSync(process.execPath, [BOOT, JSON.stringify(viewer)], { encoding: "utf8", timeout: 60_000 });
@@ -109,4 +109,24 @@ test("each capability gates its own calls and controls, and nothing else", async
       else assert.equal(got.controls[control], want, `${name}: ${control} changed`);
     }
   });
+});
+
+test("a page hash: the owner with pages reads that page and nothing of a session; without pages, no page call", () => {
+  const owner = boot({ kind: "owner", can: ALL, hash: "#/p/usage" });
+  assert.ok(owner.requests.includes("GET /api/pages/usage"), owner.requests.join(", "));
+  assert.ok(!owner.requests.some((r) => r.startsWith(`GET /api/sessions/${SID}`)), "no session read");
+  const without = boot({ kind: "owner", can: ALL.filter((n) => n !== "pages"), hash: "#/p/usage" });
+  assert.ok(!without.requests.some((r) => r.includes("/api/pages")), without.requests.join(", "));
+});
+
+test("a participant at #/p/x: their session as always, and no page call", () => {
+  const { requests } = boot({ kind: "participant", can: ["send"], hash: "#/p/x" });
+  assert.deepEqual(requests, [`GET /api/sessions/${SID}`]);
+});
+
+test("All sessions at #/sessions: the owner with pages reads the Pages list; without pages, no page call", () => {
+  const owner = boot({ kind: "owner", can: ALL, hash: "#/sessions" });
+  assert.ok(owner.requests.includes("GET /api/pages"), owner.requests.join(", "));
+  const without = boot({ kind: "owner", can: ALL.filter((n) => n !== "pages"), hash: "#/sessions" });
+  assert.ok(!without.requests.some((r) => r.includes("/api/pages")), without.requests.join(", "));
 });
