@@ -2,8 +2,8 @@
 
 A page is a Ruby script that gets its data any way a script can (another program's `--format json`, a file, the
 session files) and hands rows and text to `ui`. `chi page run NAME` runs it and stores what it built; what shows a
-page draws from that stored result, so showing it runs nothing. In this version pages run from the terminal; chi web
-draws them in a later build.
+page draws from that stored result, so showing it runs nothing. Pages run from the terminal and show in chi web, where
+Refresh runs them again ([In chi web](#in-chi-web)).
 
 **A page is code you trust.** It runs as you, with your files and your network, like any Ruby script chi writes for
 you. There is no sandbox.
@@ -79,13 +79,42 @@ A rule broken fails the run with a message naming the block and the limit: `tabl
 Exit codes: 0 ran, 1 failed (or no such page, or already running), 2 the command line itself (an unknown flag, a name
 that breaks the rule). See [the CLI](cli.md#commands).
 
+## In chi web
+
+- **Finding a page.** All sessions has a **Pages** group at its top, in every project scope (pages are global): one row
+  of cards that scrolls sideways, each with the page's title and `ran 2 min ago`, `failed 1 h ago` or `never ran`. The
+  search field filters it too, by name and title. With no page (or none the search matches) there is no group. A
+  `#/p/usage` link in chi's answer opens the page in the same tab; a reload or a copied `…/#/p/usage` link opens it
+  too.
+- **The page** shows in place of the session area: Back (to where it was opened from, else All sessions), the title,
+  when it ran and how long it took, **Refresh** and `⋯` with Delete (it asks once, then removes the script and its
+  result). Opening it shows the stored result at once and runs nothing.
+- **Refresh** runs the script as `chi page run` does and redraws when the run ends; the button reads "Running…" and
+  can't be pressed twice. A run already going (from a terminal, another tab) says "already running". Stopping chi web
+  stops a Refresh.
+- **A failed run** keeps the last result, dimmed, under "The script failed at line 9: … Showing the result from 21
+  Nov, 14:02." with **Copy the error** (the line, the message and the script's last words on stderr).
+- **The script changed** since the result on screen was made: a line says so; nothing has run. "Changed" means the
+  result came from an older script.
+- **A table**: a column header sorts by it (numbers as numbers, blanks last, the total stays at the bottom); a wide
+  table scrolls sideways in its own box. On a phone each row shows the first column and the key columns (`key:`);
+  a tap opens the rest as label and value lines; rows keep the script's order there.
+- **A walk** is drawn by the same widget as in an answer; its lanes scroll sideways inside it.
+- **Markdown off** (`web.markdown`, the default): a text block shows as plain text, and a link in chi's answer is plain
+  text too, so the Pages group is the way in. A fenced block inside a text block (a `chi-ui` or a mermaid one) stays
+  source on a page.
+- **Not live**: the group is read when All sessions opens, a page when it opens and after its own Refresh or Delete.
+  A run from a terminal shows after the next open or a reload.
+- Pages are the owner's: a participant ([chi share](cli.md)) sees no Pages group, no page, and no page route answers
+  their link.
+
 ## Where a run happens
 
 - **The working folder is the pages folder.** A chi command a script runs sees that folder's project: if
   `~/.config` sits in a git repository, that repository. Pass `--scope=all` to the session commands
   (`chi sessions list --scope=all --format json`) for every project.
 - **The environment is yours**, as a session's worker gets it: the XDG folders absolute, chi's own session markers and
-  guardrails settings left out, and `PWD` the pages folder. `CHI_REMOTE`, a worker's `SAMAGOTCHI_WORKER_*` keys and
+  guardrails settings left out, and `PWD` the pages folder; chi web's Refresh runs chi web's own chi. `CHI_REMOTE`, a worker's `SAMAGOTCHI_WORKER_*` keys and
   the agent markers (`CLAUDECODE`, `CODEX_THREAD_ID`, `AI_AGENT`) are left out too: a run is always on this machine,
   and a `chi send` from a script is yours, even when chi was started from an agent's pane. Name `chi` plainly; name other programs by absolute path
   when a run from chi web (a later build) might not have your shell's `PATH`.
