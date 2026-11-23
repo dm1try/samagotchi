@@ -58,7 +58,10 @@ its `DEADLINE` is the timeout + `Launch::GRACE_SECONDS` + `Launch::DEADLINE_MARG
 than the launcher's cut, which wins whenever the launcher is alive. At the deadline a thread in the runner records
 the cut itself ("the script was stopped after N s") and KILLs the runner's group. So a killed launcher leaves at most
 one bounded run. A Ruby thread can't fire while a C extension holds the GVL: such a script outlives its deadline
-until the call returns (accepted).
+until the call returns (accepted). The runner's stdout and stderr are pipes whose reader died with the launcher: Ruby
+ignores SIGPIPE, so the script's next output that reaches the pipe (a large one, or `$stdout.sync`) raises
+`Errno::EPIPE`, recorded as the script's failure at that line (the good blocks stay; small output stays buffered and
+only fails at the exit, after the result is written). Accepted: the run stays bounded, only the error's words mislead.
 
 `ContextFetch#run_command`, `#wait` and `#stop_group` are the model this follows.
 
@@ -67,8 +70,12 @@ until the call returns (accepted).
 `Runner.run(argv)` (requiring `pages/runner.rb` runs nothing) first makes fd 3 close-on-exec, so the lock is the
 runner's alone: a program the script execs (`spawn`, `system`, backticks), even one that leaves the group and
 outlives the run, never inherits it (it would keep the page "already running" for good). A `fork` without an exec
-(`Process.daemon` too) keeps fd 3 and holds the lock while it lives: the stated limit. It arms the deadline when argv carries one (a write of the
-result and the deadline's record take one mutex, so a result recorded at the deadline isn't overwritten), checks the
+(`Process.daemon` too) keeps fd 3 and holds the lock while it lives: the stated limit. A script's own `exec` replaces
+the runner: the lock goes (close-on-exec) and so does the deadline thread; a live launcher still cuts it (it stays in
+the group), but after a dead launcher the exec'd program runs unbounded while the page is runnable again (the same
+limit). It arms the deadline when argv carries one (a write of the result and the deadline's record take one mutex,
+and the write sets a done flag under it, so a result written before the deadline fires is never overwritten), checks
+the
 name and the script, then
 `load(path, dsl)`: the wrap module is a fresh `Module` defining only `page`, so the script's own `def`s land in it, not
 on `Object`. `page(title) { |ui| … }` makes a `Builder`; a second call raises `Refused`. After the load, no `page` call

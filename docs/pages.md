@@ -70,7 +70,8 @@ A rule broken fails the run with a message naming the block and the limit: `tabl
   and exits 1. **The result of the last good run is kept**: a bad edit never blanks the page.
 - A run still going at **30 s** is stopped, with everything it started; the error says so. If what started the run
   dies first (a killed terminal or chi web), the run stops itself a few seconds after its 30 s and records the same
-  error.
+  error. Its output then has nowhere to go: a script that prints a lot may fail with `Broken pipe` instead (the last
+  good result is kept).
 - One run of a page at a time: a second `chi page run usage` meanwhile exits 1 with `page usage is already running`.
 - `chi page list` shows each page's title and `ran 2 min ago`, `failed 1 h ago (line 9)` or `(never ran)`, with
   `changed` when the script changed since its result was made (the result came from an older script; nothing ran). `chi page rm NAME` removes the script and its result.
@@ -92,7 +93,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
   failure.
 - **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon). A program the script
   starts (`spawn`, `system`, backticks) never keeps the page "already running"; a Ruby `fork` (or `Process.daemon`)
-  that lives on does, until it ends. Anything that stays in the group is stopped.
+  that lives on does, until it ends. A script that `exec`s another program hands the run to it: the 30 s cut still
+  applies, but if what started the run dies, nothing stops that program. Anything that stays in the group is stopped.
 
 ## Where things are stored
 
