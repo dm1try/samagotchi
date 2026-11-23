@@ -52,6 +52,15 @@ RSpec.describe Samagotchi::Pages::Builder do
       expect(blocks[0]).not_to have_key("total")
     end
 
+    it "scrubs binary column and row keys to valid text" do
+      key = "name\xFF".b
+      ui.table([{ key => "Page" }], columns: [key])
+
+      expect(blocks[0]["columns"][0]["key"]).to eq("name�")
+      expect(blocks[0]["rows"]).to eq([["Page"]])
+      expect { JSON.generate(ui.data) }.not_to raise_error
+    end
+
     it "picks the first two all-number columns after the first as key columns" do
       ui.table([{ "n" => "x", "s" => "t", "a" => 1, "b" => nil, "c" => 2.5 }], columns: %w[n s a b c])
       expect(blocks[0]["columns"].select { |c| c["key_column"] }.map { |c| c["key"] }).to eq(%w[a b])
@@ -113,6 +122,14 @@ RSpec.describe Samagotchi::Pages::Builder do
   describe "text" do
     it "refuses a text over 16 KB, naming the limit and the size" do
       expect { ui.text("x" * (17 * 1024)) }.to raise_error(Samagotchi::Pages::Refused, "text 1 is 17.0 KB (at most 16 KB)")
+    end
+
+    it "transcodes other text encodings to UTF-8" do
+      ui.text("café".encode(Encoding::ISO_8859_1))
+      ui.text("hello".encode(Encoding::UTF_16LE))
+
+      expect(blocks.map { |block| block["text"] }).to eq(%w[café hello])
+      expect(Samagotchi::InlineWidgets::DataTree.convert("café".encode(Encoding::ISO_8859_1))).to eq("café")
     end
   end
 
