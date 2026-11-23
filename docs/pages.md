@@ -19,8 +19,8 @@ and runs it again; "remove the page …" is `chi page rm NAME`.
 
 - It uses `chi page list`, the read tool, `chi page run` and `chi page rm`, never a shell command that names the pages
   folder (those ask you, and a turn nobody watches stops there).
-- **Strict mode** (`guardrails.mode: strict`): writing the script asks you (`write-outside-repo`); chi says so and
-  waits.
+- **Strict mode** (`guardrails.mode: strict`): writing the script asks (`write-outside-repo`: you, or whoever may
+  answer for the session, such as a parent agent or System 1); if it is denied, chi says so and stops.
 - A participant's turn ([chi share](cli.md)) can't write chi's config folder or run chi commands: a page asked for
   there is refused.
 

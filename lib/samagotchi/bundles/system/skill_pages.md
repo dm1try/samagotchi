@@ -83,8 +83,8 @@ What trips a script:
   didn't: the page then says why.
 
 ## When it can't be done
-In strict mode writing the script asks the user: say so and wait; don't route around it (a heredoc, another
-folder).
+In strict mode writing the script asks (`write-outside-repo`); if it's denied, say so and stop; don't route around
+it (a heredoc, another folder).
 
 ## This skill ships with chi
 If a step here turns out wrong, don't edit this skill: tell the user what differed. It ships with chi, and a
