@@ -234,6 +234,17 @@ RSpec.describe AffectedSpecs::Picker do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
   end
 
+  it "picks the pages skill spec and prompt golden when the shipped skill changes" do
+    expected = %w[spec/pages_skill_spec.rb spec/engine_turn_golden_spec.rb]
+    expected.each { |path| files[path] = "" }
+    changed = "lib/samagotchi/bundles/system/skill_pages.md"
+
+    result = pick(changed)
+
+    expect(paths(result.ruby)).to eq(expected)
+    expect(result.ruby.map(&:reason)).to all(eq("rule: pins the shipped pages skill and its prompt golden (#{changed})"))
+  end
+
   it "picks the effective-model characterization when its metrics source or golden fixtures change" do
     files["spec/engine_effective_model_characterization_spec.rb"] = ""
 
