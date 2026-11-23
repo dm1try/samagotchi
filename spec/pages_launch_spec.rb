@@ -153,6 +153,27 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(result.page.error.message).to start_with("the runner ended without a result")
   end
 
+  it "keeps a new result from a normal exit at the launcher deadline" do
+    script("deadline", "page('Deadline') { }\n")
+    before = store.file_id("deadline")
+    store.record_run("deadline", title: "Deadline", blocks: [], duration_ms: 1, script_sha: store.script_sha("deadline"))
+    status = instance_double(Process::Status, exitstatus: 0)
+
+    expect(described_class.record("deadline", status, :timeout, 1, before, "")).to be(true)
+    expect(store.read("deadline").state).to eq(:ok)
+  end
+
+  it "keeps a runner-written deadline failure after a signalled exit" do
+    script("deadline", "page('Deadline') { }\n")
+    before = store.file_id("deadline")
+    store.record_failure("deadline", message: "the script was stopped after 1 s", line: nil,
+                                  script_sha: store.script_sha("deadline"))
+    status = instance_double(Process::Status, exitstatus: nil)
+
+    expect(described_class.record("deadline", status, nil, 1, before, "")).to be(false)
+    expect(store.read("deadline").error.message).to eq("the script was stopped after 1 s")
+  end
+
   it "stores a message that isn't valid UTF-8 readable, with its line" do
     script("bytes", "page('Bytes') do |ui|\n  raise \"bad \\xff byte\".b\nend\n")
     error = run("bytes").page.error

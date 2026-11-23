@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi page: failed runs keep newer keys, text reads correctly, temp files are removed, and deadline races keep the
+  right result.
+
 ## [0.187.0] - 2026-11-23
 
 ### Added
