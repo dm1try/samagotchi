@@ -199,7 +199,7 @@ RSpec.describe Samagotchi::Pages::Launch do
       sleep 30
       page("Orphan") { }
     RUBY
-    boot = 'require "samagotchi/pages/launch"; Samagotchi::Pages::Launch.run("orphan", timeout: 1)'
+    boot = 'require "samagotchi/pages/launch"; Samagotchi::Pages::Launch.run("orphan", timeout: 3)'
     launcher = Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot,
                              in: File::NULL, out: File::NULL, err: File::NULL)
     tracked << launcher
@@ -209,10 +209,11 @@ RSpec.describe Samagotchi::Pages::Launch do
     Process.kill("KILL", launcher)
     Process.wait(launcher)
 
-    expect { run("orphan") }.to raise_error(Samagotchi::Pages::Busy)
-    # timeout 1 s + the grace + the margin, from the runner's start
-    wait_for("the runner to stop at its deadline", timeout: 8) { !alive?(runner) }
-    expect(store.read("orphan").error.message).to eq("the script was stopped after 1 s")
+    # A short timeout: on unchanged code this run starts (no Busy) and is cut.
+    expect { run("orphan", timeout: 2) }.to raise_error(Samagotchi::Pages::Busy)
+    # timeout 3 s + the grace + the margin, from the runner's start
+    wait_for("the runner to stop at its deadline", timeout: 12) { !alive?(runner) }
+    expect(store.read("orphan").error.message).to eq("the script was stopped after 3 s")
     script("orphan", "page('Orphan') { }\n")
     expect(run("orphan")).to be_ok
   end
