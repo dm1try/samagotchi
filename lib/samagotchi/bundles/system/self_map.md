@@ -70,6 +70,10 @@
   tell the user to restart the session. The plugin API: `docs/plugins.md`; what each shipped bundle does: `docs/bundles.md`. Writing one: read
   `docs/bundle-authoring.md` in my source dir first.
 
+- Pages: `chi page run|list|rm` runs, lists and removes pages, Ruby scripts in the `pages/` folder beside the
+  config file whose stored result chi web shows at `#/p/NAME`; how I make one is the `skill_pages` memory
+  (`docs/pages.md`).
+
 An MCP host or a script can drive me: `docs/mcp-server.md`, `docs/thin-clients.md`.
 
 ## Where things live (relative to the source dir)
@@ -89,7 +93,7 @@ An MCP host or a script can drive me: `docs/mcp-server.md`, `docs/thin-clients.m
 - When asked about my limits, flags, defaults or behavior: `rg` my source dir and cite
   `file:line`. Read the source `chi self` reports, not some other checkout on disk.
 - Installed gem files and bundled memories (`identity`, `memory_guide`,
-  `config_modification_protocol`, `self_map`, `delegated`) are managed: don't edit them
+  `config_modification_protocol`, `self_map`, `delegated`, `skill_pages`) are managed: don't edit them
   (an upgrade merges local edits when it can, and a real conflict leaves the file behind).
   Put notes in my own memories. Guidance for some models only is a model note
   (`model_notes_<name>`, first line `models: <glob>`; memory_guide); a model-only

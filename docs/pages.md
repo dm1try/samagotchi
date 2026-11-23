@@ -8,6 +8,22 @@ Refresh runs them again ([In chi web](#in-chi-web)).
 **A page is code you trust.** It runs as you, with your files and your network, like any Ruby script chi writes for
 you. There is no sandbox.
 
+## Asking chi for a page
+
+Say what you want to see and that you want it kept: "make me a page of …", "I'd like to reopen this in the web: …",
+"keep this as a page". chi follows its shipped pages skill (`skill_pages`, [docs/memory.md](memory.md#skills)): it
+finds the pages folder with `chi self`, writes `NAME.rb` there, runs `chi page run NAME`, compares the stored rows
+with where they came from, fixes what failed, and answers in a line or two with the link `[Title](#/p/NAME)` (with
+Markdown off, the link is plain text: the page is in All sessions, under Pages). "Change the page …" edits the script
+and runs it again; "remove the page …" is `chi page rm NAME`.
+
+- It uses `chi page list`, the read tool, `chi page run` and `chi page rm`, never a shell command that names the pages
+  folder (those ask you, and a turn nobody watches stops there).
+- **Strict mode** (`guardrails.mode: strict`): writing the script asks (`write-outside-repo`: you, or whoever may
+  answer for the session, such as a parent agent or System 1); if it is denied, chi says so and stops.
+- A participant's turn ([chi share](cli.md)) can't write chi's config folder or run chi commands: a page asked for
+  there is refused.
+
 ## A page
 
 ```ruby
@@ -91,7 +107,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
   result). Opening it shows the stored result at once and runs nothing.
 - **Refresh** runs the script as `chi page run` does and redraws when the run ends; the button reads "Running…" and
   can't be pressed twice. A run already going (from a terminal, another tab) says "already running". Stopping chi web
-  stops a Refresh.
+  stops a Refresh. A Refresh holds its request until the run ends, up to about 32 s (the 30 s cut and its grace): behind
+  an auth proxy ([configuration.md](configuration.md#behind-an-auth-proxy)), its timeout must allow that.
 - **A failed run** keeps the last result, dimmed, under "The script failed at line 9: … Showing the result from 21
   Nov, 14:02." with **Copy the error** (the line, the message and the script's last words on stderr).
 - **The script changed** since the result on screen was made: a line says so; nothing has run. "Changed" means the
@@ -116,8 +133,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
 - **The environment is yours**, as a session's worker gets it: the XDG folders absolute, chi's own session markers and
   guardrails settings left out, and `PWD` the pages folder; chi web's Refresh runs chi web's own chi. `CHI_REMOTE`, a worker's `SAMAGOTCHI_WORKER_*` keys and
   the agent markers (`CLAUDECODE`, `CODEX_THREAD_ID`, `AI_AGENT`) are left out too: a run is always on this machine,
-  and a `chi send` from a script is yours, even when chi was started from an agent's pane. Name `chi` plainly; name other programs by absolute path
-  when a run from chi web (a later build) might not have your shell's `PATH`.
+  and a `chi send` from a script is yours, even when chi was started from an agent's pane. Name `chi` plainly; name other programs by absolute path:
+  a Refresh in chi web runs with chi web's `PATH`, which may not be your shell's.
 - What the script prints to stdout is its own: the result goes through the stored file. Its stderr shows under a
   failure.
 - **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon). A program the script
