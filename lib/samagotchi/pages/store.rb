@@ -79,8 +79,9 @@ module Samagotchi
         # JSON.generate raise inside the runner's rescue and lose the error.
         message = Builder.text_of(message)
         message = "#{message[0, MAX_MESSAGE - 1]}…" if message.size > MAX_MESSAGE
-        stored = read(name).with(error: Failure.new(message: message, line: line, at: now, script_sha: script_sha))
-        write(name, JSON.generate(stored.to_json_hash))
+        failure = Failure.new(message: message, line: line, at: now, script_sha: script_sha)
+        stored = read(name).with(error: failure)
+        write(name, JSON.generate(read_raw(name).merge("error" => failure.to_json_hash)))
         stored
       end
 
