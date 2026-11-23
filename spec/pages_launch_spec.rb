@@ -246,6 +246,24 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(run("spawner")).to be_ok
   end
 
+  it "clears the remote, worker and agent markers from the script's environment" do
+    out = File.join(tmp, "markers.json")
+    keys = %w[CHI_REMOTE SAMAGOTCHI_WORKER_SESSION CLAUDECODE CODEX_THREAD_ID AI_AGENT]
+    script("markers", <<~RUBY)
+      File.write(#{out.inspect}, JSON.generate(ENV.keys.select { |k| #{keys.inspect}.include?(k) || k.start_with?("SAMAGOTCHI_WORKER_") }))
+      page("Markers") { }
+    RUBY
+    with_env(keys.to_h { |key| [key, "1"] }) { expect(run("markers")).to be_ok }
+    expect(JSON.parse(File.read(out))).to eq([])
+  end
+
+  it "names the cleared keys from their constants" do
+    cleared = described_class.cleared_keys("SAMAGOTCHI_WORKER_X" => "1", "PATH" => "/bin")
+    expect(cleared).to include(Samagotchi::SessionAccess::Dispatch::ENV_KEY, "SAMAGOTCHI_WORKER_X",
+                               *Samagotchi::AgentCaller::VENDOR_MARKERS.map(&:first))
+    expect(cleared).not_to include("PATH")
+  end
+
   it "refuses an unknown page or a bad name before taking a lock" do
     expect { run("nope") }.to raise_error(Samagotchi::Pages::Missing, "no page nope")
     expect { run("Nope") }.to raise_error(Samagotchi::Pages::BadName)

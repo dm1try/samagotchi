@@ -84,7 +84,9 @@ that breaks the rule). See [the CLI](cli.md#commands).
   `~/.config` sits in a git repository, that repository. Pass `--scope=all` to the session commands
   (`chi sessions list --scope=all --format json`) for every project.
 - **The environment is yours**, as a session's worker gets it: the XDG folders absolute, chi's own session markers and
-  guardrails settings left out, and `PWD` the pages folder. Name `chi` plainly; name other programs by absolute path
+  guardrails settings left out, and `PWD` the pages folder. `CHI_REMOTE`, a worker's `SAMAGOTCHI_WORKER_*` keys and
+  the agent markers (`CLAUDECODE`, `CODEX_THREAD_ID`, `AI_AGENT`) are left out too: a run is always on this machine,
+  and a `chi send` from a script is yours, even when chi was started from an agent's pane. Name `chi` plainly; name other programs by absolute path
   when a run from chi web (a later build) might not have your shell's `PATH`.
 - What the script prints to stdout is its own: the result goes through the stored file. Its stderr shows under a
   failure.

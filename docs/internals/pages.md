@@ -31,8 +31,11 @@ script 152 against 73 preloaded libraries and a stale `PWD`). It costs about 70 
    Samagotchi::Pages::Runner.run(ARGV)', NAME, TIMEOUT, DEADLINE, 3 => lock)`, in a group of its own, `chdir:` the
    pages folder, stdin closed, the lock on fd 3. The env is a worker's changes
    (`SessionManager::WorkerCommand#spawn_options`): `ChildEnv.unbundled` (an installed gem's Bundler changes undone),
-   `ChildEnv.unset` (the spawner's guardrails settings and session markers), `Paths.absolute_xdg`, and `PWD` set to the
-   pages folder (spawn's `chdir:` doesn't change it). "This chi's lib" is
+   `ChildEnv.unset` (the spawner's guardrails settings and session markers), `Launch.cleared_keys` unset
+   (`CHI_REMOTE`, every `SAMAGOTCHI_WORKER_*` key and the vendor agent markers `AgentCaller::VENDOR_MARKERS`:
+   `CLAUDECODE`, `CODEX_THREAD_ID`, `AI_AGENT`, read from those constants), `Paths.absolute_xdg`, and `PWD` set to the
+   pages folder (spawn's `chdir:` doesn't change it). So a run never goes remote, never looks like a worker's child,
+   and a script's `chi send` is the owner's even from a chi web started in an agent's pane. "This chi's lib" is
    `File.expand_path("../..", __dir__)` from `pages/launch.rb`: a checkout and an installed gem alike.
 3. stdout and stderr are each read by a `ProcessGroup::PipeReader` (64 KB, the tail kept).
 4. The wait polls `Process.wait2(pid, WNOHANG)`. At the timeout (30 s) `ProcessGroup.stop` TERMs the group, CONTs it,

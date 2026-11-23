@@ -5,6 +5,8 @@ require "rbconfig"
 require_relative "../pages"
 require_relative "../child_env"
 require_relative "../process_group"
+require_relative "../agent_caller"
+require_relative "../session_access/dispatch"
 
 module Samagotchi
   module Pages
@@ -12,7 +14,8 @@ module Samagotchi
     # chi web's Refresh alike. It takes the page's lock, starts the runner
     # (pages/runner.rb) in a process group of its own, in the pages folder,
     # with this process's environment as a worker gets it (the Bundler changes
-    # undone, the spawner's keys unset, the XDG dirs absolute) and the lock on fd 3 (the runner holds it too, and has a
+    # undone, the spawner's keys and #cleared_keys unset, the XDG dirs
+    # absolute) and the lock on fd 3 (the runner holds it too, and has a
     # deadline of its own for a launcher that dies mid-run), reads its
     # stdout and stderr through bounded readers, and cuts it at +timeout+.
     # The runner writes the output file; a cut, or a runner that ended without
@@ -79,8 +82,21 @@ module Samagotchi
       # absolute. PWD is set to the pages folder too: spawn's chdir doesn't
       # change it, and a script reading ENV["PWD"] would otherwise see the
       # caller's folder, so the terminal and chi web would differ.
+      # The remote, worker and agent markers (#cleared_keys) are unset too.
       def env
-        ChildEnv.unbundled.merge(ChildEnv.unset).merge(Paths.absolute_xdg).merge("PWD" => Pages.scripts_dir)
+        ChildEnv.unbundled.merge(ChildEnv.unset).merge(cleared_keys.to_h { |key| [key, nil] })
+                .merge(Paths.absolute_xdg).merge("PWD" => Pages.scripts_dir)
+      end
+
+      # What a run never takes from its launcher, so the terminal and chi web
+      # are one path: CHI_REMOTE (a run never goes remote), a worker's
+      # markers (it is no worker's child) and the vendor agent markers (a
+      # script's `chi send` is the owner's, even from a chi web started in an
+      # agent's pane).
+      # @return [Array<String>]
+      def cleared_keys(env = ENV)
+        [SessionAccess::Dispatch::ENV_KEY, *AgentCaller::VENDOR_MARKERS.map(&:first)] +
+          env.each_key.select { |key| key.start_with?(ChildEnv::WORKER_PREFIX) }
       end
 
       def launch(name, timeout, lock, cancelled)
