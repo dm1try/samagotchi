@@ -188,6 +188,18 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(File.exist?(store.lock_path("nope"))).to be(false)
   end
 
+  it "writes nothing when chi page rm wins the race to the lock" do
+    script("ghost", "page('Ghost') { }\n")
+    allow(store).to receive(:locked).and_wrap_original do |locked, name, &block|
+      FileUtils.rm_f(pages.script_path(name)) # rm ran between the first check and the lock
+      locked.call(name, &block)
+    end
+
+    expect { run("ghost") }.to raise_error(Samagotchi::Pages::Missing, "no page ghost")
+    expect(File.exist?(store.output_dir("ghost"))).to be(false)
+    expect(File.exist?(store.lock_path("ghost"))).to be(false)
+  end
+
   it "runs the script in the pages folder, with PWD and the XDG dirs absolute" do
     script("where", <<~RUBY)
       File.write(File.join(#{tmp.inspect}, "where.json"),

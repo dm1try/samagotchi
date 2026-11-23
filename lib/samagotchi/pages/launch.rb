@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "rbconfig"
 require_relative "../pages"
 require_relative "../child_env"
@@ -42,7 +43,17 @@ module Samagotchi
         Pages.check_name!(name)
         raise Missing, name unless File.file?(Pages.script_path(name))
 
-        Store.locked(name) { launch(name, timeout) }
+        Store.locked(name) do
+          # Again under the lock: a `chi page rm` between the check above and
+          # the lock removed the page, so this run writes nothing (not even
+          # the lock file it just made).
+          unless File.file?(Pages.script_path(name))
+            FileUtils.rm_f(Store.lock_path(name))
+            raise Missing, name
+          end
+
+          launch(name, timeout)
+        end
       end
 
       def command(name) = [RbConfig.ruby, "-I", LIB_DIR, "-e", BOOT, name]
