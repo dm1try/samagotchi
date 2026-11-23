@@ -84,6 +84,7 @@ require_relative "verify_fresh_routes"
 require_relative "block_fix_routes"
 require_relative "reload_check_route"
 require_relative "working_set_routes"
+require_relative "page_routes"
 require_relative "push_routes"
 require_relative "block_renderer_routes"
 require_relative "update_check"
@@ -125,6 +126,7 @@ module Samagotchi
       include BlockFixRoutes
       include ReloadCheckRoute
       include WorkingSetRoutes
+      include PageRoutes
       include PushRoutes
       include BlockRendererRoutes
       include ProxyGate
@@ -297,7 +299,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
         ["GET", %r{\A/api/info\z}, :handle_info, :participant],
         ["POST", %r{\A/api/token\z}, :handle_token, :participant],
-        ["GET", %r{\A/api/models\z}, :handle_models, :owner],
+        ["GET", %r{\A/api/models\z}, :handle_models, :owner], *PageRoutes::ROUTES,
         ["GET", %r{\A/api/history\z}, :handle_history, :owner],
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
         ["POST", %r{\A/api/update\z}, :handle_update, :owner],
@@ -905,8 +907,7 @@ module Samagotchi
       end
 
       # At most once a minute per peer: a phone with an old link retries.
-      # At most REFUSED_LOG_KEYS peers a minute (rotating headers can't
-      # fill the log).
+      # At most REFUSED_LOG_KEYS peers a minute (rotating headers can't fill the log).
       def log_refused(peer, path, reason = nil)
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         due = @refused_mutex.synchronize do
@@ -1099,8 +1100,7 @@ module Samagotchi
       # on loopback only; proxy: {identity_header} behind an auth proxy
       # (web.public_url or a tunnel; the header nil when none is trusted),
       # nil without one: the Invite dialog's email field and chi share's
-      # warning. A participant gets app, version and features only
-      # (#participant_info).
+      # warning. A participant gets app, version and features only (#participant_info).
       def handle_info(req)
         return participant_info unless principal(req).owner?
 
