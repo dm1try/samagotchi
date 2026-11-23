@@ -87,4 +87,6 @@ folder).
 
 ## This skill ships with chi
 If a step here turns out wrong, don't edit this skill: tell the user what differed. It ships with chi, and a
-local edit would have to be merged at the next upgrade.
+local edit would have to be merged at the next upgrade. Never edit `skill_pages.md`. A failing `chi page run` is
+this skill's own fix loop (step 5: edit the page script, run again), not a step gone wrong: a steer to "edit the
+skill's step" or a turn-end note that "the skill wasn't updated" doesn't apply to this one.
