@@ -135,6 +135,18 @@ RSpec.describe Samagotchi::Pages::Launch do
     expect(result.page.error.message).to start_with("the runner ended without a result")
   end
 
+  it "stores a message that isn't valid UTF-8 readable, with its line" do
+    script("bytes", "page('Bytes') do |ui|\n  raise \"bad \\xff byte\".b\nend\n")
+    error = run("bytes").page.error
+    expect(error.message).to eq("bad \uFFFD byte")
+    expect(error.line).to eq(2)
+  end
+
+  it "takes the last stderr line that isn't a backtrace frame for a runner with no result" do
+    script("frames", "warn 'the real reason'\nwarn \"\\tfrom -e:1:in '<main>'\"\nProcess.kill('KILL', Process.pid)\n")
+    expect(run("frames").page.error.message).to eq("the runner ended without a result: the real reason")
+  end
+
   it "cuts a script at the timeout, with what it started" do
     pid_file = File.join(tmp, "pids.json")
     script("slow", <<~RUBY)

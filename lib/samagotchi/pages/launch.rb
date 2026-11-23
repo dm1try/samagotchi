@@ -93,7 +93,8 @@ module Samagotchi
 
         written = Store.file_id(name)
         if written.nil? || written == before || ![0, 1].include?(status&.exitstatus)
-          tail = stderr.lines.map(&:strip).reject(&:empty?).last
+          # Not a backtrace frame: a Ruby crash ends stderr with "from …" lines.
+          tail = stderr.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("from ") }.last
           Store.record_failure(name, message: ["the runner ended without a result", tail].compact.join(": "), line: nil,
                                      script_sha: sha)
           return false
