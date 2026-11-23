@@ -10,7 +10,7 @@ The user side is [pages.md](../pages.md). This is how a run happens and what it 
 | `pages/builder.rb` | `Builder` (the script's `ui`: `text`, `table`, `walk`) and `TableBlock` (columns, formats, key columns, cells, the total) |
 | `pages/store.rb` | `Store`: read, list, `record_run`, `record_failure`, `locked`, `remove`, `file_id` |
 | `pages/runner.rb` | `Runner.run(argv)`: the runner process's whole job |
-| `pages/launch.rb` | `Launch.run(name, timeout:)`: the one launch path |
+| `pages/launch.rb` | `Launch.run(name, timeout:, cancelled:)`: the one launch path |
 | `page_command.rb` | `chi page run | list | rm` |
 
 `pages.rb` requires json, digest, time, `inline_widgets`, `paths` and `atomic_file`, and autoloads its parts. Nothing
@@ -25,18 +25,21 @@ script 152 against 73 preloaded libraries and a stale `PWD`). It costs about 70 
 
 1. `Pages.check_name!`, then the script must exist (`Missing`), then `Store.locked(name)`: a non-blocking `flock` on
    `<state>/samagotchi/pages/NAME.lock`, beside the page's folder so `remove` can delete the folder while holding it.
-   Held: `Busy` ("page NAME is already running"). The order means a typo leaves no lock file behind.
+   Held: `Busy` ("page NAME is already running"). The order means a typo leaves no lock file behind. `locked` yields
+   the lock's io.
 2. `ProcessGroup.spawn(env, RbConfig.ruby, "-I", <this chi's lib>, "-e", 'require "samagotchi/pages/runner"; exit
-   Samagotchi::Pages::Runner.run(ARGV)', NAME)`, in a group of its own, `chdir:` the pages folder, stdin closed. The
-   env is a worker's changes (`SessionManager::WorkerCommand#spawn_options`): `ChildEnv.unbundled` (an installed gem's
-   Bundler changes undone), `ChildEnv.unset` (the spawner's guardrails settings and session markers),
-   `Paths.absolute_xdg`, and `PWD` set to the pages folder (spawn's `chdir:` doesn't change it). "This chi's lib" is
+   Samagotchi::Pages::Runner.run(ARGV)', NAME, TIMEOUT, DEADLINE, 3 => lock)`, in a group of its own, `chdir:` the
+   pages folder, stdin closed, the lock on fd 3. The env is a worker's changes
+   (`SessionManager::WorkerCommand#spawn_options`): `ChildEnv.unbundled` (an installed gem's Bundler changes undone),
+   `ChildEnv.unset` (the spawner's guardrails settings and session markers), `Paths.absolute_xdg`, and `PWD` set to the
+   pages folder (spawn's `chdir:` doesn't change it). "This chi's lib" is
    `File.expand_path("../..", __dir__)` from `pages/launch.rb`: a checkout and an installed gem alike.
 3. stdout and stderr are each read by a `ProcessGroup::PipeReader` (64 KB, the tail kept).
 4. The wait polls `Process.wait2(pid, WNOHANG)`. At the timeout (30 s) `ProcessGroup.stop` TERMs the group, CONTs it,
    waits a grace, then KILLs, with a `stopped:` that reaps (an unreaped zombie counts as alive to the default check).
    Descendants that moved to a group of their own are found and stopped too (`walk:`); one that left the tree
-   (`setsid` and its parent gone) survives: the stated limit.
+   (`setsid` and its parent gone) survives: the stated limit. `cancelled:` (a callable, chi web's "am I stopping?")
+   is polled in the same loop: true stops the group the same way, recorded as "the run was stopped".
 5. After **any** exit the group gets a KILL (a script's background child would hold the pipes open), and the readers
    are bounded (`reader.wait(grace) || reader.kill`).
 6. The runner wrote the output file, or the launcher records the failure itself: the cut ("the script was stopped
@@ -46,11 +49,23 @@ script 152 against 73 preloaded libraries and a stale `PWD`). It costs about 70 
    one second.
 7. An interrupt or an exception stops and reaps the group in `ensure`; the lock is released by the `File.open` block.
 
+**A launcher that dies mid-run** (chi web or a terminal killed with `KILL`) runs no `ensure`. The runner holds the
+lock too (the flock is shared through fd 3), so the page stays "already running" while it lives, and it ends itself:
+its `DEADLINE` is the timeout + `Launch::GRACE_SECONDS` + `Launch::DEADLINE_MARGIN` (2 s) from its own start, later
+than the launcher's cut, which wins whenever the launcher is alive. At the deadline a thread in the runner records
+the cut itself ("the script was stopped after N s") and KILLs the runner's group. So a killed launcher leaves at most
+one bounded run. A Ruby thread can't fire while a C extension holds the GVL: such a script outlives its deadline
+until the call returns (accepted).
+
 `ContextFetch#run_command`, `#wait` and `#stop_group` are the model this follows.
 
 ## The runner
 
-`Runner.run(argv)` (requiring `pages/runner.rb` runs nothing) checks the name and the script, then
+`Runner.run(argv)` (requiring `pages/runner.rb` runs nothing) first makes fd 3 close-on-exec, so the lock is the
+runner's alone: a child the script starts, even one that leaves the group and outlives the run, never inherits it
+(it would keep the page "already running" for good). It arms the deadline when argv carries one (a write of the
+result and the deadline's record take one mutex, so a result recorded at the deadline isn't overwritten), checks the
+name and the script, then
 `load(path, dsl)`: the wrap module is a fresh `Module` defining only `page`, so the script's own `def`s land in it, not
 on `Object`. `page(title) { |ui| … }` makes a `Builder`; a second call raises `Refused`. After the load, no `page` call
 fails the run too.
@@ -85,7 +100,8 @@ The result reaches the launcher through the file only: a `puts` in a script corr
 - A table's `format` is stored, not applied: cells stay raw numbers so the page can sort them. `key_column` marks the
   columns a phone shows besides the first (never marked).
 - `Store.read` gives a `Stored`: the fields, `state` (`:never_ran`, `:ok`, `:failed`) and `changed?` (the script's
-  sha256 now differs from `script_sha`). A missing or unreadable file reads as never ran; keys this version doesn't
+  sha256 now differs from `script_sha`). "Changed" means only this: the result on screen came from an older script;
+  every surface uses `changed?` as it is, never a meaning of its own. A missing or unreadable file reads as never ran; keys this version doesn't
   know are dropped on read (a newer chi's file reads fine).
 
 ## The data entry into InlineWidgets

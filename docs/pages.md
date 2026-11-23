@@ -68,10 +68,12 @@ A rule broken fails the run with a message naming the block and the limit: `tabl
 - A run that fails (the script raised, has a syntax error, called `exit`, broke a limit, or printed more than 256 KB of
   blocks) prints `error: line 9: undefined method 'fetch' for nil`, the last lines of what the script wrote to stderr,
   and exits 1. **The result of the last good run is kept**: a bad edit never blanks the page.
-- A run still going at **30 s** is stopped, with everything it started; the error says so.
+- A run still going at **30 s** is stopped, with everything it started; the error says so. If what started the run
+  dies first (a killed terminal or chi web), the run stops itself a few seconds after its 30 s and records the same
+  error.
 - One run of a page at a time: a second `chi page run usage` meanwhile exits 1 with `page usage is already running`.
 - `chi page list` shows each page's title and `ran 2 min ago`, `failed 1 h ago (line 9)` or `(never ran)`, with
-  `changed` when the script changed since its result was made. `chi page rm NAME` removes the script and its result.
+  `changed` when the script changed since its result was made (the result came from an older script; nothing ran). `chi page rm NAME` removes the script and its result.
 
 Exit codes: 0 ran, 1 failed (or no such page, or already running), 2 the command line itself (an unknown flag, a name
 that breaks the rule). See [the CLI](cli.md#commands).
@@ -86,8 +88,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
   when a run from chi web (a later build) might not have your shell's `PATH`.
 - What the script prints to stdout is its own: the result goes through the stored file. Its stderr shows under a
   failure.
-- **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon). Anything that stays in
-  the group is stopped.
+- **A child that leaves the process group survives the 30 s cut** (a `setsid` or a daemon), but it never keeps the
+  page "already running". Anything that stays in the group is stopped.
 
 ## Where things are stored
 
