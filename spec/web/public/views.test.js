@@ -186,3 +186,18 @@ test("Back: history.back() when this page opened it, else All sessions in its en
   gone.views.leavePage();
   assert.equal(gone.location.hash, "#/sessions");
 });
+
+test("Back from a page returns to All sessions; Esc then goes back to the session", () => {
+  const { views, calls, location, listeners } = harness({ hash: `#/s/${ID}`, selected: ID });
+  views.openAllView();
+  location.hash = "#/sessions";
+  listeners.hashchange();
+  views.openPage("usage");
+  location.hash = "#/p/usage";
+  listeners.hashchange();
+  views.closePage();
+  location.hash = "#/sessions";
+  listeners.hashchange();
+  views.closeAllView();
+  assert.deepEqual(calls.filter(([kind]) => kind === "back"), [["back"], ["back"]]);
+});
