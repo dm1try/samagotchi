@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web pages: Back keeps history; Refresh and table state stay current; invalid names do not fetch.
+
 ## [0.186.0] - 2026-11-23
 
 ### Added

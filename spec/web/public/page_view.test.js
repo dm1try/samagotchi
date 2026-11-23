@@ -135,6 +135,16 @@ test("no such page: says so, with Back and no Refresh", async () => {
   assert.ok(h.$(".pg-refresh") === null);
 });
 
+test("invalid page names show the missing state without fetching", () => {
+  const h = harness();
+  for (const name of ["..", ".", "A b"]) {
+    const calls = h.calls.length;
+    h.view.open(name);
+    assert.equal(h.text(".pg-note"), `There is no page called ${name}.`);
+    assert.equal(h.calls.length, calls);
+  }
+});
+
 test("Refresh runs once while it runs, then redraws from the answer, with the script's last words for Copy", async () => {
   const h = harness({ "GET /api/pages/usage": page(), "POST /api/pages/usage/run": "hold" });
   h.view.open("usage");
