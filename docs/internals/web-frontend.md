@@ -14,7 +14,7 @@ by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec of its own; `viewer_bo
 **Every module has a size cap, `app.js` its own**: `npm run lint` fails past `max-lines` in `eslint.config.js`
 (counted as `wc -l` counts, comments and blank lines too). Every `public/*.js` module: 1200 (`samagotchi/module-size`,
 about 10% over the largest, `turn_block.js`), so a module near it splits rather than becoming the next `app.js`.
-`app.js` (`samagotchi/app-size`): 1637, its size once the diagrams' wiring went into `diagram_wiring.js`; down from 1638,
+`app.js` (`samagotchi/app-size`): 1577, its size once the views by hash went into `views.js` and the pages' wiring landed; down from 1637, its size once the diagrams' wiring went into `diagram_wiring.js`, itself down from 1638,
 its size once the lightbox went into `picture_viewer.js`, itself down from 1649, its
 size plus 50 once the session-open flow went into `session_sync.js` and `session_view.js`, itself ratcheted down from 2000, itself down from 2250 when the versions, the owner's claim links and
 Verify, the composer's mode and the strip's hide went into modules of their own. A new feature goes into a module of
