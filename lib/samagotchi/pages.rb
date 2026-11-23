@@ -21,6 +21,7 @@ module Samagotchi
   module Pages
     autoload :Builder, File.expand_path("pages/builder", __dir__)
     autoload :TableBlock, File.expand_path("pages/builder", __dir__)
+    autoload :Store, File.expand_path("pages/store", __dir__)
 
     # A page's name: lowercase letters, digits and hyphens, a letter or a
     # digit first, at most 40.
@@ -60,6 +61,36 @@ module Samagotchi
     class Busy < Error
       def initialize(name)
         super("page #{name} is already running")
+      end
+    end
+
+    # A failed run: what the script raised (or why it was stopped), the
+    # script's line when one is known, when, and the sha256 of the script
+    # that failed.
+    Failure = Data.define(:message, :line, :at, :script_sha) do
+      def to_json_hash = { "message" => message, "line" => line, "at" => at, "script_sha" => script_sha }
+    end
+
+    # A page as stored (Store.read): the blocks of its last good run (none
+    # before one, ran_at nil) and the last failure since, if any.
+    # +current_sha+ is the script's sha256 now (nil when the script is gone).
+    Stored = Data.define(:name, :title, :blocks, :ran_at, :duration_ms, :script_sha, :error, :current_sha) do
+      # :never_ran, :ok or :failed (the last run failed; the good blocks, if
+      # any, are still there).
+      def state
+        return :failed if error
+        return :ok if ran_at
+
+        :never_ran
+      end
+
+      # Whether the script differs from the one that made the blocks.
+      def changed? = !script_sha.nil? && !current_sha.nil? && current_sha != script_sha
+
+      # The output file's JSON.
+      def to_json_hash
+        { "name" => name, "title" => title, "blocks" => blocks, "ran_at" => ran_at, "duration_ms" => duration_ms,
+          "script_sha" => script_sha, "error" => error&.to_json_hash }
       end
     end
 
