@@ -70,9 +70,12 @@ What trips a script:
 ## Getting the data
 - The script runs in the pages folder, not the project: name files by absolute path.
 - Sessions: `chi sessions list --scope=all --format json` (without `--scope=all` only the pages folder's
-  project); one session's cost and tokens: `chi sessions stats ID --format json` (one call per session: fine
-  for a few dozen; group in Ruby). Schedules: `chi schedule list --all --format json`. `json` is loaded;
-  `require` anything else.
+  project); one session's totals (cost, tokens): `chi sessions stats ID --format json` (one call per session:
+  fine for a few dozen; group in Ruby). Its `turn_records` are only the newest turn's: for anything per turn
+  or per day, read every turn from `<sessions dir>/ID/analytics.json` (`turn_records`: `completed_at`,
+  `model_ref`, `cost` as reported, `cost_estimate` from the configured price; either may be missing). `chi self`
+  names the sessions dir. Schedules: `chi schedule list --all --format json`. `json` is loaded; `require`
+  anything else.
 - Check that a command worked (`status.success?`, `$?.success?`) and `raise` with a plain message when it
   didn't: the page then says why.
 
