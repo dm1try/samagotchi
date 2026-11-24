@@ -8,7 +8,7 @@ The user side is [pages.md](../pages.md). This is how a run happens and what it 
 |---|---|
 | `lib/samagotchi/pages.rb` | `Pages`: the limits, the name rule (`check_name!`, the one check before any path), the folders, the errors (`Refused`, `BadName`, `Missing`, `Busy`, each owning its message), the values `Stored` and `Failure` |
 | `pages/builder.rb` | `Builder` (the script's `ui`: `text`, `table`, `walk`) and `TableBlock` (columns, formats, key columns, cells, the total) |
-| `pages/store.rb` | `Store`: read, list, `record_run`, `record_failure`, `locked`, `remove`, `file_id` |
+| `pages/store.rb` | `Store`: read, list, `record_run`, `record_failure`, `locked`, `remove`, `file_id`, `remove_temporary_outputs` |
 | `pages/runner.rb` | `Runner.run(argv)`: the runner process's whole job |
 | `pages/launch.rb` | `Launch.run(name, timeout:, cancelled:)`: the one launch path |
 | `page_command.rb` | `chi page run | list | rm` |
@@ -47,7 +47,9 @@ script 152 against 73 preloaded libraries and a stale `PWD`). It costs about 70 
    are bounded (`reader.wait(grace) || reader.kill`).
 6. The runner wrote the output file, or the launcher records the failure itself: the cut ("the script was stopped
    after 30 s"), or "the runner ended without a result" (with stderr's last line) when the exit status is not 0 or 1
-   or the file is the one that was there before. "The one that was there before" is the file's inode
+   or the file is the one that was there before. A timeout cut is skipped when the run wrote its result and exited
+   0 or 1; a failure the runner already recorded is never overwritten. "The one that was there before" is the file's
+   inode
    (`Store.file_id`): `AtomicFile` renames a new file in for every write, so a run that wrote changes it even within
    one second.
 7. An interrupt or an exception stops and reaps the group in `ensure`; the lock is released by the `File.open` block.
@@ -105,7 +107,8 @@ The result reaches the launcher through the file only: a `puts` in a script corr
 ```
 
 - A failed run rewrites only `error`: `{"message", "line" (Integer or null), "at", "script_sha"}`. The blocks, title,
-  `ran_at` and `script_sha` stay those of the last good run. A good run sets `error` to null. `Store.record_failure` is
+  `ran_at` and `script_sha` stay those of the last good run, and fields this chi does not know are kept in the file
+  (dropped only by `Store.read`). A good run sets `error` to null. `Store.record_failure` is
   the one writer of a failure, for the runner and the launcher alike, always under the page's lock.
 - Before any good run there are no blocks and `ran_at` is null.
 - A table's `format` is stored, not applied: cells stay raw numbers so the page can sort them. `key_column` marks the

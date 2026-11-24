@@ -84,7 +84,8 @@ A rule broken fails the run with a message naming the block and the limit: `tabl
 - A run that fails (the script raised, has a syntax error, called `exit`, broke a limit, or printed more than 256 KB of
   blocks) prints `error: line 9: undefined method 'fetch' for nil`, the last lines of what the script wrote to stderr,
   and exits 1. **The result of the last good run is kept**: a bad edit never blanks the page.
-- A run still going at **30 s** is stopped, with everything it started; the error says so. If what started the run
+- A run still going at **30 s** is stopped, with everything it started; the error says so. One that finished just as
+  the cut fires keeps its result. If what started the run
   dies first (a killed terminal or chi web), the run stops itself a few seconds after its 30 s and records the same
   error. Its output then has nowhere to go: a script that prints a lot may fail with `Broken pipe` instead (the last
   good result is kept).

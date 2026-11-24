@@ -18,6 +18,7 @@ snapshot (text, revision, serial, summary, wake_serial, hint)
    ▼
 ContextAbsorber#pending → Batch of Deliveries (one note per source that is new / changed / failing / gone)
    │ Engine#add_context_note: a tail system message (kind "note", ContextNote), announced as :context_added
+   │ :context_added carries `turn_start`/`turn_id` for a wake, so live and reload agree on the opening
    │ session saved, then ContextAbsorber#commit writes subscriptions.json
    ▼
 the next request: the note sits after the history; the model reads the text with the context_read tool

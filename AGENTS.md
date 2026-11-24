@@ -85,7 +85,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - LLM context strategies (`llm_context`, the forget layer) → `docs/internals/llm-context-forget.md`
 - LLM context benchmarks (the offline replay, the live runs) → `docs/internals/llm-context-bench.md`, `docs/internals/llm-context-live.md`
 - Context-usage telemetry (`:context_status`, the CONTEXT line) → `docs/internals/context-telemetry.md`
-- Attached context (`chi context`, refreshed outside text) → `docs/context.md`; the mechanism (`ContextSources`, poller, absorber, candidates, judge, `ContextMove`, `left.json`) → `docs/internals/attached-context.md`
+- Attached context (`chi context`, refreshed outside text) → `docs/context.md`; the mechanism (`ContextSources`, poller, absorber, candidates, judge, `ContextMove`, `PeerNote`, `left.json`) → `docs/internals/attached-context.md`
 - The web's working set (stamps, `WorkingSet`, `:working_set_updated`, the overlay) → `docs/internals/working-set.md`
 - Session lifecycle markers, writers, and open windows → `docs/internals/session-lifecycle.md`
 - The web frontend (where page state lives, write → redraw, render idioms, stale-answer guards, storage, streams) → `docs/internals/web-frontend.md`
@@ -105,7 +105,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
 - Session files, context notes, sending, chains, delegating, deleting (`SessionChain::Delete`, `delete_plan`, `SessionManager::DelegateRule`, `RunningTasks::Policy.stop(only:)`, `--dry-run`) → `docs/sessions.md`
-- Durable schedules (`chi schedule`, `Schedules`, the tick's busy check, `schedule.*`) → `docs/scheduling.md`; the CLI section → `docs/cli.md` (Durable schedules)
+- Durable schedules (`chi schedule`, `Schedules`, `ScheduleDisplay`, the tick's busy check, `schedule.*`) → `docs/scheduling.md`; the CLI section → `docs/cli.md` (Durable schedules)
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
 - chi web behind an auth proxy (`web.public_url`, `Web::ProxyGate`, identity header + token, Bridges refusing proxy
   traces) → `docs/configuration.md` (Behind an auth proxy); the gate → `docs/internals/participants.md` (The gate)
