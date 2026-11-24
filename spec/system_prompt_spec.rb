@@ -343,3 +343,26 @@ RSpec.describe Samagotchi::SystemPrompt, "a section that fails" do
       .to eq([["prompt", "plugin_section_failed", "IOError", "plugin gone"]])
   end
 end
+
+RSpec.describe Samagotchi::SystemPrompt, "system memories location" do
+  subject(:prompt) do
+    described_class.new(profile: -> {}, tools: -> { [] }, session: -> {}, thinking: -> {})
+  end
+
+  it "keeps the default system memories line unchanged" do
+    with_env("XDG_CONFIG_HOME" => nil) do
+      expect(prompt.send(:assist_guidance)).to include("System scope:  ~/.config/samagotchi/memories/ (cross-project)")
+    end
+  end
+
+  it "names the configured system memories folder" do
+    Dir.mktmpdir("samagotchi-config") do |config_home|
+      with_env("XDG_CONFIG_HOME" => config_home) do
+        guidance = prompt.send(:assist_guidance)
+
+        expect(guidance).to include("System scope:  #{File.join(config_home, "samagotchi", "memories")}/ (cross-project)")
+        expect(guidance).not_to include("~/.config/samagotchi/memories")
+      end
+    end
+  end
+end

@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::SystemPrompt, "section snapshots" do
   end
 
   def normalized(prompt)
-    prompt.gsub(@tmp, "<TMP>").gsub(Dir.home, "<HOME>")
+    normalize_system_memories_path(prompt).gsub(@tmp, "<TMP>").gsub(Dir.home, "<HOME>")
   end
 
   def note(name, scope, body) = Samagotchi::ModelNotes::Note.new(name: name, scope: scope, body: body, chars: body.size, digest: "d")

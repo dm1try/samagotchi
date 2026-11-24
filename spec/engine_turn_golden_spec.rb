@@ -268,6 +268,7 @@ RSpec.describe "Engine turn goldens" do
   # (the day the example's bundles were installed: Date.today), the
   # server's port, uuids numbered by first sight.
   def scrub(text)
+    text = normalize_system_memories_path(text)
     text = text.gsub(tmp, "<TMP>").gsub(Dir.home, "<HOME>")
     text = text.gsub(%r{(memories/projects/project)_[0-9a-f]{8}}, '\1_<HASH>')
     text = text.gsub(/( · (?:system|project) · )\d{4}-\d{2}-\d{2}( · )/, '\1<DATE>\2')

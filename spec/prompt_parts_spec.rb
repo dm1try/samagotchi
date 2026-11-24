@@ -129,7 +129,16 @@ RSpec.describe Samagotchi::SystemPrompt, "#prompt_parts" do
                            sections: -> { plugins })
           allow(prompt).to(receive(:tool_surface).and_wrap_original { |_orig, layers| Samagotchi::Tools::ToolSurface.for(registry_with_tool, layers: layers) })
           prompt.build(chat: chat)
-          { chat: chat, profile: profile.name, parts: prompt.prompt_parts.map { |part| part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope) } }
+          path_length_change = "#{Samagotchi::Paths.tilde(Samagotchi::MemoryPaths.system_dir)}/".length -
+                               "~/.config/samagotchi/memories/".length
+          parts = prompt.prompt_parts.map { |part| part.to_h.slice(:kind, :label, :chars, :tokens, :ref, :scope) }
+          parts.each do |part|
+            next unless part[:kind] == "base"
+
+            part[:chars] -= path_length_change
+            part[:tokens] = Samagotchi::PromptPart.tokens_for(part[:chars])
+          end
+          { chat: chat, profile: profile.name, parts: parts }
         end
       end
     end

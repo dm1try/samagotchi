@@ -445,7 +445,7 @@ module Samagotchi
 
         Memory convention:
           Project scope: one folder per project (a git repository, shared by its worktrees and subdirectories, or a folder marked by `chi project init` and its subfolders; its path is on the "Project memories folder" line below)
-          System scope:  ~/.config/samagotchi/memories/ (cross-project)
+          System scope:  #{Paths.tilde(Tools::MemoryRead.memories_dir("system"))}/ (cross-project)
           memory_read accepts optional scope (project|system).
           memory_write requires explicit scope and entry name.
           For a small change to an existing memory, `edit` its file (<scope dir>/<name>.md)

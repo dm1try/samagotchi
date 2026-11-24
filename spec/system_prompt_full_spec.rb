@@ -91,7 +91,7 @@ RSpec.describe "Full system prompt snapshots", :real_rg do
   def normalized(prompt, sess = nil)
     text = prompt.dup
     text = text.gsub(sess.id, "<SID>").gsub(sess.id[0, Samagotchi::Log::SID_LENGTH], "<SHORT_SID>") if sess
-    text.gsub(SPEC_XDG_STATE_HOME, "<STATE>").gsub(@tmp, "<TMP>").gsub(Dir.home, "<HOME>")
+    normalize_system_memories_path(text).gsub(SPEC_XDG_STATE_HOME, "<STATE>").gsub(@tmp, "<TMP>").gsub(Dir.home, "<HOME>")
   end
 
   it "gemma4 on a native host, default thinking, rg, AGENTS.md, no session" do

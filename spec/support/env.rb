@@ -19,6 +19,12 @@ module SpecEnv
 end
 
 module SpecEnv
+  # Golden prompts pin the default-location wording while the test suite
+  # points XDG_CONFIG_HOME at an isolated folder.
+  def normalize_system_memories_path(text)
+    text.to_s.gsub(/(System scope:  ).* \(cross-project\)/, '\1~/.config/samagotchi/memories/ (cross-project)')
+  end
+
   # Point config.yml and every memory folder (MemoryPaths: memories/,
   # memories/projects/<key>, memories/.bundles) at +dir+ for the block:
   # XDG_CONFIG_HOME=dir, with the suite's fixture config.yml copied in.

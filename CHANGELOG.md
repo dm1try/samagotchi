@@ -31,6 +31,7 @@ and commands may change between minor versions. How releases are made:
 - Peer mail: retry receipts after a write failure without advancing the in-memory mailbox cursor.
 - Peer mail: label a wake turn with the peer that requested it, even when another peer's note arrives last.
 - Peer mail: refuse forged message files with multiline or otherwise unnormalized summaries.
+- The system prompt names the real system memories folder when the config lives outside ~/.config.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not
   "failed: ...".
 - chi web: after a reload, a plugin's line after a turn stays right under that turn instead of moving below the next
