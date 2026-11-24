@@ -25,8 +25,10 @@ module Samagotchi
         entry = schedules.lookup(name)
         return "No schedule named #{name}." if entry.nil?
 
+        # nil: gone since the lookup (another cancel in between).
         if want_all || peers&.session_id.nil?
-          schedules.cancel(name)
+          return "No schedule named #{name}." unless schedules.cancel(name)
+
           return "Cancelled #{entry.id} (#{entry.title || entry.recurrence_words})."
         end
 
@@ -35,7 +37,8 @@ module Samagotchi
                  "chi schedule cancel #{entry.id} cancels it, or say all: true if you meant it."
         end
 
-        schedules.cancel(name)
+        return "No schedule named #{name}." unless schedules.cancel(name)
+
         "Cancelled #{entry.id} (#{entry.title || entry.recurrence_words})."
       rescue StandardError => e
         "Error: #{e.message}"

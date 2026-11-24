@@ -1216,6 +1216,23 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "returns nil from cancel, enable and disable for an entry gone before the lock, and the changed entry else" do
+    Dir.mktmpdir("schedules-change-gone") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      anchor = session(dir).id
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      expect(schedules.disable(entry.id)).to have_attributes(id: entry.id, enabled: false, last_result: "disabled")
+      expect(schedules.enable(entry.id)).to have_attributes(id: entry.id, enabled: true, last_result: "enabled")
+
+      allow(schedules).to receive(:write_under_lock).and_wrap_original do |original, &block|
+        File.write(schedules.path, JSON.generate(JSON.parse(File.read(schedules.path)).merge("schedules" => [])))
+        original.call(&block)
+      end
+      expect([schedules.cancel(entry.id), schedules.enable(entry.id), schedules.disable(entry.id)]).to eq([nil, nil, nil])
+    end
+  end
+
   it "resets skips and failures when a schedule is enabled again" do
     Dir.mktmpdir("schedules-enable-reset") do |root|
       dir = File.join(root, "sessions")

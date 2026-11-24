@@ -700,26 +700,31 @@ module Samagotchi
     end
 
     # The same resolution as #lookup — an id, a unique prefix, or a title, and
-    # an ambiguous one raises Usage rather than taking the first match.
+    # an ambiguous one raises Usage rather than taking the first match. nil
+    # too when the entry is gone by the time the lock is held (another cancel
+    # landed in between): the caller says "no schedule", not "ok".
+    # @return [Entry, nil] the entry as changed (as removed, for a delete)
     def change(id_or_name, enabled: nil, delete: false)
       entry = lookup(id_or_name)
       return nil if entry.nil?
 
+      result = nil
       write_under_lock do |file|
         position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
         next if position.nil?
 
         if delete
+          result = file.entries[position]
           file.entries[position] = nil
           file.entries.compact!
         else
           changed = file.entries[position].with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
           # Enabled again with a fresh budget: its next skip must not end it at
           # once, and the turn-off it was disabled by is no news any more.
-          file.entries[position] = enabled ? changed.with(skips: 0, failures: 0, disabled_notice: nil) : changed
+          result = file.entries[position] = enabled ? changed.with(skips: 0, failures: 0, disabled_notice: nil) : changed
         end
       end
-      entry
+      result
     end
 
     # +name+ is what the caller's flag is called, so a bad value says which one.

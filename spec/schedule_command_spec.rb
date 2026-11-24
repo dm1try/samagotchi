@@ -53,6 +53,17 @@ RSpec.describe Samagotchi::ScheduleCommand do
   end
 
   # @return [Integer, String, String] the exit status, what it printed, what it errored
+  # Removes every schedule from the file between #change's lookup and its
+  # lock: another terminal's cancel landing in between.
+  def vanish_before_lock(schedules)
+    allow(schedules).to receive(:write_under_lock).and_wrap_original do |original, &block|
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"] = []
+      File.write(schedules.path, JSON.generate(data))
+      original.call(&block)
+    end
+  end
+
   def run(*argv, store: schedules)
     out = StringIO.new
     err = StringIO.new
@@ -487,6 +498,18 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(status).to eq(0), error
       expect(printed).to eq("#{entry.id} cancel: ok\n")
       expect(schedules.entries).to be_empty
+    end
+
+    it "says no schedule, exit 1, when the entry is gone by the time the lock is held" do
+      id = session
+      %w[cancel enable disable].each do |sub|
+        entry = schedules.add(target: id, prompt: "Audit #{sub}", recurrence: every)
+        vanish_before_lock(schedules)
+
+        status, printed, error = run(sub, entry.id)
+        expect([status, printed, error]).to eq([1, "", "no schedule #{entry.id}\n"])
+        RSpec::Mocks.space.proxy_for(schedules).reset
+      end
     end
 
     it "exits 1 for an id that is not there and 2 for no id" do

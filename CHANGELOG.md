@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi schedule cancel|enable|disable` (and the `cancel_schedule` tool) say "no schedule" instead of ok when another
+  cancel removed the schedule in between.
 - Pairing claude-peer or codex-peer again removes that peer's old inbox/outbox context sources (their chips).
 
 ## [0.188.0] - 2026-11-24
