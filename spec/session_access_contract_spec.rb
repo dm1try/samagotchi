@@ -12,6 +12,7 @@ require "samagotchi/session_delete_command"
 require "samagotchi/session_archive_command"
 require "samagotchi/share_command"
 require "samagotchi/mcp_command"
+require "samagotchi/peer_command"
 require "samagotchi/run_options"
 
 # Every session command, subcommand and flag says whether it runs against a
@@ -37,12 +38,14 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
     "share" => Samagotchi::ShareCommand::FLAGS,
     **Samagotchi::ShareCommand::SUBCOMMANDS.to_h { |sub| ["share #{sub}", Samagotchi::ShareCommand::SUB_FLAGS.fetch(sub)] },
     # chi mcp serve takes no flags.
-    "mcp serve" => nil
+    "mcp serve" => nil,
+    **Samagotchi::PeerCommand::SUBCOMMANDS.to_h { |sub| ["peer #{sub}", Samagotchi::PeerCommand::FLAGS.fetch(sub)] }
   }
   subcommands_of = { "context" => Samagotchi::ContextCommand::SUBCOMMANDS,
                      "sessions" => Samagotchi::SessionsCommand::SUBCOMMANDS,
                      "share" => Samagotchi::ShareCommand::SUBCOMMANDS,
-                     "mcp" => Samagotchi::McpCommand::SUBCOMMANDS }
+                     "mcp" => Samagotchi::McpCommand::SUBCOMMANDS,
+                     "peer" => Samagotchi::PeerCommand::SUBCOMMANDS }
 
   it "reads bin/chi's subcommands" do
     expect(chi_subcommands).to include("send", "sessions", "bundle")
@@ -114,5 +117,7 @@ RSpec.describe Samagotchi::SessionAccess::Contract do
     expect(contract.supported?("sessions", "stats")).to be(false)
     expect(contract.supported?("broadcast")).to be(false)
     expect(contract.status("bundle")).to be_nil
+    expect(contract.supported?("peer", "say", "--wait")).to be(true)
+    expect(contract.supported?("peer", "pair", "--address")).to be(true)
   end
 end

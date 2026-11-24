@@ -24,6 +24,9 @@ module Samagotchi
   # See docs/internals/peers.md.
   module PeerMailbox
     DIR = "mailbox"
+    # A worker's Bridge feature: it takes the peer mail (WorkerInbound#absorb_mail).
+    # chi peer pair and say refuse a live worker without it.
+    FEATURE = "peer_mail"
     IN_DIR = "in"
     LINK_FILE = "link.json"
     LOCK_FILE = "lock"
@@ -148,11 +151,13 @@ module Samagotchi
     # @return [String] +name+
     # @raise [Invalid]
     def check_name!(name)
-      return name if name.is_a?(String) && name.match?(NAME_RE)
+      return name if valid_name?(name)
 
-      raise Invalid, "#{name.to_s[0, 40].inspect} isn't a peer name: a lowercase letter, then lowercase letters " \
-                     "and digits, up to 24"
+      raise Invalid, name_problem(name)
     end
+
+    def name_problem(name) = "#{name.to_s[0, 40].inspect} isn't a peer name: a lowercase letter, then lowercase " \
+                             "letters and digits, up to 24"
 
     def valid_name?(name) = name.is_a?(String) && name.match?(NAME_RE)
 
