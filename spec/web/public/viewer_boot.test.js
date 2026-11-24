@@ -28,6 +28,7 @@ test("every capability: today's calls and controls", () => {
     "GET /api/block_renderers",
     "GET /api/history",
     "GET /api/models",
+    "GET /api/pages",
     `GET /api/sessions/${SID}`,
     `GET /api/sessions/${SID}/context`,
     `GET /api/sessions/${SID}/participants`,
@@ -43,6 +44,8 @@ test("every capability: today's calls and controls", () => {
     notifyBtn: "hidden", titleRenameBtn: "shown", modelPick: "hidden", attachBtn: "shown",
     infoMoreBtn: "shown", infoStopBtn: "shown", infoContinueBtn: "shown", infoArchiveBtn: "shown", infoDeleteBtn: "shown",
     stopTurn: "shown", questionCard: "shown", reviseBtn: "shown", settingsChip: "shown",
+    // The pages pill: one page answered.
+    pagesBtn: "shown",
   });
 });
 
@@ -89,6 +92,7 @@ const GATES = {
   stop_any_turn: { controls: ["stopTurn"] },
   answer_cards: { controls: ["questionCard"] },
   revise: { controls: ["reviseBtn"] },
+  pages: { requests: ["GET /api/pages"], controls: ["pagesBtn"] },
 };
 
 test("each capability gates its own calls and controls, and nothing else", async () => {
@@ -125,7 +129,16 @@ test("a participant at #/p/x: their session as always, and no page call", () => 
   assert.deepEqual(requests, [`GET /api/sessions/${SID}`]);
 });
 
-test("All sessions at #/sessions: the owner with pages reads the Pages list; without pages, no page call", () => {
+test("the Pages list at #/pages: the owner with pages reads the list and the pill shows; without pages, no page call and no pill", () => {
+  const owner = boot({ kind: "owner", can: ALL, hash: "#/pages" });
+  assert.ok(owner.requests.includes("GET /api/pages"), owner.requests.join(", "));
+  assert.equal(owner.controls.pagesBtn, "shown");
+  const without = boot({ kind: "owner", can: ALL.filter((n) => n !== "pages"), hash: "#/pages" });
+  assert.ok(!without.requests.some((r) => r.includes("/api/pages")), without.requests.join(", "));
+  assert.notEqual(without.controls.pagesBtn, "shown");
+});
+
+test("All sessions at #/sessions: the owner with pages reads the list of pages; without pages, no page call", () => {
   const owner = boot({ kind: "owner", can: ALL, hash: "#/sessions" });
   assert.ok(owner.requests.includes("GET /api/pages"), owner.requests.join(", "));
   const without = boot({ kind: "owner", can: ALL.filter((n) => n !== "pages"), hash: "#/sessions" });

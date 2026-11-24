@@ -2003,6 +2003,12 @@ body.strip-hidden #topStrip{display:none}
 /* In the all view the pill is the view's own button, pressed (app.js applyView), whatever the strip's state: a click goes
    back to the chat (lists_view.js), as Esc does. */
 body.all-view #stripStatus{display:block}
+/* The pages pill (pages_wiring.js): the sessions pill's look and size, shown in every view while there is a page (not tied
+   to the strip or the all view); hidden while there is none. */
+#pagesBtn{display:block;align-self:center;height:28px;min-height:0;padding:0 10px;font-size:12px;line-height:26px;white-space:nowrap;flex-shrink:0}
+#pagesBtn[hidden]{display:none}
+#pagesBtn:not([aria-pressed="true"]){border-color:var(--border-strong)}
+#pagesBtn:hover{filter:none}
 .strip-toggle[aria-pressed="true"]{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-border)}
 .strip-toggle[aria-pressed="true"]:hover{color:var(--accent);border-color:var(--accent)}
 /* The strip's grip (strip_grip.js, app.js): the handle on the edge between the
@@ -2185,8 +2191,8 @@ a{color:var(--accent)}
   #notifyBtn::after{content:"";position:absolute;inset:-7px}
   #scope .scope-all{position:relative}
   #scope .scope-all::after{content:"";position:absolute;inset:-14px -4px -11px -3px}
-  #stripStatus{position:relative}
-  #stripStatus::after{content:"";position:absolute;inset:-2px 0}
+  #stripStatus,#pagesBtn{position:relative}
+  #stripStatus::after,#pagesBtn::after{content:"";position:absolute;inset:-2px 0}
   #newBtn{position:relative}
   #newBtn::after{content:"";position:absolute;inset:-3px}
   /* The pill: its box 40px tall and borderless (no border at all: a transparent one would put the ::before 1px inside, a
@@ -2256,6 +2262,7 @@ body.participant-view .bubble.user:not(.by-participant)>.origin-label{color:var(
     <button type="button" id="newBtn" class="brand" title="New session" aria-label="New session"><span class="brand-name">chi</span><span class="brand-new"><svg class="brand-plus" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9"/></svg><span class="brand-new-word">new session</span></span></button>
     <div id="scope" hidden></div>
     <button type="button" class="strip-toggle" id="stripStatus" title="All sessions, with search"><span class="pill-count">sessions</span></button>
+    <button type="button" class="strip-toggle" id="pagesBtn" title="Pages" aria-pressed="false" hidden>pages</button>
     <span id="sessionTitleRow" hidden><span id="sessionTitle"></span><button type="button" id="titleRenameBtn" class="title-rename" title="Rename this session" aria-label="Rename this session" hidden>✎</button></span>
     <div id="allHead">
       <input id="filter" name="chi-filter" type="search" placeholder="Search preview, id or status" aria-label="Search sessions" autocomplete="off">
@@ -2328,6 +2335,7 @@ body.participant-view .bubble.user:not(.by-participant)>.origin-label{color:var(
     </div>
   </section>
   <section id="pageView" aria-label="Page"></section>
+  <section id="pagesList" aria-label="Pages"></section>
   <section id="allView" aria-label="All sessions">
     <div id="pagesGroup" hidden></div>
     <div id="allList"></div>

@@ -1,8 +1,11 @@
-// Pages in chi web (docs/pages.md), the shared path once: All sessions'
-// Pages group opens a page, Refresh runs its script and changes the result,
-// a script that raises keeps the last result under the failure line, Back
-// returns to All sessions. The page is the usage fixture of Build 1's specs
-// (spec/fixtures/pages), written into this worker's config and removed after.
+// Pages in chi web (docs/pages.md), the shared path once: the top bar's
+// pages pill appears live when the first page's script is made (the hub's
+// `pages` event, no reload), opens the Pages list, whose card opens the
+// page; Refresh runs its script and changes the result, a script that raises
+// keeps the last result under the failure line, Back returns to the list.
+// The page is the usage fixture of Build
+// 1's specs (spec/fixtures/pages), written into this worker's config and
+// removed after.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,13 +16,22 @@ const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const USAGE_RB = fs.readFileSync(path.join(FIXTURES, "usage.rb"), "utf8");
 const USAGE_JSON = fs.readFileSync(path.join(FIXTURES, "usage.json"), "utf8");
 
-test("a page: opened from the Pages group, Refresh changes the result, a failed run keeps it under the failure line", async ({ page, chi }) => {
-  const remove = usePage(chi, "usage", USAGE_RB, { "usage.json": USAGE_JSON });
+test("a page: the pill appears live, opens the Pages list, a card opens the page; Refresh changes the result, a failed run keeps it under the failure line", async ({ page, chi }) => {
+  await page.goto(`${chi.baseURL}/#/sessions`);
+  const pill = page.locator("#pagesBtn");
+  await expect(page.locator("#allView")).toBeVisible();
+  await expect(pill).toBeHidden();
+  let remove = () => {};
   try {
-    await page.goto(`${chi.baseURL}/#/sessions`);
-    const card = page.locator("#pagesGroup .pg-card", { hasText: "usage" });
+    // Making the script is what the hub sees (a run doesn't touch the scripts folder).
+    remove = usePage(chi, "usage", USAGE_RB, { "usage.json": USAGE_JSON });
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+    await pill.click();
+
+    await expect(page).toHaveURL(/#\/pages$/);
+    await expect(pill).toHaveAttribute("aria-pressed", "true");
+    const card = page.locator("#pagesList .pg-card", { hasText: "usage" });
     await expect(card).toContainText("never ran");
-    await expect(page.locator("#pagesGroup .pg-group-label")).toHaveText(["Pages", "Sessions"]);
     await card.click();
 
     await expect(page).toHaveURL(/#\/p\/usage$/);
@@ -44,9 +56,10 @@ test("a page: opened from the Pages group, Refresh changes the result, a failed 
     await expect(view.locator(".pg-failed")).toContainText("Showing the result from");
     await expect(view.locator(".pg-blocks.pg-kept tfoot td").last()).toHaveText("$20.5000");
 
+    await expect(view.locator(".pg-back")).toHaveText("← Pages");
     await view.locator(".pg-back").click();
-    await expect(page).toHaveURL(/#\/sessions$/);
-    await expect(page.locator("#pagesGroup .pg-card", { hasText: "Usage, last 7 days" })).toContainText("failed just now");
+    await expect(page).toHaveURL(/#\/pages$/);
+    await expect(page.locator("#pagesList .pg-card", { hasText: "Usage, last 7 days" })).toContainText("failed just now");
   } finally {
     remove();
   }

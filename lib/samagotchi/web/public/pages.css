@@ -4,6 +4,12 @@
 #pageView{display:none;flex:1;min-height:0;min-width:0;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding:2px 2px 24px}
 body.page-view #pageView{display:flex}
 body.page-view :is(#center,#topStrip,#stripGrip,#allView,#sessionTitleRow){display:none}
+/* The Pages list, #/pages (pages_list.js): the same place, while body.pages-list; its cards in All sessions' grid. */
+#pagesList{display:none;flex:1;min-height:0;min-width:0;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding:2px 2px 24px}
+body.pages-list #pagesList{display:flex}
+body.pages-list :is(#center,#topStrip,#stripGrip,#allView,#sessionTitleRow){display:none}
+.pl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start}
+.pl-cards .pg-card{padding:12px 14px;font-size:12.5px}
 .pg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .pg-back{flex:none;padding:5px 10px;font-size:13px;color:var(--accent);background:transparent;border:1px solid transparent}
 @media(hover:hover){.pg-back:hover{filter:none;border-color:var(--border-strong)}}
@@ -65,7 +71,7 @@ button.pg-row-main:focus-visible{outline:2px solid var(--accent);outline-offset:
   .pg-meta{order:5;flex-basis:100%;white-space:normal}
 }
 /* All sessions' Pages group (pages_group.js): one row of cards that scrolls sideways, over a "Sessions" heading. Its own
-   card rules: the session cards' are scoped to #allList .card. */
+   card rules: the session cards' are scoped to #allList .card; the Pages list's cards share them. */
 #pagesGroup{display:flex;flex-direction:column;gap:8px;flex:none;min-width:0}
 #pagesGroup[hidden]{display:none}
 .pg-group-label{font-size:11px;font-weight:600;line-height:1;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}
