@@ -4,6 +4,7 @@ require "json"
 require_relative "session"
 require_relative "session_row"
 require_relative "session_manager"
+require_relative "session_protection"
 require_relative "session_retention"
 require_relative "project_scope"
 require_relative "analytics_file"
@@ -364,6 +365,9 @@ module Samagotchi
         @stdout.puts "\nRun without --dry-run to delete."
       end
       0
+    rescue Samagotchi::SessionProtection::Unreadable => e
+      @stderr.puts e.message
+      1
     end
   end
 end

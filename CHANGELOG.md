@@ -29,6 +29,10 @@ and commands may change between minor versions. How releases are made:
 - `chi schedule cancel|enable|disable` (and the `cancel_schedule` tool) say "no schedule" instead of ok when another
   cancel removed the schedule in between.
 - Pairing claude-peer or codex-peer again removes that peer's old inbox/outbox context sources (their chips).
+- A `schedules.json` that can't be read (not JSON, or a schedule in it that doesn't read) no longer leaves its
+  sessions unprotected: the retention sweep skips its round and a delete (`chi sessions delete`, `prune`, the web's)
+  is refused with "schedules.json is unreadable (…): fix or remove it before deleting sessions". A missing file is
+  still no schedules.
 
 ## [0.188.0] - 2026-11-24
 

@@ -220,6 +220,9 @@ module Samagotchi
           begin
             SessionManager.refuse_protected!(sid, state_dir)
           rescue SessionManager::DeleteRefused => e
+            # Only a schedule names the delegate; any other refusal keeps its words.
+            raise unless e.reason == :scheduled
+
             raise SessionManager::DeleteRefused.new(
               sid, :scheduled, schedule_id: e.schedule_id,
                                message: "its delegate #{sid[0, 8]} is the target of an enabled schedule; " \
@@ -356,8 +359,7 @@ module Samagotchi
       # a background task any of them started that still runs.
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
       def check_chain!(plan, state_dir, stop:, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
-        hold = SessionProtection.chain_hold(plan.id, state_dir: state_dir)
-        raise SessionManager::DeleteRefused.new(plan.id, hold.reason, schedule_id: hold.ref) if hold
+        SessionManager.refuse_protected!(plan.id, state_dir, chain: true)
 
         plan.links.each do |link|
           presence = WorkerPresence.read(link, state_dir: state_dir, owner: SessionManager.session_owner(link, state_dir: state_dir))

@@ -5,6 +5,9 @@ require "json"
 require "spec_helper"
 require "samagotchi/session_protection"
 require "samagotchi/schedules"
+require "samagotchi/session_retention"
+require "samagotchi/session_chain/delete"
+require "samagotchi/session_chain/delete_preview"
 
 RSpec.describe Samagotchi::SessionProtection do
   let(:root) { Dir.mktmpdir("session-protection-spec") }
@@ -112,6 +115,96 @@ RSpec.describe Samagotchi::SessionProtection do
       expect { described_class.chain_hold("abc", state_dir: sessions_dir) }.to raise_error(ArgumentError)
       expect(Samagotchi::Log).to have_received(:warn)
         .with(:worker, "protector_failed", hash_including(protector: :schedule, error: "ArgumentError")).exactly(3).times
+    end
+  end
+
+  describe "an unreadable schedules.json" do
+    let!(:plain) { saved_session }
+    let!(:delegate) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |child|
+        child.parent_id = plain.id
+        child.delegate = true
+        child.save(state_dir: sessions_dir)
+      end
+    end
+    let(:words) { /\Aschedules\.json is unreadable \(.+\): fix or remove it before deleting sessions\z/ }
+
+    before { allow(Samagotchi::Log).to receive(:warn) }
+
+    def on_disk?(session) = File.exist?(Samagotchi::Session.session_file(session.id, state_dir: sessions_dir))
+
+    shared_examples "fails closed" do
+      it "makes every question raise, naming the file" do
+        expect { described_class.protected_ids(state_dir: sessions_dir) }.to raise_error(described_class::Unreadable, words)
+        expect { described_class.hold(plain.id, state_dir: sessions_dir) }.to raise_error(described_class::Unreadable, words)
+        expect { described_class.chain_hold(plain.id, state_dir: sessions_dir) }
+          .to raise_error(described_class::Unreadable, words)
+      end
+
+      it "stops the retention sweep for that round: nothing deleted, retention_failed logged" do
+        expect { Samagotchi::SessionRetention.apply(state_dir: sessions_dir, days: 0, max_count: 0, any_age: true) }
+          .to raise_error(described_class::Unreadable, words)
+
+        expect(Samagotchi::SessionRetention.sweep_if_due(state_dir: sessions_dir)).to be_nil
+        expect(Samagotchi::Log).to have_received(:warn).with(:worker, "retention_failed", hash_including(error: "#{described_class}::Unreadable"))
+        expect([plain, delegate].map { |session| on_disk?(session) }).to eq([true, true])
+      end
+
+      it "refuses a link's, a delegate's and a chain's delete with that one message, and the sheet shows it" do
+        manager = Samagotchi::SessionManager
+        refused = lambda do |error|
+          expect(error).to have_attributes(reason: :protection_unreadable, schedule_id: nil)
+          expect(error.message).to match(words)
+        end
+
+        expect { manager.delete_session(plain.id, state_dir: sessions_dir, stop: true, revive_previous: true) }
+          .to raise_error(manager::DeleteRefused, &refused)
+        expect { manager.delete_session(delegate.id, state_dir: sessions_dir) }.to raise_error(manager::DeleteRefused, &refused)
+        expect { manager.delete_chain(plain.id, state_dir: sessions_dir, stop: true) }.to raise_error(manager::DeleteRefused, &refused)
+        # The delegate that would go with its parent is refused in the same words.
+        expect { Samagotchi::SessionChain::Delete.precheck!([delegate.id], sessions_dir) }
+          .to raise_error(manager::DeleteRefused, &refused)
+        # The delete sheet (a session in no chain: its link choice).
+        shown = Samagotchi::SessionChain::Delete::Preview.call(plain.id, state_dir: sessions_dir)
+        expect(shown.dig(:link, :refusal)).to include(reason: "protection_unreadable", message: match(words))
+        expect([plain, delegate].map { |session| on_disk?(session) }).to eq([true, true])
+      end
+    end
+
+    context "when it is not JSON" do
+      before { File.write(schedules.path, "{not json") }
+
+      it_behaves_like "fails closed"
+
+      it "leaves the tick refusing as it does today" do
+        expect { schedules.tick }.to raise_error(Samagotchi::Schedules::Corrupt, /not readable JSON/)
+      end
+    end
+
+    context "when it is not a schedules document" do
+      before { File.write(schedules.path, JSON.generate({ "version" => 1, "schedules" => "nope" })) }
+
+      it_behaves_like "fails closed"
+    end
+
+    context "when one entry can't be read" do
+      before do
+        schedules.add(target: plain.id, prompt: "Audit", recurrence: every_hour)
+        edit_file { |list| list.first.delete("anchor") }
+      end
+
+      it_behaves_like "fails closed"
+
+      it "leaves the tick reading the rest as it does today" do
+        expect(schedules.tick.outcomes).to be_empty
+      end
+    end
+
+    it "is no schedules when the file is missing" do
+      expect(File.exist?(schedules.path)).to be(false)
+      expect(described_class.protected_ids(state_dir: sessions_dir)).to be_empty
+      expect(described_class.hold(plain.id, state_dir: sessions_dir)).to be_nil
+      expect(Samagotchi::SessionManager.delete_session(delegate.id, state_dir: sessions_dir)[:id]).to eq(delegate.id)
     end
   end
 end

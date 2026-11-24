@@ -15,7 +15,9 @@ module Samagotchi
     # the previous one a delete would bring back), :delegate_unmovable (a
     # delegate the deleted link's continue moved can't go back: +ids+,
     # +detail+ says why), :chain_scheduled (a schedule is on the chain a
-    # chain delete would take: +schedule_id+), :plan_changed (the plan no
+    # chain delete would take: +schedule_id+), :protection_unreadable (a
+    # SessionProtection protector's store doesn't read: its own words),
+    # :plan_changed (the plan no
     # longer matches the digest the caller confirmed), :tasks_running
     # (background tasks it or a session the delete takes started still run:
     # +tasks+, a RunningTasks::Listing; +worker_stopped+ when a worker was
@@ -395,10 +397,14 @@ module Samagotchi
       # DeleteRefused with the reason a SessionProtection protector holds +id+
       # for (:scheduled: an enabled schedule's target, anchor or head;
       # deleting a head would make the schedule fall back to an archived link
-      # and lose the links after it). A protector that raises raises here.
-      def refuse_protected!(id, state_dir)
-        hold = SessionProtection.hold(id, state_dir: state_dir)
+      # and lose the links after it), or with +chain+ the chain +id+ is in
+      # (:chain_scheduled). A protector's store that doesn't read refuses it
+      # too (:protection_unreadable, its words); any other raise raises here.
+      def refuse_protected!(id, state_dir, chain: false)
+        hold = chain ? SessionProtection.chain_hold(id, state_dir: state_dir) : SessionProtection.hold(id, state_dir: state_dir)
         raise DeleteRefused.new(id, hold.reason, schedule_id: hold.ref) if hold
+      rescue SessionProtection::Unreadable => e
+        raise DeleteRefused.new(id, :protection_unreadable, message: e.message)
       end
 
       # Remove every store with state scoped to +id+. The file and sidecar

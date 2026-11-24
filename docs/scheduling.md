@@ -294,7 +294,10 @@ the coordinator remember, and `last:<anchor>` must keep resolving.
 
 What a schedule protects (its anchor, its head and its resolved target, while it is
 enabled) the retention sweep keeps and a delete refuses: schedules are
-`SessionProtection`'s one protector (`Schedules::ProtectionPart`, [sessions.md](sessions.md)).
+`SessionProtection`'s one protector (`Schedules::ProtectionPart`, [sessions.md](sessions.md)). It reads
+`schedules.json` strictly: a file that is there but doesn't read (or holds a schedule that doesn't) makes the sweep
+skip and every delete refused, "schedules.json is unreadable (…): fix or remove it before deleting sessions"; the
+tick keeps its own rule (it refuses a file that isn't JSON and skips a schedule that doesn't read).
 
 Schedule prune leaves the deleted links' background tasks running: a later link
 may still use a server started by an earlier link in the same project. Continue

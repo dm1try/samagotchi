@@ -18,12 +18,26 @@ module Samagotchi
   #
   # Fail-closed: a protector that raises is logged and the error re-raised,
   # never read as "unprotected". The sweep (SessionRetention.sweep_if_due)
-  # logs retention_failed and deletes nothing; a delete raises to its caller.
+  # logs retention_failed and deletes nothing; a delete raises to its
+  # caller, and a store that is there but doesn't read (Unreadable) is its
+  # refusal (DeleteRefused :protection_unreadable,
+  # SessionManager.refuse_protected!). A missing store protects nothing.
   module SessionProtection
     # +session_id+ the session held, +reason+ the DeleteRefused reason the
     # holder asks for (:scheduled for a link, :chain_scheduled for a chain),
     # +ref+ the holder's id for the words (the schedule id).
     Hold = Data.define(:session_id, :reason, :ref)
+
+    # A protector's store is there but doesn't read (schedules.json not
+    # JSON, not a schedules document, an entry that doesn't read): who it
+    # protects is unknown, so no session is deleted until it is fixed.
+    class Unreadable < StandardError
+      # @param file [String] the store's name, for the words
+      # @param error [String] why it doesn't read
+      def initialize(file, error)
+        super("#{file} is unreadable (#{error}): fix or remove it before deleting sessions")
+      end
+    end
 
     module_function
 
