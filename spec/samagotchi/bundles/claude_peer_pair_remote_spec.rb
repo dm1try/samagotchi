@@ -6,7 +6,7 @@ require "open3"
 require "socket"
 require "securerandom"
 require_relative "../../support/fake_executables"
-require_relative "../../support/fake_chi_context"
+require_relative "../../support/fake_chi_peer"
 
 # The claude-peer bundle's scripts/pair-remote: the id through the remote,
 # the ssh -R forward in the background with a control socket, then
@@ -24,10 +24,10 @@ RSpec.describe "The claude-peer pair-remote script" do
   let(:remote_sock) { "/tmp/claude-peer-#{id8}.sock" }
   let(:private_dir) { File.join(tmpdir, "claude-peer-#{Process.uid}") }
   let(:control) { File.join(private_dir, "#{id8}.ctl") }
-  let(:context) { FakeChiContext.new(bin) }
+  let(:context) { FakeChiPeer.new(bin) }
   let(:ssh_log) { File.join(tmpdir, "ssh.log") }
   # `chi sessions list --format tsv --archived` answers the listed ids;
-  # every other call goes to the context fake.
+  # every other call goes to the chi peer fake.
   let(:chi) do
     FakeExecutables.fake_executable(bin, "chi", <<~SH)
       if [ "$1" = sessions ]; then
@@ -73,8 +73,7 @@ RSpec.describe "The claude-peer pair-remote script" do
     ])
     expect(File.stat(private_dir).mode & 0o777).to eq(0o700)
     expect(context.calls.map(&:first).uniq).to eq(["pod"])
-    expect(context.source("claude-inbox")).to include(hint: remote_sock)
-    expect(context.calls.last.last.last).to eq(id)
+    expect(context.pairing("claude")).to include(id: id, address: remote_sock)
     expect(out).to include("paired with chi #{id} (socket #{remote_sock} on chi's machine",
                            "end it with: ssh -S \"#{control}\" -O exit pod")
   end
@@ -83,7 +82,7 @@ RSpec.describe "The claude-peer pair-remote script" do
     _, err, status = run("pod", "pod", "http://127.0.0.1:4567/#/s/#{id}")
 
     expect([status.exitstatus, err]).to eq([0, ""])
-    expect(context.source("claude-inbox")).to include(hint: remote_sock)
+    expect(context.pairing("claude")).to include(address: remote_sock)
   end
 
   it "ends the forward an earlier run left (its control socket) before it removes the remote socket" do
