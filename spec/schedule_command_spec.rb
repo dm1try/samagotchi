@@ -279,6 +279,42 @@ RSpec.describe Samagotchi::ScheduleCommand do
     end
   end
 
+  # The net under ScheduleDisplay: one store (spec/fixtures/schedules/listing_store.json) with a
+  # schedule in each state a listing tells apart, `list --all` and `list --all --format json`
+  # over it byte for byte, at a fixed clock in UTC. UPDATE_GOLDENS=1 rewrites them after an
+  # intended change; read the diff.
+  describe "list --all over the fixture store (goldens)" do
+    fixtures = File.expand_path("fixtures/schedules", __dir__)
+
+    around do |example|
+      with_env("TZ" => "UTC") { example.run }
+    end
+
+    let(:store) do
+      FileUtils.cp(File.join(fixtures, "listing_store.json"), File.join(File.dirname(@dir), "schedules.json"))
+      Samagotchi::Schedules.new(state_dir: @dir, clock: -> { Time.utc(2026, 11, 25, 12, 0, 0) })
+    end
+
+    def golden(name, actual)
+      path = File.join(File.expand_path("fixtures/schedules", __dir__), name)
+      File.write(path, actual) if ENV["UPDATE_GOLDENS"]
+      expect(actual).to eq(File.read(path)), "#{name} changed: UPDATE_GOLDENS=1 rewrites it after an intended change"
+    end
+
+    it "prints the text listing as before" do
+      status, printed, error = run("list", "--all", store: store)
+      expect([status, error]).to eq([0, ""])
+      golden("list_all.txt", printed)
+    end
+
+    it "prints the JSON listing as before, the tick warning on stderr" do
+      status, printed, error = run("list", "--all", "--format", "json", store: store)
+      expect(status).to eq(0)
+      expect(error).to eq("#{tick_warning}\n")
+      golden("list_all.json", printed)
+    end
+  end
+
   it "refuses a --format other than text or json for list and tick, exit 2 and nothing ticked" do
     expect(schedules).not_to receive(:tick)
     %w[list tick].each do |sub|
