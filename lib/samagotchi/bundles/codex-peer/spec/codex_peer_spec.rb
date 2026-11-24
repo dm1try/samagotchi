@@ -355,7 +355,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
     describe "install-skill" do
       let(:codex_dir) { File.join(tmpdir, "codex-home") }
       let(:target) { File.join(codex_dir, "skills", "chi-peer", "SKILL.md") }
-      let(:roots) { "writable_roots = [\"#{File.join(state_home, "samagotchi", "context")}\"]" }
+      let(:roots) { "writable_roots = [\"#{File.join(state_home, "samagotchi", "mailbox")}\"]" }
 
       before { ENV["CODEX_HOME"] = codex_dir }
 
@@ -371,8 +371,10 @@ RSpec.describe "The codex-peer plugin", :bundle do
         expect(File.exist?(target)).to be(false)
       end
 
-      it "--yes installs it with this bundle's pair script, payload folder and writable root written in" do
+      it "--yes installs it with this bundle's pair script, payload folder and writable root written in, and makes the root" do
+        expect(Dir.exist?(File.join(state_home, "samagotchi", "mailbox"))).to be(false)
         expect(run("install-skill --yes")).to be_nil
+        expect(Dir.exist?(File.join(state_home, "samagotchi", "mailbox"))).to be(true)
 
         text = File.read(target)
         expect(text).to start_with("---\nname: chi-peer\n")
@@ -430,6 +432,44 @@ RSpec.describe "The codex-peer plugin", :bundle do
 
         expect(cards.last[:body]).to include("target: `#{File.join(home, ".codex", "skills", "chi-peer", "SKILL.md")}`")
       end
+    end
+  end
+
+  # scripts/pair, run as Codex runs it, with a fake chi that records its
+  # arguments: one `chi peer pair` call replaces the context sources.
+  describe "scripts/pair" do
+    let(:bin) { File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) } }
+    let(:args_file) { File.join(tmpdir, "chi-args") }
+    let(:fake_chi) { Samagotchi::Testing::FakeExecutable.write(bin, "chi", "printf '%s\\0' \"$@\" >> '#{args_file}'\n") }
+
+    def pair_script(*args, env: {})
+      require "open3"
+      out, err, status = Open3.capture3({ "CHI" => fake_chi, "CODEX_THREAD_ID" => thread_id, "CHI_REMOTE" => nil,
+                                          "XDG_STATE_HOME" => File.join(tmpdir, "state") }.merge(env),
+                                        "sh", File.join(shipped, "scripts", "pair"), *args, chdir: tmpdir)
+      [out, err, status, File.exist?(args_file) ? File.read(args_file).split("\0") : []]
+    end
+
+    it "pairs with the thread id as the address, in one chi peer pair" do
+      out, _, status, args = pair_script(short)
+      expect(status).to be_success
+      expect(args).to eq(["peer", "pair", "codex", short, "--address", thread_id, "--from", "Codex in #{tmpdir}"])
+      expect(out).to eq("paired with chi #{short} (thread #{thread_id})\n")
+    end
+
+    it "pairs for answers only through a remote" do
+      out, _, status, args = pair_script(short, env: { "CHI_REMOTE" => "studio" })
+      expect(status).to be_success
+      expect(args).to eq(["peer", "pair", "codex", short, "--from", "Codex in #{tmpdir} (on another machine)"])
+      expect(out).to include("for answers only", "peer say codex #{short}")
+    end
+
+    it "names the mailbox's writable_roots line when the sandbox refuses the write" do
+      fake_chi
+      Samagotchi::Testing::FakeExecutable.write(bin, "chi", "echo 'chi peer pair: Operation not permitted' >&2\nexit 1\n")
+      _, err, status, = pair_script(short)
+      expect(status).not_to be_success
+      expect(err).to include("writable_roots = [\"#{File.join(tmpdir, "state")}/samagotchi/mailbox\"]")
     end
   end
 end

@@ -3,8 +3,6 @@
 require "tmpdir"
 require "json"
 require "socket"
-require "open3"
-require "rbconfig"
 require "samagotchi/testing/rspec"
 
 # Byte-for-byte goldens of every text the claude-peer and codex-peer plugins
@@ -204,24 +202,13 @@ RSpec.describe "Peer bundle goldens", :bundle do
 
   def expect_skill_rules
     skill = File.read(File.join(shipped, "scripts", "chi-peer-SKILL.md"))
-    expect(skill).to include("**A `moved` message**", "**A push refused** with `<old> was continued as <new id>`",
-                             "The second line, `ref: <id>`, names this send", "re: ARGV[2]")
-    expect_reply_template(skill)
-  end
-
-  # The skill's reply line, run as the peer runs it: the ref given back as
-  # re, and none (re: null, which chi ignores) when the message had no ref
-  # line. The JSON as chi's push reads it (docs/context.md, the contract).
-  def expect_reply_template(skill)
-    script = skill[/^ruby -rjson -e '([^']+)'/, 1]
-    reply = lambda do |*args|
-      out, status = Open3.capture2(RbConfig.ruby, "-rjson", "-e", script, *args, stdin_data: "the answer")
-      expect(status).to be_success
-      JSON.parse(out)
-    end
-    expect(reply.call("validate t: VERDICT OK", "wake", "s-ab12cd"))
-      .to eq("text" => "the answer", "summary" => "validate t: VERDICT OK", "wake" => true, "re" => "s-ab12cd")
-    expect(reply.call("context t", "nowake")).to eq("text" => "the answer", "summary" => "context t", "wake" => false, "re" => nil)
+    expect(skill).to include("**A `moved` message**", "**A say refused** with `this session was continued as <new id>`",
+                             "The second line, `ref: <id>`, names this send",
+                             "chi peer say #{peer} <id> --wake --re s-ab12cd --summary", "--wait 8",
+                             "**It prints one line: quote it to your user.**",
+                             "If it says **held**, don't send again, and don't\n  use `chi send` to get past it",
+                             "`peer.turns`", "chi peer unpair #{peer} <id>")
+    expect(skill).not_to include("chi context push", "-outbox", "-inbox")
   end
 
   def skill_cards

@@ -417,4 +417,48 @@ RSpec.describe "The claude-peer plugin", :bundle do
       end
     end
   end
+
+  # scripts/pair, run as Claude runs it, with a fake chi that records its
+  # arguments: one `chi peer pair` call replaces the context sources.
+  describe "scripts/pair" do
+    let(:bin) { File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) } }
+    let(:args_file) { File.join(tmpdir, "chi-args") }
+    let(:fake_chi) { Samagotchi::Testing::FakeExecutable.write(bin, "chi", "printf '%s\\0' \"$@\" >> '#{args_file}'\n") }
+
+    def pair_script(*args, env: {})
+      require "open3"
+      out, err, status = Open3.capture3({ "CHI" => fake_chi, "CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-x.sock",
+                                          "CHI_REMOTE" => nil }.merge(env),
+                                        "sh", File.join(shipped, "scripts", "pair"), *args, chdir: tmpdir)
+      [out, err, status, File.exist?(args_file) ? File.read(args_file).split("\0") : []]
+    end
+
+    it "pairs with the socket as the address, in one chi peer pair" do
+      out, _, status, args = pair_script("http://127.0.0.1:4567/#/s/#{session_id}")
+      expect(status).to be_success
+      expect(args).to eq(["peer", "pair", "claude", session_id, "--address", "/tmp/claude-x.sock", "--from",
+                          "Claude Code in #{File.realpath(tmpdir)}"])
+      expect(out).to eq("paired with chi #{session_id} (socket /tmp/claude-x.sock)\n")
+    end
+
+    it "pairs for answers only through a remote, and with the forwarded socket given --inbox-socket" do
+      out, _, status, args = pair_script(short, env: { "CHI_REMOTE" => "studio" })
+      expect(status).to be_success
+      expect(args).to eq(["peer", "pair", "claude", short, "--from", "Claude Code in #{File.realpath(tmpdir)} (on another machine)"])
+      expect(out).to include("paired with chi #{short} for answers only", "CHI_REMOTE=studio #{fake_chi} peer say claude #{short}")
+
+      FileUtils.rm_f(args_file)
+      _, _, status, args = pair_script("--inbox-socket", "/tmp/claude-peer-x.sock", short, env: { "CHI_REMOTE" => "studio" })
+      expect(status).to be_success
+      expect(args.first(6)).to eq(["peer", "pair", "claude", short, "--address", "/tmp/claude-peer-x.sock"])
+    end
+
+    it "fails with chi's own words when the pair is refused" do
+      fake_chi
+      Samagotchi::Testing::FakeExecutable.write(bin, "chi", "echo 'chi peer pair: not paired: restart the session' >&2\nexit 1\n")
+      _, err, status, = pair_script(short)
+      expect(status).not_to be_success
+      expect(err).to include("restart the session")
+    end
+  end
 end

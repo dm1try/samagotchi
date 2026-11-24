@@ -2,18 +2,18 @@
 name: codex-peer
 version: 0.5.1
 scope: system
-description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as a note with its text (codex-outbox); /codex install-skill installs Codex's chi-peer skill, which pairs"
+description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as a message with its text (chi peer say); /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
 files:
   skill_codex_peer.md:
-    sha256: sha256:ea13e199ea9a2173cde395ed2bc0c3d5ba6171ff2b5aec05ff2772df043aedc4
-    description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as a note with its text (codex-outbox)"
+    sha256: sha256:d619a225a5567f07a1e8f9f6e947f542fe37360fb27828f049d00ff83969564b
+    description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as a message with its text"
 plugin:
   file: plugin.rb
-  sha256: sha256:27df5ce7af9537fdd8623552aa50e3bf40ccf4437a983a202f3830af8c5f99af
+  sha256: sha256:2a1998dac902d5eb5987ef0d90121688a08acc74d640292fe0893ac95e69ca37
 scripts:
-  pair: sha256:c0d11e89227fa0c60dd73acadd9e7010f634c057a107b0670f38c8e7064c34a7
-  chi-peer-SKILL.md: sha256:aa4df1a4d660c4488a738b539a490e262954b929008898430c05e6405f91b663
+  pair: sha256:ce80efa7ce0b8c1cd2ae430ea9a9a7a44119905f598e985dcefb325df4f2ed84
+  chi-peer-SKILL.md: sha256:0f3d0591584edd7a4ce1b294c49ad115dad6021b87ef60487364be08a2739339
 # The plugin needs Samagotchi::Plugin::Peer on the mailbox: chi.peer and
 # ctx.peers, and the skill's chi peer pair|say, are the next chi's (an older
 # chi has no chi.peer: the plugin fails to load there).

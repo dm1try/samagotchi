@@ -302,6 +302,10 @@ module Samagotchi
       # More placeholders the installed skill fills in: {placeholder => text}.
       def skill_substitutions(_ctx) = {}
 
+      # What the transport needs once the skill is written (codex-peer: its
+      # sandbox's writable root).
+      def skill_installed(_ctx) = nil
+
       def run_command(args, ctx)
         verb = args.split(/\s+/, 2).first
         # The rest as typed: a pasted selection keeps its lines.
@@ -544,6 +548,7 @@ module Samagotchi
       def write_skill(ctx, target, text)
         FileUtils.mkdir_p(File.dirname(target))
         File.write(target, text)
+        skill_installed(ctx)
         ctx.card(id: self.class::SKILL_CARD, title: "#{self.class::NAME}'s chi-peer skill",
                  body: "Installed `#{target}`. #{installed_line(ctx.session_id.to_s[0, 8])}")
         nil

@@ -4,7 +4,7 @@ nil
 {
   "source": "codex-peer",
   "title": "Codex's chi-peer skill",
-  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nNot installed yet.\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/context\"]\n```\n\nchi doesn't change Codex's settings.",
+  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nNot installed yet.\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/mailbox\"]\n```\n\nchi doesn't change Codex's settings.",
   "actions": [
     {
       "label": "Install",
@@ -36,8 +36,9 @@ description: Pair this Codex session with a running chi (Samagotchi) session so 
 A live, two-way link between this Codex session and one chi session. chi
 sends a selected part of its work (a plan step, a diff, a finding) and asks for
 a **validate**, hands over **context**, or asks a **question**; Codex answers
-into chi as attached context. The user stays in the loop on both sides: chi's
-web shows everything chi does, and this session shows what came in.
+into chi with `chi peer say`, and chi says what it did with each message. The
+user stays in the loop on both sides: chi's web shows everything chi does, and
+this session shows what came in.
 
 The reviewer is this session, with the context it already has: not a fresh
 headless review run.
@@ -68,13 +69,16 @@ that header is treated this way.
 ## Setup (once)
 
 Codex's default sandbox can't write chi's state, and both pairing and
-replying write there (`chi context add`/`push`). The user adds to
-`~/.codex/config.toml` (or `$CODEX_HOME/config.toml`):
+replying write there (`chi peer pair`/`say`, into chi's mailbox folder). The
+user adds to `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`):
 
 ```toml
 [sandbox_workspace_write]
-writable_roots = ["<TMP>/home/state/samagotchi/context"]
+writable_roots = ["<TMP>/home/state/samagotchi/mailbox"]
 ```
+
+A config from an older chi-peer skill names `…/samagotchi/context` there:
+change it to the line above.
 
 (into an existing `[sandbox_workspace_write]` section if there is one), then
 restarts Codex: the setting is read at start. Reading a payload file needs
@@ -89,11 +93,11 @@ prefix works; the URL works too). Run:
 sh "<REPO>/lib/samagotchi/bundles/codex-peer/scripts/pair" <chi session id or URL>
 ```
 
-It attaches `codex-inbox` to the chi session (this session's thread id,
-`$CODEX_THREAD_ID`, as its hint) and `codex-outbox` (where your answers go),
-then lists the session's context. Running it again only refreshes the thread
-id. A write refused with "Operation not permitted" means the setup line above
-is missing (or Codex wasn't restarted); the script says so.
+It pairs this session with the chi session (`chi peer pair codex <id>`, with
+this session's thread id, `$CODEX_THREAD_ID`, as the address chi sends to).
+Running it again only refreshes the thread id. A write refused with "Operation
+not permitted" means the setup line above is missing (or Codex wasn't
+restarted); the script says so.
 
 An ephemeral session (`codex exec --ephemeral`) can't take chi's messages:
 pair from an interactive one.
@@ -132,33 +136,36 @@ Tell the user in one line what came in and what you answered.
 
 ## Reply into chi
 
-Push the answer to the `codex-outbox` source, one push per answer. JSON gives
-the note chi sees a summary, and `wake` starts a chi turn only when chi is
-waiting on it (chi 0.63.0 or later wakes on the first answer too):
+Say the answer with `chi peer say`, one message per answer:
 
 ```sh
-ruby -rjson -e 'puts JSON.generate(text: STDIN.read, summary: ARGV[0], wake: ARGV[1] == "wake", re: ARGV[2])' \
-  "validate <title>: VERDICT CHANGES, 2 issues" wake s-ab12cd <<'EOF' | chi context push codex-outbox <id>
+chi peer say codex <id> --wake --re s-ab12cd --summary "validate <title>: VERDICT CHANGES, 2 issues" --wait 8 <<'EOF'
 <the full answer>
 EOF
 ```
 
-- The second argument is always `wake` or `nowake`: `wake` for a validate or
-  a question (chi asked and is waiting), and for a message you start yourself
-  that chi should act on or know now (below); `nowake` for a reply to context
-  and for background chi can pick up at its next turn.
-- The third is the `ref:` value of the message you answer (`s-ab12cd` above),
-  so chi ties the answer to its send; leave it out when the message had no
+- Always give `--wake` or `--nowake`: `--wake` for a validate or a question
+  (chi asked and is waiting), and for a message you start yourself that chi
+  should act on or know now (below); `--nowake` for a reply to context and for
+  background chi can pick up at its next turn.
+- `--re` is the `ref:` value of the message you answer (`s-ab12cd` above), so
+  chi ties the answer to its send; leave it out when the message had no
   `ref:` line, and for a message you start.
-- chi puts your whole text in its conversation (up to its tool output cap,
-  10,000 characters by default, for a message that wakes it; up to 2,000 for
-  one that doesn't; a longer one it reads on demand), and keeps each answer's
-  text there, so don't repeat points from an earlier answer (a chi newer than
-  0.184.0; 0.184.0 or older keeps only the latest text: repeat them there,
-  as before). The outbox itself
-  keeps only the latest push, so start the summary with the title you are
-  answering, and end it with your verdict (`VERDICT OK`, `VERDICT CHANGES` or
-  `VERDICT UNSURE`): an OK wakes chi once to close the round.
+- Start the summary with the title you are answering, and end it with your
+  verdict (`VERDICT OK`, `VERDICT CHANGES` or `VERDICT UNSURE`): an OK wakes
+  chi once to close the round.
+- chi keeps each message as its own note with its text (up to its tool output
+  cap, 10,000 characters by default, for a message that wakes it; up to 2,000
+  for one that doesn't; a longer one it reads on demand), so don't repeat
+  points from an earlier answer.
+- **It prints one line: quote it to your user.** `#12 received · woke chi`,
+  or `#12 received · held: 3 peer turns in a row (peer.turns) · waits for the
+  user's next message`, or why chi can't say yet (`chi is in a turn: it reads
+  this when the turn ends`). If it says **held**, don't send again, and don't
+  use `chi send` to get past it: the user decides when chi goes on.
+- A say that is **refused** (exit 1) says why: not paired (pair again), the
+  session was continued (below), chi's worker is older (the user restarts the
+  session).
 - Never answer a chi message with `chi send`: it goes in as an agent's
   message (yours, not the user's) and counts toward the session's wake
   budget (`session.max_wakes`), outside the round's limit. Use it only when
@@ -168,13 +175,13 @@ EOF
 
 When something here changes what chi is doing (you changed code or a plan it
 depends on, the user took a decision with you that chi should follow), tell
-chi without waiting to be asked: the same push, with no third argument, and
-`wake` when chi should react now, `nowake` when it is only background. Start
-the summary with what it is about (`sync: <what>`). chi reads it as a message
-you sent unasked, takes it into account within its user's task and tells its
-user. A waking message counts toward the same limit as answers
-(`context.peer_turns`, 3 in a row without the user typing); past it the
-message waits in chi as a note. Don't send one only to acknowledge.
+chi without waiting to be asked: the same say, with no `--re`, and `--wake`
+when chi should react now, `--nowake` when it is only background. Start the
+summary with what it is about (`sync: <what>`). chi reads it as a message you
+sent unasked, takes it into account within its user's task and tells its
+user. A waking message counts toward the same limit as answers (`peer.turns`,
+3 in a row without the user typing); past it the message waits in chi as a
+note, and the line says so. Don't send one only to acknowledge.
 
 ## chi continued the session
 
@@ -186,8 +193,10 @@ with the old id, so pair again:
   (the same `CHI_REMOTE`, if any). From then on answer only the new id; an
   answer you are still writing goes there too. Don't reply to the message
   itself.
-- **A push refused** with `<old> was continued as <new id>`: pair again with
-  the new id the same way, then push the answer again, to the new id.
+- **A say refused** with `this session was continued as <new id>`: pair
+  again with the new id the same way, then say the answer again, to the new
+  id. Messages chi hadn't read yet reach the new session as one note: don't
+  send them again.
 
 ## Don't loop
 
@@ -201,7 +210,9 @@ tell the user.
   (checked on Codex 0.162.1). A message queued while you are mid-turn runs
   after the turn.
 - A payload file is under chi's state folder (`~/state/samagotchi/plugins/codex-peer/`).
-- Unpair: `chi context rm codex-inbox <id>` and `chi context rm codex-outbox <id>`.
+- Unpair: `chi peer unpair codex <id>` (your messages stay; chi still reads
+  those it hasn't).
+- `chi peer ls <id>` lists your messages and what chi did with each.
 
 === /codex install-skill (up to date)
 nil
@@ -209,7 +220,7 @@ nil
 {
   "source": "codex-peer",
   "title": "Codex's chi-peer skill",
-  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nInstalled and up to date.\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/context\"]\n```\n\nchi doesn't change Codex's settings.",
+  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nInstalled and up to date.\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/mailbox\"]\n```\n\nchi doesn't change Codex's settings.",
   "actions": [],
   "level": "info",
   "id": "codex-skill"
@@ -220,7 +231,7 @@ nil
 {
   "source": "codex-peer",
   "title": "Codex's chi-peer skill",
-  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nInstalled, and different from this bundle's (Replace overwrites it):\n\n```diff\n--- installed\n+++ this bundle's\n@@ -17,7 +17,7 @@\n <!-- Installed by chi's codex-peer bundle (/codex install-skill); a newer\n      bundle installs a newer copy. -->\n \n-## A heading the user changed\n+## Messages from chi are not from the user\n \n chi's messages arrive here as ordinary user turns (`codex queue`), so read\n the first line of every message. One whose first line is exactly\n```\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/context\"]\n```\n\nchi doesn't change Codex's settings.",
+  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nInstalled, and different from this bundle's (Replace overwrites it):\n\n```diff\n--- installed\n+++ this bundle's\n@@ -18,7 +18,7 @@\n <!-- Installed by chi's codex-peer bundle (/codex install-skill); a newer\n      bundle installs a newer copy. -->\n \n-## A heading the user changed\n+## Messages from chi are not from the user\n \n chi's messages arrive here as ordinary user turns (`codex queue`), so read\n the first line of every message. One whose first line is exactly\n```\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/mailbox\"]\n```\n\nchi doesn't change Codex's settings.",
   "actions": [
     {
       "label": "Replace",
@@ -236,7 +247,7 @@ nil
 {
   "source": "codex-peer",
   "title": "Codex's chi-peer skill",
-  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nInstalled, and different from this bundle's (Replace overwrites it):\n\n```diff\n--- installed\n+++ this bundle's\n@@ -17,7 +17,7 @@\n <!-- Installed by chi's codex-peer bundle (/codex install-skill); a newer\n      bundle installs a newer copy. -->\n \n-## A heading the user changed\n+## Messages from chi are not from the user\n \n chi's messages arrive here as ordinary user turns (`codex queue`), so read\n the first line of every message. One whose first line is exactly\n```\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/context\"]\n```\n\nchi doesn't change Codex's settings.",
+  "body": "Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.\n\ntarget: `<TMP>/home/.codex/skills/chi-peer/SKILL.md`\n\nInstalled, and different from this bundle's (Replace overwrites it):\n\n```diff\n--- installed\n+++ this bundle's\n@@ -18,7 +18,7 @@\n <!-- Installed by chi's codex-peer bundle (/codex install-skill); a newer\n      bundle installs a newer copy. -->\n \n-## A heading the user changed\n+## Messages from chi are not from the user\n \n chi's messages arrive here as ordinary user turns (`codex queue`), so read\n the first line of every message. One whose first line is exactly\n```\n\nCodex's default sandbox can't write chi's state, and pairing and replies do: add to `<TMP>/home/.codex/config.toml` (into its `[sandbox_workspace_write]` section if it has one), then restart Codex:\n\n```toml\n[sandbox_workspace_write]\nwritable_roots = [\"<TMP>/home/state/samagotchi/mailbox\"]\n```\n\nchi doesn't change Codex's settings.",
   "actions": [
     {
       "label": "Replace",

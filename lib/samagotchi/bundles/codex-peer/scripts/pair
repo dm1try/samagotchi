@@ -4,18 +4,18 @@
 #
 #   sh <bundle dir>/scripts/pair <chi session id, prefix or chi web URL>
 #
-# It attaches two pushed sources to the chi session: codex-inbox, whose hint
-# is this session's thread id (chi's codex_send tool runs
-# `codex queue --thread <id>` with it), and codex-outbox, where Codex's
-# answers go. Again later, it only refreshes the thread id: the push carries
-# the new hint. CHI names the chi command (default: chi on the PATH).
-# Through a remote (CHI_REMOTE, or --remote NAME in CHI) chi there can't
-# queue to this machine's Codex: it attaches codex-outbox only, and says so.
+# It pairs (`chi peer pair codex <id> --address <thread>`): the address is
+# this session's thread id (chi's codex_send tool runs
+# `codex queue --thread <id>` with it); Codex's answers go to the session's
+# mailbox (`chi peer say codex <id>`). Again later, it only refreshes the
+# thread id. CHI names the chi command (default: chi on the PATH). Through a
+# remote (CHI_REMOTE, or --remote NAME in CHI) chi there can't queue to this
+# machine's Codex: it pairs for answers only (no address), and says so.
 #
-# chi writes the session's context under its state folder, which Codex's
-# default sandbox doesn't let it write: ~/.codex/config.toml needs
+# chi peer writes the session's mailbox under chi's state folder, which
+# Codex's default sandbox doesn't let it write: ~/.codex/config.toml needs
 #   [sandbox_workspace_write]
-#   writable_roots = ["<state>/samagotchi/context"]
+#   writable_roots = ["<state>/samagotchi/mailbox"]
 # and a write refused says so. Through a remote chi talks HTTP instead,
 # which the sandbox may refuse (no network): a connection that fails says so.
 set -eu
@@ -85,7 +85,7 @@ MSG
       cat >&2 <<MSG
 pair: Codex's sandbox can't write chi's state: add to $config
   [sandbox_workspace_write]
-  writable_roots = ["$state/samagotchi/context"]
+  writable_roots = ["$state/samagotchi/mailbox"]
 then restart Codex and pair again.
 MSG
       ;;
@@ -93,56 +93,20 @@ MSG
   exit 1
 }
 
-# A JSON string: backslashes and quotes escaped, newlines, tabs and
-# carriage returns as \n, \t, \r, any other control character as \u00XX.
-json() {
-  printf '%s' "$1" | awk '
-    BEGIN {
-      ORS = ""; printf "\""
-      for (i = 1; i < 32; i++) esc[sprintf("%c", i)] = sprintf("\\u%04x", i)
-      esc["\t"] = "\\t"; esc["\r"] = "\\r"; esc["\\"] = "\\\\"; esc["\""] = "\\\""
-    }
-    NR > 1 { print "\\n" }
-    {
-      n = length($0)
-      for (i = 1; i <= n; i++) { c = substr($0, i, 1); print ((c in esc) ? esc[c] : c) }
-    }
-    END { printf "\"" }'
-}
-
-# Attaches a pushed source, unless the session has one of that name already.
-attach() {
-  name=$1
-  shift
-  if ! out=$($chi context add "$name" --push "$@" "$id" 2>&1); then
-    if ! $chi context show "$name" --json "$id" >/dev/null 2>&1; then
-      fail "$out"
-    fi
+# Pairs, saying what chi said when it failed.
+pair() {
+  if ! out=$($chi peer pair codex "$id" "$@" 2>&1); then
+    fail "$out"
   fi
 }
 
 if [ -n "$via" ]; then
-  attach codex-outbox --why "Codex's answers to what you sent it (codex-peer); Codex runs on another machine: codex_send can't reach it" \
-    --hint "latest Codex reply"
+  pair --from "Codex in $PWD (on another machine)"
   ask=$chi
   [ "$via" = chi ] || ask="CHI_REMOTE=$remote $chi"
-  printf '%s\n' "pair: chi is on $remote, so chi can't send to this Codex session (codex_send runs codex queue on chi's machine): paired with chi $id, codex-outbox only. Answer chi with $ask context push codex-outbox $id; chi's replies reach you only when the user relays them (or asks you to run $ask send --wait $id)"
-  $chi context ls "$id"
+  printf '%s\n' "pair: chi is on $remote, so chi can't send to this Codex session (codex_send runs codex queue on chi's machine): paired with chi $id for answers only. Answer chi with $ask peer say codex $id; chi's replies reach you only when the user relays them (or asks you to run $ask send --wait $id)"
   exit 0
 fi
 
-attach codex-inbox --why "the Codex session paired with you: send it parts with codex_send" --hint "$thread"
-text="Codex peer inbox
-thread: $thread
-codex cwd: $PWD
-paired: $(date '+%Y-%m-%d %H:%M')
-Send to it with the codex_send tool (your skill_codex_peer memory); its answers come as codex-outbox notes holding their text."
-if ! out=$(printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$thread")" \
-  "$(json "Codex paired from $PWD")" | $chi context push codex-inbox "$id" 2>&1 >/dev/null); then
-  fail "$out"
-fi
-
-attach codex-outbox --why "Codex's answers to what you sent it (codex-peer)" --hint "latest Codex reply"
-
+pair --address "$thread" --from "Codex in $PWD"
 echo "paired with chi $id (thread $thread)"
-$chi context ls "$id"

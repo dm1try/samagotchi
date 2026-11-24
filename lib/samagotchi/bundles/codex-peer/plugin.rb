@@ -39,10 +39,11 @@ require "samagotchi/plugin/peer"
 # action (`--yes`), the card being the user's consent: the copy happens
 # in-process, where no guardrail sees it. The skill is
 # scripts/chi-peer-SKILL.md beside this file, with the installed
-# scripts/pair path, the payload folder and chi's context folder written
+# scripts/pair path, the payload folder and chi's mailbox folder written
 # in. The card shows the writable_roots line Codex's config.toml needs for
 # pairing and replies (its default sandbox can't write chi's state); chi
-# never edits Codex's config.
+# never edits Codex's config. Installing makes the mailbox folder, so the
+# root exists when Codex next starts.
 #
 # In the web, selecting text offers "Confirm with Codex" (chi.annotation):
 # it fills the composer with
@@ -80,7 +81,7 @@ class Plugin < Samagotchi::Plugin::Peer
   # The shipped bundle keeps scripts/ beside plugin.rb; an installed one
   # has plugin/plugin.rb and scripts/ beside plugin/.
   SCRIPTS_DIRS = [File.join(__dir__, "scripts"), File.expand_path("../scripts", __dir__)].freeze
-  CONTEXT_PLACEHOLDER = "__CHI_PEER_CONTEXT__"
+  MAILBOX_PLACEHOLDER = "__CHI_PEER_MAILBOX__"
 
   TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your " \
                      "last answer) to the Codex CLI session paired with it, for Codex to " \
@@ -126,7 +127,10 @@ class Plugin < Samagotchi::Plugin::Peer
 
   def installed_line(short) = "Restart Codex if it is running, then say \"pair with chi #{short}\"."
 
-  def skill_substitutions(ctx) = { CONTEXT_PLACEHOLDER => context_dir(ctx) }
+  def skill_substitutions(ctx) = { MAILBOX_PLACEHOLDER => mailbox_dir(ctx) }
+
+  # The writable root must exist before Codex starts with it.
+  def skill_installed(ctx) = FileUtils.mkdir_p(mailbox_dir(ctx))
 
   # Codex's config folder: CODEX_HOME, else ~/.codex.
   def peer_dir
@@ -134,12 +138,13 @@ class Plugin < Samagotchi::Plugin::Peer
     dir.empty? ? File.join(Dir.home, ".codex") : File.expand_path(dir)
   end
 
-  # chi's context folder (<state>/samagotchi/context, where a push
-  # writes), beside the bundle's data dir (<state>/samagotchi/plugins/<name>).
-  # Absolute: config.toml doesn't expand ~.
-  def context_dir(ctx) = File.expand_path("../../context", ctx.data_dir)
+  # chi's mailbox folder (<state>/samagotchi/mailbox, where chi peer pair
+  # and say write), beside the bundle's data dir
+  # (<state>/samagotchi/plugins/<name>). Absolute: config.toml doesn't
+  # expand ~.
+  def mailbox_dir(ctx) = File.expand_path("../../mailbox", ctx.data_dir)
 
-  def roots_line(ctx) = "[sandbox_workspace_write]\nwritable_roots = [#{JSON.generate(context_dir(ctx))}]"
+  def roots_line(ctx) = "[sandbox_workspace_write]\nwritable_roots = [#{JSON.generate(mailbox_dir(ctx))}]"
 
   def codex_command
     command = ENV.fetch("CODEX", "").strip
