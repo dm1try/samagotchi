@@ -346,6 +346,60 @@ RSpec.describe Samagotchi::Web::SessionHub do
     end
   end
 
+  describe "the pages folder (the `pages` event)" do
+    let(:pages_dir) { File.join(root, "pages") }
+    let(:hub) { described_class.new(state_dir: state_dir, installed_versions: installed, pages_dir: pages_dir) }
+
+    # A folder's mtime moved past what the last scan saw, whatever the
+    # file system's clock resolution.
+    def bump(dir)
+      File.utime(Time.now + 5, Time.now + 5, dir)
+    end
+
+    it "says nothing on the first look, with or without the folder" do
+      FileUtils.mkdir_p(pages_dir)
+      hub.scan(tick: false)
+      expect(types).to eq([])
+
+      bare = described_class.new(state_dir: state_dir, installed_versions: installed, pages_dir: File.join(root, "none"))
+      seen = []
+      bare.subscribe(->(event) { seen << event.type })
+      bare.scan(tick: false)
+      expect(seen).to eq([])
+    end
+
+    it "emits pages once when the folder appears (the first page), and again when a script is added or removed" do
+      hub.scan(tick: false)
+      FileUtils.mkdir_p(pages_dir)
+      File.write(File.join(pages_dir, "usage.rb"), "x")
+      hub.scan(tick: false)
+      expect(types).to eq(%w[pages])
+      expect(events.last.data).to eq({})
+
+      hub.scan(tick: false)
+      expect(types).to eq(%w[pages]) # nothing changed
+
+      File.write(File.join(pages_dir, "other.rb"), "x")
+      bump(pages_dir)
+      hub.scan(tick: false)
+      expect(types).to eq(%w[pages pages])
+
+      FileUtils.rm_rf(pages_dir)
+      hub.scan(tick: false)
+      expect(types).to eq(%w[pages pages pages])
+    end
+
+    it "watches nothing without a folder to watch (the default)" do
+      plain = described_class.new(state_dir: state_dir, installed_versions: installed)
+      seen = []
+      plain.subscribe(->(event) { seen << event.type })
+      plain.scan(tick: false)
+      FileUtils.mkdir_p(pages_dir)
+      plain.scan(tick: false)
+      expect(seen).to eq([])
+    end
+  end
+
   describe "#touch" do
     it "rescans one session right away and emits its change without a tick" do
       a = save_session(prompt: "before")

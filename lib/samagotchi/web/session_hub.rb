@@ -47,14 +47,17 @@ module Samagotchi
       # opened an old session without saving it has no file signal until its first save).
       FULL_PROBE_INTERVAL = 10.0
       SCHEDULE_TICK_STOP_WAIT = 5.0
+      # The pages folder's stamp before the first look (nil is a folder that isn't there).
+      UNSEEN = Object.new.freeze
       SWEEP_STOP_WAIT = 5.0
 
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal, `chi` with
       #   the #chi_state fields when chi version state changes, `chi_notice`
       #   (#publish_notice) and `schedule_disabled` (#publish_disabled: any
-      #   ticker's budget turn-off) for the Push::Notifier. seq is monotonic per
-      # hub, for the log's sake: there is no replay.
+      #   ticker's budget turn-off) for the Push::Notifier, and `pages` (no data)
+      #   when the pages' scripts folder changed (#check_pages). seq is
+      #   monotonic per hub, for the log's sake: there is no replay.
       Event = Struct.new(:type, :seq, :data, keyword_init: true)
 
       # The projection's entry: the summary the page sees, the parsed
@@ -88,10 +91,16 @@ module Samagotchi
       # @param update_auto [String] update.auto, said in the chi state (the page's wording)
       # @param update_restart [String] update.restart, said beside it (whether
       #   a newer installed chi restarts by itself: no Restart toast)
+      # @param pages_dir [String, nil] the pages' scripts folder
+      #   (Pages.scripts_dir, which Server.start passes), watched for the
+      #   `pages` event; nil watches none
       def initialize(state_dir:, manager: SessionManager, now: nil, scan_interval: SCAN_INTERVAL,
                      full_probe_interval: FULL_PROBE_INTERVAL, installed_versions: InstalledVersions.new,
-                     update_auto: Config.get("update.auto"), update_restart: Config.get("update.restart"))
+                     update_auto: Config.get("update.auto"), update_restart: Config.get("update.restart"),
+                     pages_dir: nil)
         @state_dir = state_dir
+        @pages_dir = pages_dir
+        @pages_stamp = UNSEEN
         @update_auto = update_auto
         @update_restart = update_restart
         @installed_versions = installed_versions
@@ -158,6 +167,7 @@ module Samagotchi
           full = full_probe_due?
           SessionContinue.repair_interrupted(state_dir: @state_dir)
           scan_files
+          check_pages
           @sessions.each_key { |id| refresh(id, probe: full) }
           if full
             check_installed
@@ -463,6 +473,20 @@ module Samagotchi
           entry.summary = summary.merge(worker_compat: compatibility)
           emit("session", session: entry.summary)
         end
+      end
+
+      # The pages' scripts folder: one stat a tick. Creating, renaming in or
+      # removing a script changes its mtime (a run doesn't: its output is
+      # under the state dir), and the page reads GET /api/pages again on the
+      # `pages` event. The first look only stores the stamp; a folder that
+      # appears or goes is a change.
+      def check_pages
+        return unless @pages_dir
+
+        stamp = dir_mtime(@pages_dir)
+        changed = !@pages_stamp.equal?(UNSEEN) && stamp != @pages_stamp
+        @pages_stamp = stamp
+        emit("pages", {}) if changed
       end
 
       # The state dir's files: a new id is parsed and emitted, an id gone
