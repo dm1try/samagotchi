@@ -55,7 +55,9 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
         facts(rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "memories", ".bundles", "x", "r.yml")]),
         facts(tool: "edit", rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "hooks", "h.rb")]),
         facts(tool: "execute", rule: "my-ask", command: "sed -i s/a/b/ #{config_home}/samagotchi/config.yml"),
-        facts(tool: "execute", rule: "my-ask", command: "cat > ~/.config/samagotchi/hooks/x.rb")
+        facts(tool: "execute", rule: "my-ask", command: "cat > ~/.config/samagotchi/hooks/x.rb"),
+        facts(tool: "execute", rule: "my-ask", command: "echo '{}' > ~/.local/state/samagotchi/mailbox/abc/claude/in/9.json"),
+        facts(rule: "write-outside-repo", paths: [File.join(Samagotchi::Paths.state_dir, "mailbox", "abc", "claude", "link.json")])
       ].each do |pending|
         expect(protected?(pending)).to be(true), pending[:approval].inspect
         expect(described_class.protected_facts?(pending[:approval])).to be(true), pending[:approval].inspect
@@ -65,7 +67,8 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     it "lists the config, hooks, approval store, installed bundles and attached context dirs as chi's" do
       expect(described_class.chi_dirs).to include(File.join(config_home, "samagotchi"),
                                                   Samagotchi::MemoryPaths.bundles_dir.chomp("/"),
-                                                  File.join(Samagotchi::Paths.state_dir, "context"))
+                                                  File.join(Samagotchi::Paths.state_dir, "context"),
+                                                  File.join(Samagotchi::Paths.state_dir, "mailbox"))
     end
 
     it "takes a path's `..` after a symlinked dir from its target: mem/../config.yml is chi's" do

@@ -12,7 +12,8 @@ RSpec.describe Samagotchi::Guardrails::ChiDirs do
 
   it "is the set each surface named: ParentApprovals', Targets', SelfProtect's and ReviewPaths'" do
     expect(Samagotchi::Guardrails::ParentApprovals.chi_dirs).to eq(described_class.protected)
-    expect(described_class.protected).to include(config, File.join(state, "guardrails"), File.join(state, "context"))
+    expect(described_class.protected).to include(config, File.join(state, "guardrails"), File.join(state, "context"),
+                                                 File.join(state, "mailbox"))
     expect(Samagotchi::SystemOne::SelfProtect.chi_dirs).to eq(described_class.self_protect)
     expect(described_class.self_protect).to include(Samagotchi::Guardrails::PathResolve.real(state))
     expect(Samagotchi::Guardrails::ReviewPaths.chi_dirs).to eq(described_class.review)
