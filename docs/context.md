@@ -244,7 +244,9 @@ can't send, answers only) and opens the last exchanges, the outbox's text and
 Unpair ([bundles.md](bundles.md#the-claude-peer-bundle), The session bar).
 A peer's answer (a note with `peer`, [Peer sources](#peer-sources-the-peer-loop)) is not drawn as a context note but
 as a bubble from the peer, linked to the send it answers
-([bundles.md](bundles.md#the-claude-peer-bundle), In the web).
+([bundles.md](bundles.md#the-claude-peer-bundle), In the web); it stays a bubble. Any other context note sits in
+chi web's closed notes row ([cli.md](cli.md#web-markdown-rendering)) unless it starts a turn: a wake's note is that turn's
+opening and stays a bubble.
 
 ## Waking
 

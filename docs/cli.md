@@ -1306,6 +1306,17 @@ the keys of sessions gone from the list are dropped when the list loads);
 other viewers (a participant's browser too) are not affected. A jump into a
 folded answer (a claim link, say) unfolds it for that page load.
 
+What nobody says in the conversation folds too: a plugin's or chi's own line
+shown on its own (source-links, skills, cost-cap…), a context note that starts
+nothing, an objectives line and a plugin's nudge fold into one closed row where
+the first of them sits, "▸ 3 notes · claude-inbox, source-links, skills". A tap
+(or a click, Enter, Space) opens it and the items show under it as they are;
+another closes it. A warning among them marks the row with a yellow edge and
+"⚠ 1", and it stays closed. Your prompt, the answer, a peer's answer and a note
+that starts a turn stay as they are, and a time divider or a peer's answer
+between two items gives each side a row of its own. The row isn't remembered:
+a reload or another session shows it closed again.
+
 **Revise** rewrites an answer and stacks the versions. A finished turn's
 final answer has a Revise button on its bottom edge (on hover; always shown
 on a touch screen), unless it's a Verify turn's answer, a canceled or failed
