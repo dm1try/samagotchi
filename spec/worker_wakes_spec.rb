@@ -228,7 +228,7 @@ RSpec.describe Samagotchi::WorkerWakes do
     end
   end
 
-  describe "the peer budget (context.peer_turns)" do
+  describe "the peer budget (peer.turns)" do
     let(:peers) { [2] }
     let!(:wakes) { described_class.new(grace: 0, max: -> { budget[0] }, peer_max: -> { peers[0] }) }
 
@@ -266,10 +266,10 @@ RSpec.describe Samagotchi::WorkerWakes do
       expect(wakes.notice_peer_budget!).to be(true)
     end
 
-    it "reads context.peer_turns: 0 or less is off, a non-integer the default" do
+    it "reads peer.turns: 0 or less is off, a non-integer the default" do
       plain = described_class.new(grace: 0)
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("context.peer_turns").and_return("4", "0", "-2", "lots", nil)
+      allow(Samagotchi::Config).to receive(:get).with("peer.turns").and_return("4", "0", "-2", "lots", nil)
       expect(Array.new(5) { plain.peer_max }).to eq([4, 0, 0, 3, 3])
     end
   end

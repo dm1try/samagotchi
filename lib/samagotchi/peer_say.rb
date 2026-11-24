@@ -128,7 +128,7 @@ module Samagotchi
   PeerSay::WAKES = %w[running starting stopped archived owned start_failed no_turn not_running deleting].freeze
   # The setting a peer_turns hold names (WorkerWakes::PEER_TURNS_KEY: the
   # CLI loads no worker).
-  PeerSay::PEER_TURNS_KEY = "context.peer_turns"
+  PeerSay::PEER_TURNS_KEY = "peer.turns"
   # What the say says at once, without waiting for a receipt.
   PeerSay::AT_ONCE = {
     running: "chi is in a turn: it reads this when the turn ends",

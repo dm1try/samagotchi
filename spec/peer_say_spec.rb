@@ -29,13 +29,13 @@ RSpec.describe Samagotchi::PeerSay do
 
     it "says held with its reason's words and until when it waits" do
       expect(say(receipt: receipt("held", reason: "peer_turns"), turns: 3).line("claude"))
-        .to eq("#12 received · held: 3 peer turns in a row (context.peer_turns) · waits for the user's next message")
+        .to eq("#12 received · held: 3 peer turns in a row (peer.turns) · waits for the user's next message")
       expect(say(receipt: receipt("held", reason: "peer_turns"), turns: 1).line("claude"))
-        .to eq("#12 received · held: 1 peer turn in a row (context.peer_turns) · waits for the user's next message")
+        .to eq("#12 received · held: 1 peer turn in a row (peer.turns) · waits for the user's next message")
       expect(say(receipt: receipt("held", reason: "max_wakes"), turns: 10).line("claude"))
         .to eq("#12 received · held: 10 wake turns in a row (session.max_wakes) · waits for the user's next message")
       expect(say(receipt: receipt("held", reason: "off")).line("claude"))
-        .to eq("#12 received · held: context.peer_turns is 0 · waits for the user's next message")
+        .to eq("#12 received · held: peer.turns is 0 · waits for the user's next message")
       expect(say(receipt: receipt("held", reason: "paused")).line("claude"))
         .to eq("#12 received · held: wakes are paused after a failed wake turn · waits for the user's next message")
       expect(say(receipt: receipt("held", reason: "continue")).line("claude"))

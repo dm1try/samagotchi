@@ -248,14 +248,14 @@ module Samagotchi
       # than 30 counts as 30).
       Entry.new(key: "context.every_seconds",    yaml_path: %w[context every_seconds],    type: :integer, default: 300,             expose: %i[env config], lifecycle: :next_context_poll),
       # Whether a source's update with wake: true may start a turn in a live, idle session (Worker; one per source per
-      # 10 minutes, a peer source per context.peer_turns, within session.max_wakes); false: it waits as a note for the
-      # next turn.
+      # 10 minutes, within session.max_wakes); false: it waits as a note for the next turn. A peer agent's messages
+      # aren't attached context: peer.turns is theirs.
       Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
-      # A peer agent's answers (a source a peer bundle declares, claude-outbox): wake turns in a row they may start
-      # with no input typed in the web or a TUI (within session.max_wakes; an agreeing answer's closing wake isn't
-      # counted here); then they wait as notes. 0: a peer source
-      # wakes like any other (once per 10 minutes, the guard line).
-      Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
+      # A peer agent's messages (its mailbox, chi peer say; a peer a loaded bundle declares): wake turns in a row they
+      # may start with no input typed in the web or a TUI (within session.max_wakes; an agreeing message's closing
+      # wake isn't counted here); then they wait as notes, and the say's line says so. 0: a peer's message never
+      # wakes chi. Not context.wake's: that is attached context's only.
+      Entry.new(key: "peer.turns",               yaml_path: %w[peer turns],               type: :integer, default: 3,               expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       # The candidate judge (ContextJudge): off (no conversation text goes to a System 1 host); audit (asks and logs
       # context_candidates.jsonl, attaches nothing); on (ContextCandidateChoice: p ≥ threshold attaches quietly,
       # offer_threshold ≤ p < threshold shows one card). Its host and model are system_one.host and .model.

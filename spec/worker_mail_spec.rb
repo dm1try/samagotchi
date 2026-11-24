@@ -185,7 +185,7 @@ RSpec.describe "the worker's peer mail" do
       say("two")
       inbound.absorb_mail
       expect(announced.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] })
-        .to eq(["Claude answered again; it waits as a note for your next message (3 wake turns in a row, context.peer_turns)"])
+        .to eq(["Claude answered again; it waits as a note for your next message (3 wake turns in a row, peer.turns)"])
     end
 
     it "takes nothing within the start grace when the gate is otherwise open, and says a wake waits" do
@@ -483,11 +483,11 @@ RSpec.describe "the worker's peer mail" do
     end
 
     describe "the peer budget (peer.turns), through real wake turns" do
-      let(:config) { { "context.peer_turns" => 2 } }
+      let(:config) { { "peer.turns" => 2 } }
 
       before do
         allow(Samagotchi::Config).to receive(:get).and_call_original
-        allow(Samagotchi::Config).to receive(:get).with("context.peer_turns") { config["context.peer_turns"] }
+        allow(Samagotchi::Config).to receive(:get).with("peer.turns") { config["peer.turns"] }
       end
 
       def wake_and_end(serial)
@@ -509,11 +509,11 @@ RSpec.describe "the worker's peer mail" do
         wait_for("#4 held") { states[4] == %w[held peer_turns] }
         expect(turns).to be_empty
         expect(notices).to eq(["Claude answered again; it waits as a note for your next message (2 wake turns in a " \
-                               "row, context.peer_turns)"])
+                               "row, peer.turns)"])
       end
 
       it "takes typed input in the web or a TUI as the reset, not chi send (which a peer can run)" do
-        config["context.peer_turns"] = 1
+        config["peer.turns"] = 1
         start_worker
         say("v1")
         wake_and_end(1)
@@ -530,9 +530,9 @@ RSpec.describe "the worker's peer mail" do
     end
 
     it "marks a held message read when a typed turn starts, ended: completed when it ends" do
-      config = { "context.peer_turns" => 0 }
+      config = { "peer.turns" => 0 }
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("context.peer_turns") { config["context.peer_turns"] }
+      allow(Samagotchi::Config).to receive(:get).with("peer.turns") { config["peer.turns"] }
       start_worker
       say("held")
       wait_for("the held receipt") { states[1] == %w[held off] }

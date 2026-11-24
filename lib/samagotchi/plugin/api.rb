@@ -428,7 +428,7 @@ module Samagotchi
 
       # A peer agent this bundle speaks for (claude, codex): its messages in
       # the session's mailbox (PeerMailbox, chi peer say) become its notes
-      # and may wake chi, on context.peer_turns. Declared here, in-process,
+      # and may wake chi, on peer.turns. Declared here, in-process,
       # never by a file a peer can write; gone with the bundle. +name+: a
       # lowercase letter, then lowercase letters and digits; the peer's
       # label is its name capitalised.

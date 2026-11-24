@@ -123,7 +123,7 @@ module Samagotchi
       end
 
       # Why the batch's newest asking message can't wake chi now: :off
-      # (context.peer_turns is 0), else WorkerWakes#wake_hold's (an agreeing
+      # (peer.turns is 0), else WorkerWakes#wake_hold's (an agreeing
       # message is held by session.max_wakes only); nil: it may.
       def mail_hold(asking)
         return :off if @wakes.peer_max.zero?
