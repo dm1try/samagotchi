@@ -867,6 +867,7 @@ module Samagotchi
         "guardrails.system_one.host" => ["system_one.host", SYSTEM_ONE_MOVED_HINT],
         "guardrails.system_one.model" => ["system_one.model", SYSTEM_ONE_MOVED_HINT],
         "guardrails.system_one.timeout_ms" => ["system_one.timeout_ms", SYSTEM_ONE_MOVED_HINT],
+        "context.peer_turns" => ["peer.turns", "a peer's messages have their own budget (docs/peers.md)"],
         "session.shared" => [nil, "chi always runs attached"]
       }.freeze
 
