@@ -205,6 +205,23 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
     end
   end
 
+  it "names each schedule: its title, or the start of its prompt" do
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session_here(dir).id
+      schedules = Samagotchi::Schedules.new(state_dir: dir)
+      titled = schedules.add(target: anchor, title: "Audit", prompt: "Audit the queue",
+                             recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      cut = schedules.add(target: anchor, prompt: "Check the pod logs, then write a recap",
+                          recurrence: Samagotchi::Schedules.recurrence(every: "2h"))
+
+      answer = described_class.call(nil, peers: peers(dir))
+      lines = answer.split("\n")
+      expect(lines.find { |line| line.include?(titled.id) }).to include("  Audit  ")
+      expect(lines.find { |line| line.include?(cut.id) }).to include("\"Check the pod logs, then write…\"")
+    end
+  end
+
   it "reads include_disabled from a string too" do
     Dir.mktmpdir("schedule-list") do |root|
       dir = File.join(root, "sessions")
