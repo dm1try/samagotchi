@@ -25,7 +25,8 @@ module Samagotchi
     # or offer, not SIGSTOPped, features restart and activity, an idle worker
     # with no streams). For schedules, worker_busy is "its worker is starting
     # or leaving", deleting is DeliverResult::DELETING's detail, and
-    # worker_newer is WorkerLink::Skew#short_message. Resume's live is "a
+    # worker_newer is WorkerLink::Skew#short_message (Schedules::BusyPart's
+    # BUSY_WORDS; Schedules#busy_cell reads these two columns). Resume's live is "a
     # worker holds it"; restart's fallback is its unresponsive-worker path,
     # its stop_marked a stop marked and its deleting a deleter holds the lock
     # (it reads this table: restart_session's precheck); attach's gone_* are

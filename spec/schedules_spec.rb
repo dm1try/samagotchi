@@ -715,6 +715,32 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "has skip words for every busy cell the lifecycle table holds for schedules" do
+    cells = %i[sched_chain sched_same].flat_map { |op| Samagotchi::SessionLifecycle::ALLOWED.fetch(op).values }.uniq
+
+    expect(cells - %i[go worker_newer]).to all(satisfy { |cell| described_class::BUSY_WORDS.key?(cell) })
+  end
+
+  it "skips a target being deleted whose JSON is gone already, in both schedule modes" do
+    [described_class::CHAIN, described_class::SAME].each do |mode|
+      Dir.mktmpdir("schedules-deleting-gone") do |root|
+        dir = File.join(root, "sessions")
+        target = session(dir).id
+        schedules = store(dir)
+        # The tick resolved the target (its listing) before the delete took the JSON.
+        links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+        links.session(target)
+        File.delete(File.join(dir, "#{target}.json"))
+        owner = Samagotchi::OwnerLock::Owner.new(pid: Process.pid, kind: Samagotchi::OwnerLock::DELETING)
+        allow(Samagotchi::SessionManager).to receive(:session_owner).and_return(owner)
+
+        verdict = schedules.send(:busy_reason, double("schedule entry", mode: mode), links, target)
+
+        expect(verdict).to eq([:skip, "the session is being deleted"])
+      end
+    end
+  end
+
   it "skips a worker on a newer chi in both schedule modes" do
     [described_class::CHAIN, described_class::SAME].each do |mode|
       Dir.mktmpdir("schedules-newer") do |root|

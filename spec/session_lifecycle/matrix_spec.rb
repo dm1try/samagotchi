@@ -22,7 +22,7 @@ module LifecycleMatrixFindings
   KNOWN_DIFFERENCES = [
     # F1: owner-first deciders (WakePolicy, resume, archive, delete) answer the lock; these read the stop first.
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :tui && row.stop },
-                        reason: "F1: Schedules#busy_reason reads the stop marker before the owner: a one-turn " \
+                        reason: "F1: Schedules#busy_cell reads the stop marker before the owner: a one-turn " \
                                 "run's session with a stop answers stopped"),
     KnownDifference.new(op: :sched_same, when: ->(row) { row.owner == :tui && row.stop },
                         reason: "F1: as chain mode, the stop marker first: stopped under a one-turn run's lock"),
@@ -31,14 +31,14 @@ module LifecycleMatrixFindings
                                 "gone_stopped under a one-turn run's or a deleter's lock"),
     # F1b (file with F6): chain mode's starting check comes before any one-turn-run check.
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :tui && row.start && !row.stop },
-                        reason: "F1b: busy_reason's `mode == CHAIN && presence.starting?` runs with no tui check: " \
+                        reason: "F1b: busy_cell's chain-mode starting override runs with no tui check: " \
                                 "a one-turn run's session with a fresh starting marker is worker_busy"),
     # An owner of unknown kind (a lock record still blank) is booting; with a stop the stop-first readers say stopped.
     KnownDifference.new(op: :sched_chain, when: ->(row) { row.owner == :unknown && row.stop },
                         reason: "unknown owner: WorkerLink reads a blank lock record as Starting (booting), " \
-                                "busy_reason's stop-first check answers stopped"),
+                                "busy_cell's stop-first override answers stopped"),
     KnownDifference.new(op: :sched_same, when: ->(row) { row.owner == :unknown && row.stop },
-                        reason: "unknown owner: booting by its link, stopped by busy_reason's stop-first check"),
+                        reason: "unknown owner: booting by its link, stopped by busy_cell's stop-first override"),
     KnownDifference.new(op: :attach, when: ->(row) { row.owner == :unknown && row.stop },
                         reason: "unknown owner: booting by its link, gone_stopped by LocalLink's stop-first check"),
     # The start/stop order is a row fact: a start marked after the stop holds a resume off.

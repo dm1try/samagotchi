@@ -105,7 +105,11 @@ time zones.
 
 ## The busy check
 
-A cron tick cannot read a worker's memory, so the tick has two paths.
+A cron tick cannot read a worker's memory, so the tick has two paths. What the
+session's lifecycle state answers (deleting, stopped, a worker starting, leaving or
+on a newer chi) comes from the lifecycle table (`SessionLifecycle::ALLOWED`,
+[internals](internals/session-lifecycle.md)); the Bridge ask and the file checks
+below are the busy check's own.
 
 **Being deleted** (a deleter holds the owner lock) comes before a stop marker.
 The skip is "the session is being deleted", and the next tick finds the session

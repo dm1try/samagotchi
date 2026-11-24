@@ -12,8 +12,9 @@ module Samagotchi
   # stored: see docs/internals/session-lifecycle.md (Derived states).
   #
   # A read only: it writes, clears and unlinks nothing (the marker writers
-  # are pinned in spec/session_lifecycle_writers_spec.rb). One decider
-  # reads it (restart_session's precheck, ALLOWED[:restart]); ALLOWED is what
+  # are pinned in spec/session_lifecycle_writers_spec.rb). Two deciders
+  # read it (restart_session's precheck, ALLOWED[:restart]; a schedule's busy
+  # check, Schedules#busy_cell, ALLOWED[:sched_chain] / [:sched_same]); ALLOWED is what
   # each operation does in each state, pinned against the deciders by
   # spec/session_lifecycle/matrix_spec.rb.
   module SessionLifecycle
