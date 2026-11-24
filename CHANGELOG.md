@@ -15,9 +15,13 @@ and commands may change between minor versions. How releases are made:
   note that starts a turn stay as they are.
 - skills (0.1.11): "a step failed, the skill wasn't updated" is a warning now (yellow in the web, `warning:` in the
   terminal).
+- skills (0.1.12): a skill a bundle ships (the pages skill, say) no longer gets the "a step failed, update the skill"
+  nudge or warning.
 
 ### Fixed
 
+- chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not
+  "failed: ...".
 - chi web: after a reload, a plugin's line after a turn stays right under that turn instead of moving below the next
   time divider and notes.
 - chi page: a run that finishes just before its 30 s cut keeps its result instead of "stopped after 30 s", and the

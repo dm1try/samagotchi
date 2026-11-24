@@ -72,6 +72,113 @@ RSpec.describe Samagotchi::WorkerWakes do
     end
   end
 
+  # The one answer the context and peer gates read: why a wake is held now,
+  # apart from the start grace (the callers' own, so a wake can wait it out).
+  # Each row is a state of the budgets; the hold is the same within the
+  # grace and past it, and it says what today's gates answer.
+  describe "#wake_hold" do
+    let(:peers) { [2] }
+    let!(:wakes) { described_class.new(grace: 2.0, clock: -> { now[0] }, max: -> { budget[0] }, peer_max: -> { peers[0] }) }
+
+    # state => [hold without a continue offer, peer: false / peer: true]
+    states = {
+      "open" => [[nil, nil], -> {}],
+      "paused" => [%i[paused paused], -> { wakes.pause! }],
+      "session.max_wakes spent" => [%i[max_wakes max_wakes], -> { 3.times { wakes.count! } }],
+      "the peer budget spent" => [[nil, :peer_turns], -> { 2.times { wakes.count!(peer: true) } }],
+      "both budgets spent" => [%i[max_wakes max_wakes], lambda {
+        2.times { wakes.count!(peer: true) }
+        wakes.count!
+      }],
+      "paused with session.max_wakes spent" => [%i[paused paused], lambda {
+        wakes.pause!
+        3.times { wakes.count! }
+      }],
+      "the peer policy off (peer_turns 0)" => [[nil, :peer_turns], -> { peers[0] = 0 }]
+    }
+
+    before { allow(Samagotchi::Log).to receive(:info) }
+
+    states.each do |state, (holds, setup)|
+      [false, true].each do |grace|
+        [false, true].each do |awaiting|
+          plain, peer = holds
+          plain, peer = [plain, peer].map { |hold| hold == :paused ? :paused : :continue } if awaiting
+
+          it "is #{plain.inspect} / peer #{peer.inspect}: #{state}, #{grace ? "within" : "past"} the grace, " \
+             "#{awaiting ? "a continue offer waiting" : "no continue offer"}" do
+            instance_exec(&setup)
+            pass(2.0) unless grace
+            expect(wakes.in_grace?).to be(grace)
+
+            expect(wakes.wake_hold(awaiting_continue: awaiting, peer: false)).to eq(plain)
+            expect(wakes.wake_hold(awaiting_continue: awaiting, peer: true)).to eq(peer)
+
+            ready = wakes.context_ready?(awaiting_continue: awaiting, names: ["ci"])
+            expect(ready).to eq(plain.nil?)
+            expect(wakes.context_open?(awaiting_continue: awaiting, names: ["ci"])).to eq(!grace && plain.nil?)
+            # The peer gate as WorkerInbound asks it today: the context gate,
+            # then the peer budget.
+            expect(ready && wakes.peer_in_a_row < wakes.peer_turns).to eq(peer.nil?)
+          end
+        end
+      end
+    end
+
+    it "logs nothing, whatever holds (its callers write the lines)" do
+      2.times { wakes.count!(peer: true) }
+      pass(2.0)
+      expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:peer_turns)
+      wakes.count!
+      expect(wakes.wake_hold(awaiting_continue: false, peer: false)).to eq(:max_wakes)
+      expect(Samagotchi::Log).not_to have_received(:info)
+    end
+  end
+
+  # Today's log lines of the context gates, word for word. A peer's line
+  # (reason peer_turns) is pinned where WorkerInbound asks the peer gate
+  # (worker_inbound_spec, "the wake gates' log lines").
+  describe "the context gates' log lines" do
+    let(:held) { [] }
+    let(:max_wakes_line) { [:worker, "context_wake_held", { reason: "max_wakes", names: "ci,docs" }] }
+
+    before do
+      allow(Samagotchi::Log).to receive(:info) { |tag, event, **fields| held << [tag, event, fields] if event == "context_wake_held" }
+    end
+
+    it "context_open? logs the sources the spent budget holds past the grace, nothing within it" do
+      3.times { wakes.count! }
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([])
+      pass(2.0)
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([max_wakes_line])
+    end
+
+    it "context_ready? logs the spent budget within the grace too" do
+      3.times { wakes.count! }
+      expect(wakes.context_ready?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([max_wakes_line])
+    end
+
+    it "logs nothing while a continue offer or a pause holds, the budget spent" do
+      pass(2.0)
+      3.times { wakes.count! }
+      expect(wakes.context_open?(awaiting_continue: true, names: %w[ci docs])).to be(false)
+      expect(wakes.context_ready?(awaiting_continue: true, names: %w[ci docs])).to be(false)
+      wakes.pause!
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(wakes.context_ready?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([])
+    end
+
+    it "logs nothing when the gate is open" do
+      pass(2.0)
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(true)
+      expect(held).to eq([])
+    end
+  end
+
   describe "#task_open?" do
     it "opens past the grace, with no offer, unpaused and under the budget" do
       expect(wakes.task_open?(awaiting_continue: false)).to be(false)
@@ -126,18 +233,30 @@ RSpec.describe Samagotchi::WorkerWakes do
     let!(:wakes) { described_class.new(grace: 0, max: -> { budget[0] }, peer_max: -> { peers[0] }) }
 
     it "opens for peer_turns peer wakes in a row, each counting toward both budgets, then logs the hold" do
+      budget[0] = 4
       allow(Samagotchi::Log).to receive(:info)
-      expect(wakes.peer_open?(name: "codex-outbox")).to be(true)
+      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(true)
       expect(wakes.count!(peer: true)).to eq(1)
       wakes.count!
-      expect(wakes.peer_open?(name: "codex-outbox")).to be(true)
+      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(true)
       wakes.count!(peer: true)
 
       expect([wakes.in_a_row, wakes.peer_in_a_row]).to eq([3, 2])
-      expect(wakes.peer_open?(name: "codex-outbox")).to be(false)
-      expect(wakes.spent?).to be(true)
-      expect(Samagotchi::Log).to have_received(:info)
+      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(false)
+      expect(Samagotchi::Log).to have_received(:info).once
         .with(:worker, "context_wake_held", reason: "peer_turns", names: "codex-outbox")
+    end
+
+    # Its callers ask #context_open? (or #context_ready?) first, which logs
+    # a spent session.max_wakes and holds every wake: past it, only the
+    # peer budget is peer_open?'s to log.
+    it "logs only the peer budget's hold" do
+      allow(Samagotchi::Log).to receive(:info)
+      3.times { wakes.count!(peer: true) }
+      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(false)
+      wakes.human_input!(interactive: false)
+      expect(wakes.peer_open?(awaiting_continue: true, name: "codex-outbox")).to be(false)
+      expect(Samagotchi::Log).not_to have_received(:info)
     end
 
     it "is never more than session.max_wakes, and 0 with peer_turns 0" do
@@ -145,7 +264,7 @@ RSpec.describe Samagotchi::WorkerWakes do
       expect(wakes.peer_turns).to eq(3)
       peers[0] = 0
       expect(wakes.peer_turns).to eq(0)
-      expect(wakes.peer_open?(name: "x")).to be(false)
+      expect(wakes.peer_open?(awaiting_continue: false, name: "x")).to be(false)
     end
 
     it "is reset with its notice by interactive input only; chi send resets session.max_wakes alone" do

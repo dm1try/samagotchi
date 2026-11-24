@@ -510,5 +510,95 @@ RSpec.describe Samagotchi::WorkerInbound do
         expect(announced.size).to eq(1)
       end
     end
+
+    # Today's log lines of the two wake gates (#context_wake_for, and
+    # #context_wake_waiting_for? within the start grace), word for word:
+    # which holds write context_wake_held, with which reason and names, and
+    # which write nothing.
+    describe "the wake gates' log lines" do
+      let(:now) { [0] }
+      let!(:wakes) { Samagotchi::WorkerWakes.new(grace: 2, clock: -> { now[0] }, max: -> { 3 }, peer_max: -> { 2 }) }
+      let(:held) { [] }
+      let(:peer_note) { { note_id: "ctx-codex-outbox-1", text: "Codex answered", source: "context" } }
+      let(:peer) do
+        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-outbox", note: peer_note, peer: "Codex",
+                                                  subscription: Samagotchi::ContextSources::Subscription.blank("codex-outbox"),
+                                                  wake_note: peer_note.merge(text: "Codex answered; peer line"))
+      end
+
+      def line(reason, names) = [:worker, "context_wake_held", { reason: reason, names: names }]
+
+      def past_grace = (now[0] = 3)
+
+      before do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(true)
+        allow(Samagotchi::Log).to receive(:info).and_call_original
+        allow(Samagotchi::Log).to receive(:info).with(:worker, "context_wake_held", any_args) do |tag, event, **fields|
+          held << [tag, event, fields]
+        end
+      end
+
+      it "past the grace, a spent session.max_wakes logs every source asking, once" do
+        past_grace
+        3.times { wakes.count! }
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [delivery, peer]))
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(held).to eq([line("max_wakes", "ci,codex-outbox")])
+      end
+
+      it "within the grace, a spent session.max_wakes logs the same line once, and the wake doesn't wait" do
+        3.times { wakes.count! }
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(inbound.context_wake_waiting?).to be(false)
+        expect(held).to eq([line("max_wakes", "ci")])
+      end
+
+      it "past the grace, a spent peer budget logs the peer's source" do
+        past_grace
+        2.times { wakes.count!(peer: true) }
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(held).to eq([line("peer_turns", "codex-outbox")])
+      end
+
+      it "within the grace, a spent peer budget logs nothing, and the wake doesn't wait" do
+        2.times { wakes.count!(peer: true) }
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(inbound.context_wake_waiting?).to be(false)
+        expect(held).to eq([])
+      end
+
+      it "a continue offer or a pause logs nothing, within the grace or past it, the budgets spent" do
+        3.times { wakes.count!(peer: true) }
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [delivery, peer]))
+
+        awaiting[0] = true
+        inbound.absorb_context(wake: true)
+        past_grace
+        inbound.absorb_context(wake: true)
+        awaiting[0] = false
+        wakes.pause!
+        inbound.absorb_context(wake: true)
+        now[0] = 0
+        inbound.absorb_context(wake: true)
+        expect(held).to eq([])
+      end
+
+      it "an open gate logs nothing" do
+        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
+
+        expect(inbound.absorb_context(wake: true)).to be_nil
+        expect(inbound.context_wake_waiting?).to be(true)
+        past_grace
+        expect(inbound.absorb_context(wake: true)).to have_attributes(name: "codex-outbox")
+        expect(held).to eq([])
+      end
+    end
   end
 end
