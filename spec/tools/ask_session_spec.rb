@@ -155,7 +155,7 @@ RSpec.describe Samagotchi::Tools::AskSession do
     asked = make
     worker(result: Samagotchi::SessionManager::DeliverResult.new(status: :refused, code: 409,
                                                                  ack: Samagotchi::Delivery::ASK_UNAVAILABLE))
-    expect(ask(session: asked.id)).to eq("Error: session #{asked.id[0, 8]}: failed: " \
+    expect(ask(session: asked.id)).to eq("Error: session #{asked.id[0, 8]}: refused: " \
                                          "#{Samagotchi::Delivery::ASK_UNAVAILABLE["detail"]}")
 
     capped = make
