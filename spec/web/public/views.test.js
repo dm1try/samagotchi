@@ -302,3 +302,26 @@ test("All sessions -> pill -> list -> Back keeps All sessions' own Back a histor
   h.views.closeAllView();
   assert.deepEqual(h.calls.filter(([kind]) => kind === "back"), [["back"], ["back"]]);
 });
+
+test("the pill on a page opened from the list goes back to that list's entry (no second #/pages)", () => {
+  const h = harness({ hash: `#/s/${ID}`, selected: ID, list: true });
+  h.views.openPagesList();
+  h.listeners.hashchange();
+  h.views.openPage("usage");
+  h.listeners.hashchange();
+  h.views.openPagesList();
+  assert.deepEqual(h.calls.filter(([kind]) => kind === "back"), [["back"]]);
+  assert.equal(h.location.hash, "#/p/usage", "no push: history.back() leaves for the list");
+});
+
+test("a page with no history put on the list: the list's Back then leaves for the session's hash, not a dead history.back()", () => {
+  const h = harness({ hash: `#/s/${ID}`, selected: ID, list: true });
+  h.views.openPagesList(); // pushed
+  h.listeners.hashchange();
+  go(h, "#/p/usage"); // a typed hash: not pushed by the page
+  h.views.closePage();
+  assert.equal(h.location.hash, "#/pages");
+  h.views.closePagesList();
+  assert.equal(h.calls.some(([kind]) => kind === "back"), false);
+  assert.equal(h.location.hash, `#/s/${ID}`);
+});
