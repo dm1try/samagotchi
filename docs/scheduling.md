@@ -286,6 +286,10 @@ its descendants, and archived sessions are outside the retention sweep
 count. The `anchor` is never pruned: it is the chain's root, the id the user and
 the coordinator remember, and `last:<anchor>` must keep resolving.
 
+What a schedule protects (its anchor, its head and its resolved target, while it is
+enabled) the retention sweep keeps and a delete refuses: schedules are
+`SessionProtection`'s one protector (`Schedules::ProtectionPart`, [sessions.md](sessions.md)).
+
 Schedule prune leaves the deleted links' background tasks running: a later link
 may still use a server started by an earlier link in the same project. Continue
 does not yet transfer task ownership.

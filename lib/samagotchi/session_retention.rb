@@ -10,6 +10,7 @@ require_relative "config"
 require_relative "log"
 require_relative "model_profile"
 require_relative "session_manager"
+require_relative "session_protection"
 require_relative "system_one/runs"
 
 module Samagotchi
@@ -214,9 +215,7 @@ module Samagotchi
     def self.apply(state_dir: Session.default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
                    empty_check: nil, any_age: false, now: Time.now)
-      require_relative "schedules"
-      schedules = Schedules.new(state_dir: state_dir)
-      scheduled_targets = schedules.protected_session_ids
+      protected_ids = SessionProtection.protected_ids(state_dir: state_dir)
       keep_status = Array(keep_status).map(&:to_s)
       # Fetch all sessions sorted newest-first for count logic
       all = Session.list(state_dir: state_dir, sort: "updated_at", order: "desc")
@@ -243,7 +242,7 @@ module Samagotchi
           next
         end
 
-        if scheduled_targets.include?(session.id)
+        if protected_ids.include?(session.id)
           kept << session.id
           next
         end
@@ -318,7 +317,7 @@ module Samagotchi
         # once, at the start): resumed or taken by a worker since, it stays.
         elsif held?(session.id, state_dir, alive_check)
           kept << session.id
-        elsif scheduled_targets.include?(session.id)
+        elsif protected_ids.include?(session.id)
           kept << session.id
         else
           policy = SessionManager::RunningTasks::Policy.stop(by: "retention")

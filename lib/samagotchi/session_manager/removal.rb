@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../session_protection"
 require_relative "../session_stores"
 require_relative "running_tasks"
 
@@ -327,7 +328,7 @@ module Samagotchi
         sd = state_dir
         path = Session.session_file(id, state_dir: sd)
         dir = Session.session_dir(id, state_dir: sd)
-        refuse_scheduled!(id, sd) unless allow_scheduled
+        refuse_protected!(id, sd) unless allow_scheduled
         RunningTasks.check!([id], state_dir: sd, policy: running_tasks) do |listing|
           DeleteRefused.new(id, :tasks_running, tasks: listing)
         end
@@ -391,13 +392,13 @@ module Samagotchi
       # @return [Array<String>]
       def delete_tree_ids(id, state_dir) = [*descendant_ids(id, state_dir).reverse, id]
 
-      # DeleteRefused :scheduled when an enabled schedule's target, anchor
-      # or head is +id+: deleting a head would make the schedule fall back to
-      # an archived link and lose the links after it.
-      def refuse_scheduled!(id, state_dir)
-        require_relative "../schedules"
-        schedule = Schedules.new(state_dir: state_dir).protecting_link(id)
-        raise DeleteRefused.new(id, :scheduled, schedule_id: schedule.id) if schedule
+      # DeleteRefused with the reason a SessionProtection protector holds +id+
+      # for (:scheduled: an enabled schedule's target, anchor or head;
+      # deleting a head would make the schedule fall back to an archived link
+      # and lose the links after it). A protector that raises raises here.
+      def refuse_protected!(id, state_dir)
+        hold = SessionProtection.hold(id, state_dir: state_dir)
+        raise DeleteRefused.new(id, hold.reason, schedule_id: hold.ref) if hold
       end
 
       # Remove every store with state scoped to +id+. The file and sidecar

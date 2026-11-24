@@ -98,7 +98,7 @@ Link resolution (`SessionInbox::Head.resolve`, `Schedules#target_of`) stays outs
 
 The running-tasks check of a user's delete and archive (`SessionManager::RunningTasks`, `tasks_running`) is op-local,
 not an `ALLOWED` cell: it reads the transcript and each `task.json`, not the lifecycle's facts, and runs after the
-lifecycle refusals (`refuse_scheduled!`, `archivable!`), before the worker is stopped.
+lifecycle refusals (`refuse_protected!`, `archivable!`), before the worker is stopped.
 
 `restart_session` is the first decider migrated to the table: its lifecycle precheck is `SessionLifecycle.read` (the
 owner read through `session_owner`) and `ALLOWED[:restart]`: `owned_by_tui` raises `OwnedByTUI`, a refusal cell

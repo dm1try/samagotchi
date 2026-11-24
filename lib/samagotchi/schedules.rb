@@ -28,6 +28,7 @@ require_relative "schedules/busy_part"
 require_relative "schedules/edit_part"
 require_relative "schedules/history_part"
 require_relative "schedules/notices_part"
+require_relative "schedules/protection_part"
 require_relative "schedules/recurrence"
 
 module Samagotchi
@@ -59,6 +60,7 @@ module Samagotchi
     include EditPart
     include HistoryPart
     include NoticesPart
+    include ProtectionPart
 
     FILE = "schedules.json"
     LOCK = "schedules.lock"
@@ -219,24 +221,6 @@ module Samagotchi
     def entries(include_disabled: false)
       list = read.entries.grep(Entry).sort_by { |entry| [entry.next_due.to_s, entry.id] }
       include_disabled ? list : list.select(&:enabled)
-    end
-
-    def protected_session_ids
-      links = links_now
-      entries.flat_map { |entry| [entry.anchor, entry.head, target_of(entry, links).first] }.compact.uniq
-    end
-
-    def protecting(session_id)
-      links = links_now
-      entries.find { |entry| target_of(entry, links).first == session_id }
-    end
-
-    # The enabled schedule a delete of +session_id+ would break: one whose
-    # target (#protecting), anchor or head it is. A head deleted would make
-    # the schedule fall back to its anchor (an archived link) and fail.
-    # @return [Entry, nil]
-    def protecting_link(session_id)
-      entries.find { |entry| entry.anchor == session_id || entry.head == session_id } || protecting(session_id)
     end
 
     # @param id_or_name [String] an id, a unique prefix of one, or a title
