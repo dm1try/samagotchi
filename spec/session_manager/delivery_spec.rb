@@ -926,7 +926,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "runs queued turns with their origin, or none" do
       described_class.write_turn_input(session.id, prompt: "from web", client_id: "web:1", enqueued_id: "e1", state_dir: tmpdir)
       described_class.write_turn_input(session.id, client_id: nil, prompt: "plain", state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, peer_registry: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, origin:, **|
         runs << [prompt, origin.wire]
@@ -942,7 +942,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "runs a turn queued with no_interrupt under the raised iteration limit" do
       described_class.write_turn_input(session.id, prompt: "long", client_id: "tui:1", no_interrupt: true, state_dir: tmpdir)
       described_class.write_turn_input(session.id, client_id: nil, prompt: "short", state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, peer_registry: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, max_iterations:, **|
         runs << [prompt, max_iterations]
@@ -958,7 +958,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "marks the session running on disk while a turn runs, and stops before the next queued turn" do
       described_class.write_turn_input(session.id, client_id: nil, prompt: "one", state_dir: tmpdir)
       described_class.write_turn_input(session.id, client_id: nil, prompt: "two", state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, peer_registry: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, **|
         runs << [prompt, Samagotchi::Session.load(session.id, state_dir: tmpdir).status]
@@ -976,7 +976,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "announces who sent input merged into a running turn" do
       event_log = Samagotchi::SessionObserver.new
-      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, event_log: event_log, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, live_conversation: nil)
+      engine = instance_double(Samagotchi::Engine, **idle_engine_parts, event_log: event_log, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, peer_registry: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, live_conversation: nil)
       announced = []
       event_log.subscribe(observer: ->(event) { announced << event.except(:event_seq) })
       drained = nil
