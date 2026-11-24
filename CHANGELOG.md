@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
   note that starts a turn stay as they are.
 - skills (0.1.11): "a step failed, the skill wasn't updated" is a warning now (yellow in the web, `warning:` in the
   terminal).
+- skills (0.1.12): a skill a bundle ships (the pages skill, say) no longer gets the "a step failed, update the skill"
+  nudge or warning.
 
 ### Fixed
 

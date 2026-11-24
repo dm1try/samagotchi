@@ -15,14 +15,14 @@
 # shows a line: "skill release updated (+2 −1): …" or "skill release saved
 # (project, 14 lines)".
 #
-# A skill read in this turn is also watched for changes made some other way
+# A user skill read in this turn is also watched for changes made some other way
 # (an execute running sed, a script): after each other tool call, and at the
 # turn's end, its file is compared with the content last seen (at the read,
 # or after the last write above); a change keeps that content as a version,
 # shows the same line and counts as the skill updated.
 #
 # The nudge (nudge: true), for models that skip a failing step instead of
-# fixing the skill: in a turn that read a skill (memory_read of a skill_*
+# fixing the skill: in a turn that read a user skill (memory_read of a skill_*
 # name, or a read of its file), the first failing tool call after it (an
 # execute with "exit: N", N ≠ 0, or with no exit line an Error: line near
 # the top; any tool's "[tool] Error: …"; not a grep that found nothing,
@@ -161,6 +161,7 @@ class Plugin
               Array(event.dig(:targets, :paths)).filter_map { |path| (at = skill_at(path)) && [at.last, path] }
             else []
             end
+    found.reject! { |name, path| shipped?(name, path) }
     found.each { |name, path| watch(name, path) }
     @read |= found.map(&:first)
   end
@@ -292,7 +293,7 @@ class Plugin
         name = File.basename(path, ".md").delete_prefix("skill_")
         next unless skill_name(name) == name
 
-        date, description = index.fetch("skill_#{name}", [nil, nil])
+        date, description, = index.fetch("skill_#{name}", [nil, nil])
         line = "#{name} · #{scope}"
         line << " · #{date}" if date
         line << " — #{description}" if description
@@ -412,15 +413,20 @@ class Plugin
 
   def scope_of(path) = memory_dirs.key(File.dirname(path)) || "?"
 
-  # The managed index.md lines, {name => [date, description]}:
-  # "- **name** · scope · date · bytes — description".
+  def shipped?(name, path)
+    scope = scope_of(path)
+    scope != "?" && !index_lines(memory_dirs[scope]).dig("skill_#{name}", 2).nil?
+  end
+
+  # The managed index.md lines, {name => [date, description, source]}:
+  # "- **name** · scope · date · bytes[ · from bundle][ — description]".
   def index_lines(dir)
     path = File.join(dir, "index.md")
     return {} unless File.file?(path)
 
     File.readlines(path, chomp: true).each_with_object({}) do |line, lines|
-      match = line.match(/\A- \*\*(?<name>[^*]+)\*\* · [^·]+ · (?<date>[^·]+?) · [^—]+?(?: — (?<description>.+))?\z/)
-      lines[match[:name]] = [match[:date].strip, match[:description]&.strip] if match
+      match = line.match(/\A- \*\*(?<name>[^*]+)\*\* · [^·]+ · (?<date>[^·]+?) · [^·—]+?(?: · from (?<source>[^·—]+?))?(?: — (?<description>.+))?\z/)
+      lines[match[:name]] = [match[:date].strip, match[:description]&.strip, match[:source]&.strip] if match
     end
   end
 

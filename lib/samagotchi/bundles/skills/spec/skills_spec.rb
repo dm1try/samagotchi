@@ -228,6 +228,24 @@ RSpec.describe "The skills plugin", :bundle do
       fire(p, :after_tool_call, tool: tool, output: output, status: status)
     end
 
+    it "does not steer or warn when a bundle-shipped skill's step fails" do
+      p = plugin
+      shipped_path = sandbox.write_memory("skill_pages", "# Skill: pages\n\n## Steps\n1. Build.\n", scope: "system",
+                                                                                                    source: "samagotchi-system")
+      fire(p, :before_turn, prompt: "make a page")
+      fire(p, :before_tool_call, call: { name: "memory_read", content: "skill_pages", scope: "system" },
+                                 targets: { paths: [] })
+      fire(p, :after_tool_call, tool: "memory_read", output: File.read(shipped_path))
+      run(p, "execute", "[execute]\nstderr:\nbuild failed\nexit: 1", "error")
+      fire(p, :after_turn, status: "completed")
+
+      expect(steered).to be_empty
+      expect(notices).to be_empty
+      expect(skill(p, "list")).to include("pages · system")
+      expect(skill(p, "show pages")).to eq("skill pages · system\n\n# Skill: pages\n\n## Steps\n1. Build.")
+      expect(skill(p, "diff pages")).to eq("skill pages has no older version yet")
+    end
+
     it "steers once at the first failing step after a skill was read, and notes it at the turn's end" do
       p = plugin
       fire(p, :before_turn, prompt: "release 1.3.0")
