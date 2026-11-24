@@ -36,6 +36,7 @@ module Samagotchi
         @session_class.load(id, state_dir: default_state_dir)
         entries = PeerExchanges.read(id, state_dir: default_state_dir).group_by { |entry| entry["peer"] }
         rows = {}
+        entries.each_key { |name| rows[name] ||= peer_row(name) }
         PeerRoster.build(id, state_dir: default_state_dir).each do |peer|
           row = (rows[peer.name] ||= peer_row(peer.name))
           row.merge!(paired_at: peer.paired_at, from: peer.from, address: peer.address,

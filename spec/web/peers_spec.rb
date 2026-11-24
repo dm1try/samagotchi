@@ -88,6 +88,19 @@ RSpec.describe Samagotchi::Web::App, "peers" do
       expect(peer["messages"].size).to eq(1)
     end
 
+    it "lists a peer from the exchange log when its mailbox has no folder" do
+      Samagotchi::PeerExchanges.append(session.id, { t: "sent", peer: "claude", id: "s-old", kind: "validate",
+                                                     title: "old plan", by: "model" }, state_dir: state_dir)
+      Samagotchi::PeerExchanges.append(session.id, { t: "answer", peer: "claude", re: "s-old", serial: 4,
+                                                     summary: "old plan: VERDICT OK" }, state_dir: state_dir)
+
+      status, body = call(base)
+
+      expect(status).to eq(200)
+      expect(body["peers"]).to include(include("name" => "claude", "paired_at" => nil,
+                                               "exchanges" => include(include("id" => "s-old", "state" => "answered"))))
+    end
+
     it "lists no row for a context source named like an older bundle's outbox: peers are the mailbox's" do
       own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
       own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: nil, hint: nil,
