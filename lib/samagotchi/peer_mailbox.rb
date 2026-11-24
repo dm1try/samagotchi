@@ -189,8 +189,13 @@ module Samagotchi
     # Pairs +peer+ with the session: link.json written whole, the in folder made.
     # @return [PeerLink]
     def pair(session_id, peer, address:, from:, state_dir: nil, now: Time.now)
+      session = session_dir(session_id, state_dir: state_dir)
+      raise Invalid, "#{session_id}'s mailbox folder is a link; chi doesn't follow links there" if File.symlink?(session)
+
       dir = peer_dir(session_id, peer, state_dir: state_dir)
+      refuse_links!(peer, dir)
       FileUtils.mkdir_p(File.join(dir, IN_DIR))
+      refuse_links!(peer, dir)
       link = PeerLink.new(peer: peer, address: address&.to_s, paired_at: now.utc.iso8601, from: from&.to_s)
       AtomicFile.write(File.join(dir, LINK_FILE), "#{JSON.generate(link.to_h)}\n")
       link
@@ -280,7 +285,9 @@ module Samagotchi
       serial = Integer(serial.to_s, 10, exception: false) or return nil
       return nil unless serial.between?(1, SERIAL_MAX)
 
-      read = PeerMessage.from_file(File.join(in_dir(session_id, peer, state_dir: state_dir), "#{serial}.json"))
+      dir = peer_dir(session_id, peer, state_dir: state_dir)
+      refuse_links!(peer, dir)
+      read = PeerMessage.from_file(File.join(dir, IN_DIR, "#{serial}.json"))
       read.is_a?(PeerMessage) ? read : nil
     rescue Errno::ENOENT
       nil
@@ -304,7 +311,7 @@ module Samagotchi
 
     # @raise [Invalid] the peer's folder or its in folder is a link
     def refuse_links!(peer, dir)
-      [dir, File.join(dir, IN_DIR)].each do |path|
+      [File.dirname(dir), dir, File.join(dir, IN_DIR)].each do |path|
         raise Invalid, "#{peer}'s mailbox folder is a link; chi doesn't follow links there" if File.symlink?(path)
       end
     end
