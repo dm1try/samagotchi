@@ -22,11 +22,13 @@ require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "session_row"
 require_relative "state_format"
-require_relative "turn_checkpoint"
+require_relative "turn_outcome"
 require_relative "worker_link"
+require_relative "schedules/busy_part"
 require_relative "schedules/edit_part"
 require_relative "schedules/history_part"
 require_relative "schedules/notices_part"
+require_relative "schedules/protection_part"
 require_relative "schedules/recurrence"
 
 module Samagotchi
@@ -54,9 +56,11 @@ module Samagotchi
   # read-modify-write, never across the action: SessionContinue.run waits up to
   # 30 s for a recap and 5 s for an archive, and an `add` must not wait on it.
   class Schedules
+    include BusyPart
     include EditPart
     include HistoryPart
     include NoticesPart
+    include ProtectionPart
 
     FILE = "schedules.json"
     LOCK = "schedules.lock"
@@ -70,8 +74,6 @@ module Samagotchi
     # A schedule prompt is a chain link's first message or a turn's prompt: the
     # same limit the note inbox uses.
     PROMPT_MAX_BYTES = SessionInbox::NOTE_MAX_BYTES
-    # Seconds a tick waits for a live worker's GET /activity.
-    ACTIVITY_TIMEOUT = 2.0
     # A chain firing can wait 30 s for a recap and 5 s for an archive; 5 s
     # more leaves margin before an unfinished turn is called interrupted.
     FIRING_TIMEOUT = 40
@@ -221,24 +223,6 @@ module Samagotchi
       include_disabled ? list : list.select(&:enabled)
     end
 
-    def protected_session_ids
-      links = links_now
-      entries.flat_map { |entry| [entry.anchor, entry.head, target_of(entry, links).first] }.compact.uniq
-    end
-
-    def protecting(session_id)
-      links = links_now
-      entries.find { |entry| target_of(entry, links).first == session_id }
-    end
-
-    # The enabled schedule a delete of +session_id+ would break: one whose
-    # target (#protecting), anchor or head it is. A head deleted would make
-    # the schedule fall back to its anchor (an archived link) and fail.
-    # @return [Entry, nil]
-    def protecting_link(session_id)
-      entries.find { |entry| entry.anchor == session_id || entry.head == session_id } || protecting(session_id)
-    end
-
     # @param id_or_name [String] an id, a unique prefix of one, or a title
     # @return [Entry, nil]
     # @raise [Usage] the prefix or the title names more than one schedule
@@ -315,7 +299,7 @@ module Samagotchi
     end
 
     # @return [Entry, nil] nil when no schedule matches
-    def cancel(id_or_name) = change(id_or_name, delete: true)
+    def cancel(id_or_name) = change(id_or_name, delete: true) || cancel_unreadable(id_or_name)
     def enable(id_or_name) = change(id_or_name, enabled: true)
     def disable(id_or_name) = change(id_or_name, enabled: false)
 
@@ -771,30 +755,27 @@ module Samagotchi
       "waiting for turn #{entry.pending_turn_id}"
     end
 
+    # In this order: the reply (fired), then a question this firing started
+    # and the turn has not ended before (waits, or "no outcome" once
+    # expired), then the settled turn (fired when it completed), then
+    # expiry.
     def resolve_pending(entry, now)
       session = Session.load(entry.pending_session_id, state_dir: @state_dir)
-      turn = session.last_turn if session.last_turn&.enqueued_id == entry.pending_turn_id
-      turn ||= TurnCheckpoint.settled_turn(Session.session_dir(entry.pending_session_id, state_dir: @state_dir),
-                                           entry.pending_turn_id)
-      if SessionInbox.reply_for(Session.session_dir(entry.pending_session_id, state_dir: @state_dir), entry.pending_turn_id)
-        return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "turn completed", entry: entry)
-      end
+      result = TurnOutcome.for(session, entry.pending_turn_id,
+                               session_dir: Session.session_dir(entry.pending_session_id, state_dir: @state_dir))
+      return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: result.detail, entry: entry) if result.replied
 
       question = session.pending_question
-      if question_started?(question, entry) && !question_after_turn?(question, turn)
+      if question_started?(question, entry) && !question_after_turn?(question, result.turn)
         return nil unless pending_expired?(entry, now)
 
         return Outcome.new(id: entry.id, title: entry.title, status: "failed",
                            detail: "no outcome", entry: entry)
       end
 
-      if turn
-        return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "turn completed", entry: entry) if
-          turn.outcome == "completed"
-
-        reason = [turn.outcome, turn.error_kind, turn.cancel_reason, turn.stopped_by].compact.join(": ")
-        return Outcome.new(id: entry.id, title: entry.title, status: "failed",
-                           detail: "turn #{reason.empty? ? "did not complete" : reason}", entry: entry)
+      if result.turn
+        return Outcome.new(id: entry.id, title: entry.title, status: result.completed? ? "fired" : "failed",
+                           detail: result.detail, entry: entry)
       end
 
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no outcome", entry: entry) if
@@ -918,94 +899,6 @@ module Samagotchi
     def chain_key(links, entry)
       target, _reason = target_of(entry, links)
       target ? links.root(target) : "unresolved:#{entry.id}"
-    end
-
-    # Two paths (FR7): a live worker is asked through its Bridge; with no
-    # worker the files say what the tick can know. A session being deleted
-    # is a skip first, then one its owner stopped, in both modes: a schedule
-    # restarts nothing the owner stopped (deliver_turn would refuse a same-mode
-    # firing too, SessionManager::DeliverResult::STOPPED, in the same words).
-    def busy_reason(entry, links, target)
-      dir = Session.session_dir(target, state_dir: @state_dir)
-      owner = SessionManager.session_owner(target, state_dir: @state_dir)
-      presence = WorkerPresence.read(target, state_dir: @state_dir, owner: owner, link: :look)
-      return [:skip, SessionManager::DeliverResult::DELETING["detail"]] if presence.deleting?
-      return [:skip, SessionManager::DeliverResult::STOPPED["detail"]] if presence.stop_marked?
-
-      link = presence.link
-
-      if presence.worker_owned?
-        # A newer worker's Bridge cannot be asked; updating chi or restarting
-        # chi web fixes it, and max_skips still bounds a stuck schedule.
-        return [:skip, link.short_message] if link.is_a?(WorkerLink::Skew)
-
-        # A worker that has not published its Bridge yet (or is closing it):
-        # nothing can be read from it, and firing now would race with it.
-        return [:skip, "its worker is starting or leaving"] unless presence.live?
-
-        activity = ask_activity(link, target)
-        if activity == :old
-          # Its chi predates GET /activity. The file checks cannot see an open
-          # tab, so a chain firing would archive under someone's terminal:
-          # refuse with a restart, never silently degrade. Same mode only
-          # queues a turn, so for it the files are enough.
-          return [:skip, "its worker is too old to ask: chi sessions restart #{target[0, 8]}"] if entry.mode == CHAIN
-
-          return file_busy_reason(links.session(target), dir)
-        end
-        return [:skip, "its worker is not answering"] if activity.nil?
-
-        return [:skip, "a turn is running in it"] if activity[:turn_running]
-        return [:skip, "a prompt is queued for it"] if activity[:input_pending]
-        return [:skip, "its step-limit question waits for an answer"] if activity[:awaiting_continue]
-
-        # A chain firing archives the session and stops its worker: a
-        # terminal or a web tab on it would be cut off. A queued turn into
-        # an open session is fine, so same mode does not count streams.
-        return [:skip, "a terminal or a web tab is open on it"] if entry.mode == CHAIN && activity[:open_streams].to_i.positive?
-
-        # An idle live worker: free, whatever a starting marker its own
-        # start left (Worker#start clears it just after the lock).
-        return nil
-      end
-      # A worker being started for it holds no lock yet (another ticker's
-      # firing just continued the chain to it, a resume): a chain firing
-      # would archive it from under that worker (its archive refuses it too).
-      # A queued turn is fine: the starting worker takes it.
-      return [:skip, "its worker is starting or leaving"] if entry.mode == CHAIN && presence.starting?
-
-      file_busy_reason(links.session(target), dir)
-    end
-
-    # The worker's activity snapshot, :old when it has no /activity route, or
-    # nil when it did not answer at all. A worker published its features when
-    # it started, so a sidecar without "activity" is an older chi's: asking it
-    # would only cost a round trip to a 404.
-    def ask_activity(link, session_id)
-      return :old unless Array(link.features).include?(WorkerLink::ACTIVITY_FEATURE)
-
-      status, body = link.client(session_id, read_timeout: ACTIVITY_TIMEOUT).get("activity")
-      return nil if status.nil?
-      return body.transform_keys(&:to_sym) if status == 200 && body.is_a?(Hash)
-
-      :old
-    rescue StandardError => e
-      Log.warn(:worker, "activity_failed", sid: session_id, error: e.class.name, msg: e.message)
-      nil
-    end
-
-    # The signals RemovalPart#archive_refusal reads, from the files alone.
-    def file_busy_reason(session, dir)
-      return nil if session.nil?
-
-      if SessionRow.running_or_starting?(saved_status: session.status, live: false, busy: false, updated_at: session.updated_at)
-        return [:skip, "a turn is running in it"]
-      end
-      return [:skip, "a prompt is queued for it"] unless SessionInbox.find_new_input_files(dir).empty?
-
-      return [:skip, "its step-limit question waits for an answer"] if session.waiting_question(live: false)&.dig(:kind) == ContinueOffer::KIND
-
-      nil
     end
 
     # A firing whose target no longer resolves (#target_of: gone, archived,

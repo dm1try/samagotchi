@@ -10,6 +10,7 @@ require_relative "../continued_from"
 require_relative "../note_move"
 require_relative "../owner_lock"
 require_relative "../session"
+require_relative "../session_protection"
 require_relative "../starting_marker"
 require_relative "../worker_presence"
 
@@ -18,7 +19,6 @@ module Samagotchi
   # (a require cycle otherwise), and session_continue requires session_manager.
   autoload :SessionManager, File.expand_path("../session_manager", __dir__)
   autoload :SessionContinue, File.expand_path("../session_continue", __dir__)
-  autoload :Schedules, File.expand_path("../schedules", __dir__)
 
   module SessionChain
     # A user's delete of a session (the CLI, the web, the TUI's /exit
@@ -145,7 +145,7 @@ module Samagotchi
       # task the link or such a delegate started that still runs.
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
       def check_link!(plan, state_dir, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
-        SessionManager.refuse_scheduled!(plan.id, state_dir)
+        SessionManager.refuse_protected!(plan.id, state_dir)
         refuse_unmovable!(plan.id, plan.moved, state_dir)
         precheck!(plan.delegates.delete, state_dir)
         SessionManager::RunningTasks.check!([*plan.delegates.delete, plan.id], state_dir: state_dir,
@@ -218,8 +218,11 @@ module Samagotchi
       def precheck!(ids, state_dir)
         ids.each do |sid|
           begin
-            SessionManager.refuse_scheduled!(sid, state_dir)
+            SessionManager.refuse_protected!(sid, state_dir)
           rescue SessionManager::DeleteRefused => e
+            # Only a schedule names the delegate; any other refusal keeps its words.
+            raise unless e.reason == :scheduled
+
             raise SessionManager::DeleteRefused.new(
               sid, :scheduled, schedule_id: e.schedule_id,
                                message: "its delegate #{sid[0, 8]} is the target of an enabled schedule; " \
@@ -356,8 +359,7 @@ module Samagotchi
       # a background task any of them started that still runs.
       # @raise [SessionManager::DeleteRefused, SessionManager::OwnedByTUI]
       def check_chain!(plan, state_dir, stop:, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
-        schedule = Schedules.new(state_dir: state_dir).for_chain(plan.id).first
-        raise SessionManager::DeleteRefused.new(plan.id, :chain_scheduled, schedule_id: schedule.id) if schedule
+        SessionManager.refuse_protected!(plan.id, state_dir, chain: true)
 
         plan.links.each do |link|
           presence = WorkerPresence.read(link, state_dir: state_dir, owner: SessionManager.session_owner(link, state_dir: state_dir))

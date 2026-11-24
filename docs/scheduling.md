@@ -105,7 +105,11 @@ time zones.
 
 ## The busy check
 
-A cron tick cannot read a worker's memory, so the tick has two paths.
+A cron tick cannot read a worker's memory, so the tick has two paths. What the
+session's lifecycle state answers (deleting, stopped, a worker starting, leaving or
+on a newer chi) comes from the lifecycle table (`SessionLifecycle::ALLOWED`,
+[internals](internals/session-lifecycle.md)); the Bridge ask and the file checks
+below are the busy check's own.
 
 **Being deleted** (a deleter holds the owner lock) comes before a stop marker.
 The skip is "the session is being deleted", and the next tick finds the session
@@ -241,7 +245,9 @@ and `show`. A question does not time out with the 40-second firing step: the tur
 stays pending until its hard limit, derived from the schedule interval (at least
 10 minutes and at most 6 hours). If no outcome is known by then, it counts as a
 failure with reason `no outcome`. Failed, canceled and expired turns are not
-re-fired; `next_due` remains at the next occurrence.
+re-fired; `next_due` remains at the next occurrence. The turn's outcome is read
+from its files by `TurnOutcome.for` (`turn_outcome.rb`: its reply, its settled turn and
+the words); `Schedules#resolve_pending` keeps the order: the reply, the question, the turn, expiry.
 
 A chain holds at most `schedule.max_per_session` enabled schedules (default 10) and
 the machine `schedule.max_total` (default 50); `schedule_task` and `chi schedule add`
@@ -285,6 +291,17 @@ its descendants, and archived sessions are outside the retention sweep
 ([sessions.md](sessions.md)), so the delegate pile is the bulk of the archived
 count. The `anchor` is never pruned: it is the chain's root, the id the user and
 the coordinator remember, and `last:<anchor>` must keep resolving.
+
+What a schedule protects (its anchor, its head and its resolved target, while it is
+enabled) the retention sweep keeps and a delete refuses: schedules are
+`SessionProtection`'s one protector (`Schedules::ProtectionPart`, [sessions.md](sessions.md)). It reads
+`schedules.json` strictly: a file that is there but doesn't read (not JSON, a `schedules` member that isn't a list, a
+file chi can't open) makes the sweep delete nothing that round (`retention_skipped`, retried at the next sweep
+interval) and every delete refused, "schedules.json is unreadable (…): fix or remove it before deleting sessions". One
+schedule that doesn't read does the same in its own words, "schedule entry <id> in schedules.json is unreadable
+(lacks prompt): chi schedule cancel <id>, or fix the file, before deleting sessions": `chi schedule cancel <id>` removes
+such a record by its id (`list` doesn't show it). The tick keeps its own rule (it refuses a file that isn't JSON and
+skips a schedule that doesn't read).
 
 Schedule prune leaves the deleted links' background tasks running: a later link
 may still use a server started by an earlier link in the same project. Continue

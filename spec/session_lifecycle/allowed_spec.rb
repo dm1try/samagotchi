@@ -84,7 +84,8 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
     end
     expect(defined?(Samagotchi::Session::NotFound)).to be_truthy
     expect(sm::OwnedByTUI).to be < StandardError
-    schedules = File.read(File.expand_path("../../lib/samagotchi/schedules.rb", __dir__))
+    # The busy check's words live in schedules/busy_part.rb.
+    schedules = %w[schedules.rb schedules/busy_part.rb].map { |file| File.read(File.expand_path("../../lib/samagotchi/#{file}", __dir__)) }.join
     expect(schedules).to include('"its worker is starting or leaving"')
     short_message = Samagotchi::WorkerLink::Skew.new(sidecar: nil, owner: nil, reason: :protocol).short_message
     expect(short_message).to be_a(String)

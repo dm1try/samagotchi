@@ -10,6 +10,7 @@ require_relative "config"
 require_relative "log"
 require_relative "model_profile"
 require_relative "session_manager"
+require_relative "session_protection"
 require_relative "system_one/runs"
 
 module Samagotchi
@@ -143,9 +144,15 @@ module Samagotchi
         age = Time.now - File.mtime(marker)
         return if age < interval
       end
-      result = prune(state_dir: sd)
+      result = begin
+        prune(state_dir: sd)
+      rescue SessionProtection::Unreadable => e
+        skipped_round(sd, e)
+      end
       sweep_runs(sd)
       FileUtils.touch(marker)
+      return nil if result.nil?
+
       if result[:deleted].any?
         stops = result[:tasks_stopped].to_i
         suffix = stops.positive? ? "; stopped #{stops} background tasks" : ""
@@ -154,6 +161,16 @@ module Samagotchi
       result
     rescue StandardError => e
       Log.warn(:worker, "retention_failed", echo: "[retention] sweep failed: #{e.class}: #{e.message}", error: e.class.name)
+      nil
+    end
+
+    # A protector's store doesn't read: no session is deleted this round,
+    # logged once (the next try is at the next interval, the marker touched
+    # as for a sweep that ran); the parts that ask no protector still run
+    # (the skeleton-only dirs here, the saved runs after).
+    private_class_method def self.skipped_round(state_dir, error)
+      Log.warn(:worker, "retention_skipped", msg: error.message)
+      prune_orphan_dirs(state_dir, dry_run: false) if SessionManager.discard_empty?
       nil
     end
 
@@ -214,9 +231,7 @@ module Samagotchi
     def self.apply(state_dir: Session.default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
                    empty_check: nil, any_age: false, now: Time.now)
-      require_relative "schedules"
-      schedules = Schedules.new(state_dir: state_dir)
-      scheduled_targets = schedules.protected_session_ids
+      protected_ids = SessionProtection.protected_ids(state_dir: state_dir)
       keep_status = Array(keep_status).map(&:to_s)
       # Fetch all sessions sorted newest-first for count logic
       all = Session.list(state_dir: state_dir, sort: "updated_at", order: "desc")
@@ -243,7 +258,7 @@ module Samagotchi
           next
         end
 
-        if scheduled_targets.include?(session.id)
+        if protected_ids.include?(session.id)
           kept << session.id
           next
         end
@@ -318,7 +333,7 @@ module Samagotchi
         # once, at the start): resumed or taken by a worker since, it stays.
         elsif held?(session.id, state_dir, alive_check)
           kept << session.id
-        elsif scheduled_targets.include?(session.id)
+        elsif protected_ids.include?(session.id)
           kept << session.id
         else
           policy = SessionManager::RunningTasks::Policy.stop(by: "retention")

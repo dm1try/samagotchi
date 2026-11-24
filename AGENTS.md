@@ -105,7 +105,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Writing a bundle (the walkthrough, `chi bundle new`/`check`/`test`/`try`) → `docs/bundle-authoring.md`
 - Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
-- Session files, context notes, sending, chains, delegating, deleting (`SessionChain::Delete`, `delete_plan`, `SessionManager::DelegateRule`, `RunningTasks::Policy.stop(only:)`, `--dry-run`) → `docs/sessions.md`
+- Session files, context notes, sending, chains, delegating, deleting (`SessionChain::Delete`, `SessionProtection`, `delete_plan`, `SessionManager::DelegateRule`, `RunningTasks::Policy.stop(only:)`, `--dry-run`) → `docs/sessions.md`
 - Durable schedules (`chi schedule`, `Schedules`, `ScheduleDisplay`, the tick's busy check, `schedule.*`) → `docs/scheduling.md`; the CLI section → `docs/cli.md` (Durable schedules)
 - Remote sessions (`chi --remote`, `SessionAccess`, chi web's session routes) → `docs/internals/remote-sessions.md`
 - chi web behind an auth proxy (`web.public_url`, `Web::ProxyGate`, identity header + token, Bridges refusing proxy

@@ -4504,6 +4504,24 @@ RSpec.describe Samagotchi::Web::App do
           expect(JSON.parse(body.first)).to include("error" => "chain_scheduled", "schedule_id" => entry.id)
           expect(File.exist?(session_file)).to be true
         end
+
+        it "answers 409 protection_unreadable with the one message when schedules.json is unreadable, and the plan shows it" do
+          # The schedules file sits above state_dir, in the run's own TMPDIR: put it back for the next examples.
+          path = Samagotchi::Schedules.new(state_dir: state_dir).path
+          kept = File.exist?(path) ? File.read(path) : nil
+          File.write(path, "{bad")
+          words = /\Aschedules\.json is unreadable \(.+\): fix or remove it before deleting sessions\z/
+
+          status, _headers, body = app.call(env_for("/api/sessions/#{link.id}?force=true", method: "DELETE"))
+
+          expect(status).to eq(409)
+          expect(JSON.parse(body.first)).to include("error" => "protection_unreadable", "message" => match(words))
+          plan = JSON.parse(app.call(env_for("/api/sessions/#{link.id}/delete_plan"))[2].first)
+          expect(plan.dig("link", "refusal")).to include("reason" => "protection_unreadable", "message" => match(words))
+          expect(Samagotchi::Session.exist?(link.id, state_dir: state_dir)).to be true
+        ensure
+          kept ? File.write(path, kept) : FileUtils.rm_f(path)
+        end
       end
 
       it "stops a live worker first (bounded wait), then deletes" do

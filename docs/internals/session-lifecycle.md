@@ -3,8 +3,9 @@
 There is no persisted lifecycle enum. A state is derived from the session file, sidecar files, locks, and the worker
 link: `SessionLifecycle.read(id)` (`session_lifecycle.rb`) reads them once (`WorkerPresence` with its link looked at,
 never unlinked, and `ContinueIntent.in_flight`) and names the first of its 15 states whose facts hold (Derived states).
-The same session can satisfy more than one fact (archived while its worker is leaving); the precedence picks one. One
-decider reads `SessionLifecycle`: `restart_session`'s precheck (Allowed operations). The others still read their own
+The same session can satisfy more than one fact (archived while its worker is leaving); the precedence picks one. Two
+deciders read `SessionLifecycle`: `restart_session`'s precheck and a schedule's busy check (`Schedules#busy_cell`;
+Allowed operations). The others still read their own
 subset of the facts in their own order, and what each answers per state is `ALLOWED` (Allowed operations), pinned by
 the characterization matrix. The session file layout and user-facing session behavior are in [Sessions](../sessions.md); the Worker and
 SessionManager boundaries are in [Architecture](../architecture.md) and [Engine internals](engine.md).
@@ -98,7 +99,7 @@ Link resolution (`SessionInbox::Head.resolve`, `Schedules#target_of`) stays outs
 
 The running-tasks check of a user's delete and archive (`SessionManager::RunningTasks`, `tasks_running`) is op-local,
 not an `ALLOWED` cell: it reads the transcript and each `task.json`, not the lifecycle's facts, and runs after the
-lifecycle refusals (`refuse_scheduled!`, `archivable!`), before the worker is stopped.
+lifecycle refusals (`refuse_protected!`, `archivable!`), before the worker is stopped.
 
 `restart_session` is the first decider migrated to the table: its lifecycle precheck is `SessionLifecycle.read` (the
 owner read through `session_owner`) and `ALLOWED[:restart]`: `owned_by_tui` raises `OwnedByTUI`, a refusal cell
@@ -106,7 +107,19 @@ raises `RestartRefused` with it as the reason (`starting`, `not_running`, `stop_
 `restart_fallback` (skew, a stuck start) and `go` asks the live worker. Its op-local checks stay where they were: the
 SIGSTOP check (`:stopped`, the worker's pid: a different condition with its own words, before the table's refusal),
 the worker's `restart` feature, the Bridge's reply and the fallback's holds. The matrix still drives it, so its
-column is pinned against the precheck and the op-local paths together. The other deciders don't read `ALLOWED` yet.
+column is pinned against the precheck and the op-local paths together.
+
+A schedule's busy check (`Schedules#busy_reason`, `schedules/busy_part.rb`) is the second: it reads `WorkerPresence`
+as before (the owner through `session_owner`, the link looked at), derives the state with `Reading.derive` on that
+presence with `exists: true` (the target resolved already, and a delete mid-way, its JSON gone under the deleting
+lock, must read `deleting`, not `absent`; no `ContinueIntent` read), and `#busy_cell` takes `ALLOWED[:sched_chain]`
+or `[:sched_same]` for it. Two op-local overrides keep today's order, each named by its `KNOWN_DIFFERENCES` entries: the
+stop marker before the owner (any cell but `deleting` becomes `stopped`: F1, and an unknown owner's stop), and chain
+mode's starting check with no one-turn-run check (a fresh starting marker without a worker's lock makes `go`
+`worker_busy`: F1b). A skip cell's words are `BUSY_WORDS` (`worker_newer` is Skew's own). On `go`, a live worker
+is asked through its Bridge (`#live_busy_reason`: `/activity`, an old chi, the three activity signals, chain mode's
+open streams) and any other session goes to the file checks (`#file_busy_reason`): those stay op-local, as restart's
+SIGSTOP, features and Bridge reply do. The other deciders don't read `ALLOWED` yet.
 
 ## Characterization matrix
 
@@ -123,8 +136,8 @@ code can't make (a one-turn run's lock with a stop) is marked `reachable: false`
 Every answer must equal `ALLOWED[op][state]` (for the session hub, `SHOWN[state]`: `Web::SessionSummary.build`'s
 status and bridge_up, its `SessionRow`'s live), or be named by exactly one `KNOWN_DIFFERENCES` entry (op, a `when`
 over the row, a plain reason); an entry that names no mismatch fails as stale. The entries are the findings for the
-owner, not fixed: stop-first schedule checks under a one-turn run's or an unknown owner's lock, and attach's under a
-one-turn run's, a deleter's or an unknown owner's; chain mode's starting check before any one-turn-run check; a start
+owner, not fixed: stop-first schedule checks under a one-turn run's or an unknown owner's lock (`#busy_cell`'s stop override), and attach's under a
+one-turn run's, a deleter's or an unknown owner's; chain mode's starting check before any one-turn-run check (`#busy_cell`'s F1b override); a start
 marked after the stop holding a resume off;
 `wake_for_report` reporting a worker's `:live` as `:owned`; the hub's bridge_up, live and status overlay. (Restart
 never reading the stop, the restart and schedule reading a deleter as starting, the schedule's Skew words, and
