@@ -240,6 +240,16 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         expect(e.reason).to eq(:delegate_unmovable)
       }
     end
+
+    it "raises a 409 protection_unreadable as DeleteRefused with chi web's words" do
+      words = "schedules.json is unreadable (unexpected token): fix or remove it before deleting sessions"
+      access, = scripted([409, { error: "protection_unreadable", reason: "protection_unreadable", session_id: "s",
+                                 message: words }])
+
+      expect { access.delete("s", force: true) }.to raise_error(Samagotchi::SessionManager::DeleteRefused) { |e|
+        expect([e.session_id, e.reason, e.message]).to eq(["s", :protection_unreadable, words])
+      }
+    end
   end
 
   # compat shim agent_client_id: a chi web from before agent: senders gets
