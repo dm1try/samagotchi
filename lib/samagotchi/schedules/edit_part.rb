@@ -22,10 +22,14 @@ module Samagotchi
                                keep_links: keep_links, max_failures: max_failures, max_skips: max_skips)
         raise Usage, "nothing to change" if changes.empty?
 
-        same = duplicate_in_chain(entry.anchor, prompt: changes.fetch(:prompt, entry.prompt),
-                                                title: changes.fetch(:title, entry.title),
-                                                recurrence: changes.fetch(:recurrence, entry.recurrence), except: entry.id)
-        refuse_duplicate!(same, entry.mode) if same
+        # Only an edit of what a duplicate is judged on: a budget edit of a
+        # disabled entry whose twin is on must not be refused.
+        if changes.key?(:title) || changes.key?(:prompt) || changes.key?(:recurrence)
+          same = duplicate_in_chain(entry.anchor, prompt: changes.fetch(:prompt, entry.prompt),
+                                                  title: changes.fetch(:title, entry.title),
+                                                  recurrence: changes.fetch(:recurrence, entry.recurrence), except: entry.id)
+          refuse_duplicate!(same, entry.mode) if same
+        end
 
         result = nil
         write_under_lock do |file|

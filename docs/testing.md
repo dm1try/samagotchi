@@ -683,7 +683,7 @@ that reopens the namespace and nothing else does (then firing the autoload loads
 four kinds: a part naming its host's value constants (`Samagotchi::Engine::[A-Z][A-Z_]*` in
 `engine/*.rb`: the host requires the part, so a require back is a cycle; the glob leaves classes a part
 names from elsewhere checked), one-off host pairs (`ToolRun` in `tool_response.rb`), the namespace
-autoloads that load whole (`SessionManager`, `Objectives`, `Config`), and `Plugin::Http`'s (its base file
+autoloads that load whole (`SessionManager`, `Objectives`, `Config`, `Schedules`), and `Plugin::Http`'s (its base file
 loads the reopening file only inside a method, and that file requires the base file first). The summary counts the entries that
 matched and those that match nothing: delete a stale one.
 

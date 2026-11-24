@@ -554,6 +554,17 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(status).to eq(0), error
     end
 
+    it "takes a budget edit of a disabled entry whose twin (same title) is on" do
+      id = session
+      first = schedules.add(target: id, prompt: "One", title: "Audit", recurrence: hourly)
+      schedules.disable(first.id)
+      schedules.add(target: id, prompt: "Two", title: "Audit", recurrence: hourly)
+
+      status, _, error = run("edit", first.id, "--max-skips", "5")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(first.id).max_skips).to eq(5)
+    end
+
     it "refuses a recurrence edit while a firing is in flight, and takes a prompt edit for the next firing" do
       entry = schedules.add(target: session, prompt: "Audit", recurrence: hourly)
       schedules.send(:write_under_lock) do |file|

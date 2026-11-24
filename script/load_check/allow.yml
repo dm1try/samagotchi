@@ -20,7 +20,8 @@
 
 # Rule 3: an autoload of a namespace whose target file requires every file that
 # reopens it, and is the only file that does (session_manager.rb its parts,
-# objectives.rb objectives_{backing,edit}.rb, config.rb config/restart_watch.rb).
+# objectives.rb objectives_{backing,edit}.rb, config.rb config/restart_watch.rb,
+# schedules.rb its parts and schedules/recurrence.rb).
 # Firing the autoload loads the whole namespace; no reopener is required first.
 # Kept as autoloads so a process loads those files only when it uses them.
 - rule: 3
