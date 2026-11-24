@@ -16,12 +16,14 @@ module Samagotchi
     # and from chi web.
     #
     # The script is loaded with a fresh module as its wrap (Kernel#load), which
-    # gives it `page` and keeps its own methods off Object. What the run built,
+    # gives it `page` and `runtime` and keeps its own methods off Object. What the run built,
     # or what it raised, goes to the output file (Store), never to stdout: a
     # `puts` in a script is the script's own. A TERM (Launch's cut) is not
     # rescued: the launcher records the cut itself.
     module Runner
-      # The script's `page "Title" do |ui| … end`, once per run.
+      # The script's `page "Title" do |ui| … end`, once per run, and its
+      # `runtime` (Pages::Runtime, made on first use: a page that never asks
+      # loads none of it).
       class Collector
         attr_reader :builder
 
@@ -31,8 +33,11 @@ module Samagotchi
             define_method(:page) do |title, &block|
               collector.page(title, &block)
             end
+            define_method(:runtime) { collector.runtime }
           end
         end
+
+        def runtime = @runtime ||= Runtime.new
 
         def page(title)
           raise Refused, "a page script calls page once" if @builder

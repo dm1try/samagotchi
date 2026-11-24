@@ -17,11 +17,14 @@ module Samagotchi
   # Light on purpose: the runner (pages/runner.rb) is a process of its own
   # that requires this file only, so nothing here may require the engine, the
   # config, the web, the plugins or the launcher (pages/launch.rb, which
-  # spawns the runner and needs ProcessGroup and ChildEnv).
+  # spawns the runner and needs ProcessGroup and ChildEnv). What a script
+  # reads of chi (Pages::Runtime) requires its own code when called, never
+  # at load (spec/pages_runtime_spec.rb runs a page to check).
   module Pages
     autoload :Builder, File.expand_path("pages/builder", __dir__)
     autoload :TableBlock, File.expand_path("pages/builder", __dir__)
     autoload :Store, File.expand_path("pages/store", __dir__)
+    autoload :Runtime, File.expand_path("pages/runtime", __dir__)
 
     # A page's name: lowercase letters, digits and hyphens, a letter or a
     # digit first, at most 40.
