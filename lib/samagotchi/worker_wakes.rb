@@ -78,13 +78,31 @@ module Samagotchi
     # Whether session.max_wakes holds wake turns now.
     def spent? = @in_a_row >= max
 
-    # Whether a peer's answer may start a wake turn by the peer budget
-    # (#context_open? asked first). +name+: the source, for the log line.
-    def peer_open?(name:)
-      return true if @peer_in_a_row < peer_turns
+    # Why a wake (an attached context source's; +peer+: a peer agent's
+    # answer) is held now, apart from the start grace, which is the
+    # callers' (a wake may wait it out): :paused (a failed wake turn, until
+    # a human's input), :continue (a continue offer waits), :max_wakes
+    # (session.max_wakes spent), :peer_turns (a peer's, the peer budget
+    # spent: context.peer_turns, or 0 with the peer policy off); nil when
+    # nothing holds it. The first that applies, in that order. It logs
+    # nothing: the callers write the lines.
+    # @return [Symbol, nil]
+    def wake_hold(awaiting_continue:, peer:)
+      return :paused if @paused
+      return :continue if awaiting_continue
+      return :max_wakes if @in_a_row >= max
+      return :peer_turns if peer && @peer_in_a_row >= peer_turns
 
-      Log.info(:worker, "context_wake_held", reason: "peer_turns", names: name)
-      false
+      nil
+    end
+
+    # Whether a peer's answer may start a wake turn (#context_open? asked
+    # first, so only the peer budget is left to hold it). +name+: the
+    # source, for the log line.
+    def peer_open?(awaiting_continue:, name:)
+      hold = wake_hold(awaiting_continue:, peer: true)
+      Log.info(:worker, "context_wake_held", reason: "peer_turns", names: name) if hold == :peer_turns
+      hold.nil?
     end
 
     # For delegate reports: :due when a wake turn may run now (the block
@@ -110,13 +128,9 @@ module Samagotchi
     # The context wake gates apart from start grace; used to decide whether
     # a wake must remain pending until that grace ends.
     def context_ready?(awaiting_continue:, names:)
-      return false if @paused || awaiting_continue
-
-      if @in_a_row >= max
-        Log.info(:worker, "context_wake_held", reason: "max_wakes", names: names.join(","))
-        return false
-      end
-      true
+      hold = wake_hold(awaiting_continue:, peer: false)
+      Log.info(:worker, "context_wake_held", reason: "max_wakes", names: names.join(",")) if hold == :max_wakes
+      hold.nil?
     end
 
     # For a background task that finished unseen (TaskWatch): no continue

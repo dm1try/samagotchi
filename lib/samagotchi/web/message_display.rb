@@ -4,7 +4,7 @@ require_relative "../session"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
 require_relative "../block_fix/stamp"
-require_relative "../context_absorber"
+require_relative "../peer_note"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../message_parts"
@@ -254,7 +254,7 @@ module Samagotchi
       def peer_text_html(peer, content)
         return nil unless peer.is_a?(Hash) && (peer["inline"] || peer[:inline]) && @markdown_renderer.available?
 
-        text = Samagotchi::ContextAbsorber.peer_text_of(content)
+        text = Samagotchi::PeerNote.text_of(content)
         text && @markdown_renderer.render(text)
       end
 

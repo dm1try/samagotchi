@@ -106,7 +106,10 @@ last `commit`, else a `Batch` of `Delivery` values (`name`, `note`, `subscriptio
 | no text yet | nothing |
 
 A muted source is skipped. Notes name the source as third-party text; the exact wording lives in the class constants
-(`WAKE_LAST_LINE`, `PEER_WAKE_LINE`, `PEER_AGREED_LINE` were tuned in spikes: change one only with an eval).
+and, for a peer's note, in `PeerNote` (`WAKE_LAST_LINE`, `PeerNote::WAKE_LINE`, `PeerNote::AGREED_LINE` were tuned in
+spikes: change one only with an eval). `PeerNote` holds a peer note's stateless parts (the wake lines, the read
+pointers, the text's block and `text_of`, the cap choice `body`, the `payload`); the absorber's `attached_text`,
+`updated_text` and `text_delivery` put them together.
 
 **Wake notes.** A delivery also carries a `wake_note` (the same note with the wake last line) when its source asked
 (`snapshot.wake_serial > sub.seen_serial`, so an earlier asking revision still counts) or, for a first text, only a
@@ -114,18 +117,21 @@ session's own pushed source (`first_text_wakes?`). Whether it *runs* is the work
 `WorkerInbound#context_wake_for` applies `context.wake`, `WorkerWakes#context_open?` (no continue offer, not paused,
 under `session.max_wakes`, past the start grace), and the per-source `CONTEXT_WAKE_WINDOW` (600 s, from
 `Subscription#wakes_at`); `Worker#pass` calls it only with nothing queued and no exit requested. A failed or
-stopped wake turn is rolled back (`unmark_wake`) to a plain note.
+stopped wake turn is rolled back (`unmark_wake`) to a plain note. The budget gates (`context_open?`, `context_ready?`,
+`peer_open?`, and `WorkerInbound#context_wake_waiting_for?`'s peer check) read one answer,
+`WorkerWakes#wake_hold(awaiting_continue:, peer:)`: nil or the first hold of `:paused`, `:continue`, `:max_wakes`,
+`:peer_turns`, apart from the start grace (the callers'). It logs nothing; `context_wake_held` is the callers' line.
 
 **Peers.** `PeerSources` (the peer bundles' in-process declaration, `chi.peer_source`) marks a pushed session source
 as a peer's answers; `peer_label` then needs `context.peer_turns` > 0. A peer delivery has no 10-minute window; its
 budget is `WorkerWakes#peer_open?` (reset only by typed input), and an answer whose summary ends in `VERDICT OK`
-(`peer_agrees?`) wakes once with the closing line, counted toward `session.max_wakes` only.
+(`PeerNote.agrees?`) wakes once with the closing line, counted toward `session.max_wakes` only.
 
 **Whose answer a note is.** A text note (and its wake note) of a source `PeerSources` marks as a peer's (`peer_name`:
 a pushed source of the session's own that a loaded bundle declared; *not* gated on `context.peer_turns`, and nil for an
 absorber built without peer sources, `ContextCandidates.deliver_notes`') carries `peer: {peer, label, re, summary, serial,
-verdict, agreed}` (`peer_note`; string keys, nils dropped): `re` the snapshot's, `verdict` the summary's last
-`VERDICT` match when one of `VERDICTS`, `agreed` `peer_agrees?` directly. It is display data, as `objectives` is:
+verdict, agreed}` (`peer_note`, `PeerNote.payload`; string keys, nils dropped): `re` the snapshot's, `verdict` the
+summary's last `PeerNote::VERDICT` match when one of `VERDICTS`, `agreed` `PeerNote.agrees?` directly. It is display data, as `objectives` is:
 `ContextNote::KEYS` keeps it (the key-by-key copier is `ChatLoop#plain`), `:context_added` carries it, the reload's note
 items (`Web::MessageDisplay`) carry it with `context_source`, and no wire sends it (role and content only), so the
 note's content, what the model reads, is the same byte for byte. `peer_label` and `Delivery#peer` keep deciding the

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "context_absorber"
+require_relative "peer_note"
 require_relative "jsonl_store"
 require_relative "session"
 
@@ -68,9 +68,9 @@ module Samagotchi
     end
 
     def answer_row(entry)
-      verdict = entry["summary"].to_s.scan(ContextAbsorber::VERDICT).last&.first
+      verdict = entry["summary"].to_s.scan(PeerNote::VERDICT).last&.first
       { summary: entry["summary"], at: entry["at"], serial: entry["serial"],
-        verdict: (verdict if ContextAbsorber::VERDICTS.include?(verdict)) }.compact
+        verdict: (verdict if PeerNote::VERDICTS.include?(verdict)) }.compact
     end
   end
 end
