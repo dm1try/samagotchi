@@ -69,7 +69,7 @@ module Samagotchi
     # What a delivery of one kind may do to a session's worker: one frozen
     # row per kind (ROWS), decided on WorkerPresence's predicates alone, in
     # one order for every kind (#decide).
-    # @!attribute kind [Symbol] :send, :note, :push, :ring, :fresh_verdict,
+    # @!attribute kind [Symbol] :send, :note, :push, :peer, :ring, :fresh_verdict,
     #   :leave (WorkerBoot's respawn, not a delivery), or a turn delivery's
     #   unattended sender (deliver_turn, #for_sender): :schedule, :plugin,
     #   :delegate, :participant, :automatic
@@ -158,6 +158,9 @@ module Samagotchi
                            refuse_tui: true, refuse_scratch: true),
       push: WakePolicy.new(kind: :push, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
                            refuse_tui: false, refuse_scratch: false),
+      # A peer agent's message (chi peer say, PeerMailbox.post): a push's row.
+      peer: WakePolicy.new(kind: :peer, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
+                           refuse_tui: false, refuse_scratch: false),
       ring: WakePolicy.new(kind: :ring, resolves: :reader, starts: true, unstops: false, starts_archived: false,
                            refuse_tui: false, refuse_scratch: false),
       fresh_verdict: WakePolicy.new(kind: :fresh_verdict, resolves: :pinned, starts: false, unstops: false,
@@ -241,7 +244,7 @@ module Samagotchi
     # SessionInbox.deliver and SessionInbox.wake.
     module Dispatch
       # What a start each kind makes is logged as (SessionManager.start_for_inbox).
-      START_EVENTS = { ring: :delegate_woke_parent, push: :context_woke_session }.freeze
+      START_EVENTS = { ring: :delegate_woke_parent, push: :context_woke_session, peer: :peer_woke_session }.freeze
 
       module_function
 
