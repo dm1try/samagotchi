@@ -862,29 +862,33 @@ index = Samagotchi::Tools::ToolIndex
   names itself (an mcp bundle before 0.7.0 has `find_mcp_tools` and
   `mcp_call`) keeps them; with no source, `full` declares neither of chi's.
 
-### `chi.peer_source(name, label:)`
+### `chi.peer(name)`
 
-Declares a context source as a peer agent's answers: the peer bundles'
-`claude-outbox` and `codex-outbox`. Such a source, when it is a pushed source
-of the session's own, wakes the session by the peer loop's rules instead of
-the 10-minute window: up to `context.peer_turns` wake turns in a row, one
-closing wake (outside that count) for an answer whose verdict is `VERDICT OK`,
-and a wake line that names the peer and keeps the turn within the user's task (see [Waking: peer
-sources](context.md#peer-sources-the-peer-loop)).
+Declares a peer agent this bundle speaks for: the peer bundles' `claude` and
+`codex`. Its messages in the session's mailbox (`chi peer say NAME`,
+[peers.md](peers.md)) become its notes and may wake the session by the peer
+loop's rules: up to `peer.turns` wake turns in a row, one closing wake
+(outside that count) for a message whose verdict is `VERDICT OK`, and a wake
+line that names the peer and keeps the turn within the user's task.
 
 ```ruby
-chi.peer_source "codex-outbox", label: "Codex"
+chi.peer "codex"
 ```
 
-- `name`: a context source name (as `chi context add` takes it). Another
-  bundle's is a load error.
-- `label:`: the peer's name, said in chi's own lines ("your peer agent
-  Codex"): a capital letter, then up to 23 letters and spaces.
+- `name`: a lowercase letter, then lowercase letters and digits, up to 24.
+  Another bundle's is a load error. The peer's label is its name capitalised
+  ("Codex").
 
-The declaration lives in the session's process only, like a tool: a source
-file can't make itself a peer's, and uninstalling the bundle ends it.
-Subclasses of `Samagotchi::Plugin::Peer` (below) declare their `OUTBOX`
-source. Needs chi 0.67.0 (guard it with `chi.respond_to?(:peer_source)`).
+The declaration lives in the session's process only, like a tool: a file in
+the mailbox can't make its writer a peer, and uninstalling the bundle ends it
+(a message from a name no loaded bundle declared is refused, and delivered
+once one does). Subclasses of `Samagotchi::Plugin::Peer` (below) declare their
+`PEER`. Needs the next chi (guard it with `chi.respond_to?(:peer)`).
+
+`chi.peer_source(name, label:)` (the context-source peers of chi 0.67.0 to
+0.187.0) is gone: it raises "chi.peer_source is gone: upgrade this bundle
+(chi bundle install <name> --force)", so an older peer bundle fails to load
+and chi starts without it.
 
 ### `chi.judgment(name, questions:, positive: nil, negative: nil)`
 
@@ -1567,7 +1571,7 @@ ctx.context.decline(url: "https://github.com/acme/app/pull/42")    # => "pr-42"
 ctx.context.propose(url: "https://github.com/acme/app/pull/42", title: "#42 Make the thing", mentions: ["#42", "feat/x"])
 ctx.context.candidates  # => [#<data Candidate name="pr-42", url="https://…", title="#42 Make the thing", …>]
 ctx.context.withdraw("pr-42")  # => true
-ctx.context.left_behind  # => [#<data Left name="claude-inbox", hint="/tmp/…sock", from="3f2a9c1e-…">]
+ctx.context.left_behind  # => [#<data Left name="notes", hint="…", from="3f2a9c1e-…">]
 ```
 
 [Attached context](context.md) for the session the plugin runs in: chi runs
@@ -1616,8 +1620,7 @@ gets a note when its text changes.
   session left with the previous link ([Movable
   context](context.md#movable-context)): `ContextSources::Left` values with
   `name`, `hint` (the last pushed one, else the source's) and `from` (the
-  previous link's id); `[]` for a session that isn't a continue's. The peer
-  bundles read it to ask their peer to pair again (below).
+  previous link's id); `[]` for a session that isn't a continue's.
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
@@ -1633,6 +1636,23 @@ gets a note when its text changes.
 
 The [github-pr bundle](bundles.md#the-github-pr-bundle) proposes the branch's PR from
 a quiet `chi.init` task.
+
+## Peers: `ctx.peers`
+
+```ruby
+ctx.peers.link("claude")         # => #<data PeerLink peer="claude", address="/tmp/…sock", paired_at="…", from="…"> or nil
+ctx.peers.left_behind("claude")  # the previous link's pairing, in a continue's new link; else nil
+ctx.peers.message("claude", 12)  # => #<data PeerMessage serial=12, text="…", summary="…", wake=true, re="s-ab12cd", at="…"> or nil
+ctx.peers.last_message("claude") # the newest message still in the mailbox, or nil
+```
+
+What a peer bundle reads of its peer's side of the session (the mailbox,
+[peers.md](peers.md)): the pairing (`address` nil: the peer answers only) and
+the peer's messages. Read only: the peer pairs and says through `chi peer`,
+and the worker takes the messages. A continue leaves the pairing with the
+previous link, so a new link's `link` is nil until the peer pairs again;
+`left_behind` is the one the previous link kept (`Plugin::Peer#tell_moved`
+tells the peer the new id there). Needs the next chi.
 
 ### Context providers in the manifest
 
@@ -1741,16 +1761,18 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `Samagotchi::Plugin::Secrets::Busy` and `Samagotchi::Plugin::Secrets::Unavailable` (a bundle rescues them by name).
 2. `Samagotchi::Plugin::Peer` as a base class. A subclass defines `post`,
    `check_hint!`, `paired_lines`, `transport_line`, `peer_dir` and
-   `setup_paragraph` (optionally `skill_substitutions`), and sets `NAME`,
-   `APP`, `COMMAND`, `USAGE`, `OUTBOX` and `SCRIPTS_DIRS`. These constants are
-   read as `self.class::X`. The base names each send: `Peer.send_id(kind, title, text, salt)` (`s-` and 6 hex
+   `setup_paragraph` (optionally `skill_substitutions` and `skill_installed`), and sets `PEER`, `NAME`,
+   `APP`, `COMMAND`, `TOOL`, `READ_TOOL`, `USAGE`, `LEGACY_INBOX`, `LEGACY_OUTBOX` and `SCRIPTS_DIRS`. These
+   constants are read as `self.class::X`. It declares the peer (`chi.peer PEER`), the send tool and
+   `<peer>_read` (a long message by its number, paged), and sends to the pairing's address
+   (`ctx.peers.link`). The base names each send: `Peer.send_id(kind, title, text, salt)` (`s-` and 6 hex
    of SHA-256 over the args as given and the send's salt: the tool run's `ctx.tool_id`, a random one for a
    `/<peer>` command's, so each send has its own id; a nil salt gives an older chi's id, over the args alone) is the
    message's second line (`ref: <id>`), the tool row's `peer` ref (display only, no actions; computed from the args
    and the run's id before the call runs, a two-arg `refs:`, so a send that then fails has it too) and the last
-   send's `id`; the peer's answer echoes it as `re` ([context.md](context.md#the-command-contract)).
-   Successful sends and transport failures are recorded in the session's peer exchange log; answer pushes add
-   summaries, not answer texts. The log does not enter the model's context.
+   send's `id`; the peer's answer names it (`chi peer say --re`).
+   Successful sends and transport failures are recorded in the session's peer exchange log; the answers are the
+   mailbox's messages. The log does not enter the model's context.
    See the [claude-peer](bundles.md#the-claude-peer-bundle) and
    [codex-peer](bundles.md#the-codex-peer-bundle) bundles.
 3. `Samagotchi::Tools::ToolIndex::Tool` and `Samagotchi::Tools::ToolIndex::Group`
@@ -1838,6 +1860,9 @@ bundle.set(usage: { tool_calls: 40, active_ms: 600_000 }) # ctx.usage: { turns:,
 bundle.set(turn_author: "p:p_0123abcd")                  # a participant's turn: ctx.turn_author, and author: on every event
 bundle.set(session_settings: { "cap" => 1 })             # the session's --set values (Bundle.load takes session_settings: too)
 bundle.tool_loads.last.names                             # ctx.load_tools calls; set(load_tools_staged: [...]) limits what they stage
+bundle.pair_peer("claude", address: "/tmp/c.sock")       # a peer's side, as chi peer pair writes it (ctx.peers.link); address: nil answers only
+bundle.peer_says("claude", "VERDICT OK", summary: "s")   # a message in the mailbox, as chi peer say writes it (ctx.peers.message)
+bundle.unpair_peer("claude")                             # chi peer unpair; bundle.peer_registry.names: the chi.peer declarations
 bundle.shutdown
 ```
 
@@ -1913,7 +1938,7 @@ docs/testing.md). **Minitest:** `require "samagotchi/testing/minitest"` and subc
   checked: a bundle whose `requires_chi` this chi doesn't meet raises `InstallError` unless `force: true`)
   and loads the installed copy with chi's own loaders. It returns `warnings` (the Installer's),
   `plugin_failures` / `hook_failures` (each with the `location` in your source, `plugin.rb:12`) and `registered`
-  (commands, tools, hooks per event, inits, toolkits, tool and peer sources). A name chi ships raises
+  (commands, tools, hooks per event, inits, toolkits, tool sources and peers). A name chi ships raises
   `MemoryBundle::Installer::InstallError` unless `force: true`.
 - **From the command line:** `chi bundle test [PATH]` runs a bundle's `test/**/*_test.rb` (or `spec/`) on the
   Ruby and lib chi runs on, and `chi bundle check [PATH] [--fix]` runs `Install` (and the manifest, sha and

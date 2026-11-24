@@ -688,6 +688,7 @@ compatibility from its version. `Bridge::FEATURES` advertises:
 | `participant_client_id` | chi web can identify a participant as `participant:<id>` instead of using the legacy `review:<id>`. |
 | `block_fix` | `POST /session/:id/blocks/fix` asks again for a block the page couldn't draw; the owner's page without it says "restart this session to fix". |
 | `working_set_item` | `GET /session/:id/working_set/item` answers one item's timeline (the running turn's mid-turn), so chi web asks for it instead of the whole snapshot. |
+| `peer_mail` | The worker takes a peer's messages from the mailbox (`WorkerInbound#absorb_mail`, [peers.md](peers.md)); `chi peer pair` and `say` refuse a live worker without it ("restart the session"), read through `WorkerLink.live_features`. |
 | `agent_sender` | The worker reads an agent's id (`agent:<name>`: a driver's or a visitor's turn, `Visitor`). Without it `SessionManager#deliver_turn_now` sends `cli:send` instead (compat shim agent_client_id), also on the file path while a worker holds the session; chi web lists it in `/api/info` too, for `SessionAccess::Remote#sent_id`. |
 | `ask_session` | The worker runs another session's question (`session:<id8>`) as a visitor's turn. Without it the question is refused (409 `ask_unavailable`), and its file is not written while a worker may hold the session. |
 

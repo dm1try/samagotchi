@@ -9,8 +9,7 @@ require "samagotchi/hooks/registry"
 require "samagotchi/tools/registry"
 
 # chi.peer: a plugin declares a peer agent whose mailbox messages become
-# its notes (PeerRegistry), staged like any registration; beside the old
-# chi.peer_source until the bundles switch.
+# its notes (PeerRegistry), staged like any registration.
 RSpec.describe "chi.peer" do
   let(:registry) { Samagotchi::PeerRegistry.new }
   let(:registries) do

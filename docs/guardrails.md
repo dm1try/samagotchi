@@ -351,7 +351,9 @@ with `writes: true` (symlinks resolved; see
 
 - deny: the approval store's dir, installed bundles (`memories/.bundles/`),
   [attached context](context.md) sources (`<state dir>/context/`: a
-  source's command runs later, outside the gate; `chi context` changes them)
+  source's command runs later, outside the gate; `chi context` changes them),
+  a peer's [mailbox](peers.md) (`<state dir>/mailbox/`: chi's own tools never
+  write a peer's messages or pairing, `chi-mailbox`; `chi peer` does)
   and [System 1's saved runs](system-one.md) (`<state dir>/system_one/`);
 - ask (once or for the session): `config.yml`, `home.json` (the [chi home](configuration.md#the-chi-home): the Ruby every chi launch boots), the chi shim (`$XDG_STATE_HOME/samagotchi/bin/chi`, the `chi` every tool runs: `chi-shim`) and the plain hooks dir.
 

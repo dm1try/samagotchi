@@ -48,7 +48,7 @@ comment is the file map and [../context.md](../context.md#storage) lists it for 
 - **Records** (`Data`/value objects): `Source` (definition; `cmd` nil = pushed; `movable` nil derives from
   `push?`), `Snapshot` (last good text, `revision` = SHA-256 of the text, `serial` counting revisions, `error` and
   `error_since`, `wake_serial` = the newest revision that asked to wake, `fetched_at` last success, `checked_at` last
-  try, `re` = the send a peer's answer names, with the revision: nil for none, an older snapshot's too), `Subscription` (what one session has had: `seen`/`seen_serial`, `read`, `error_seen`, `wakes_at`),
+  try; an older file's `re` is ignored), `Subscription` (what one session has had: `seen`/`seen_serial`, `read`, `error_seen`, `wakes_at`),
   `Candidate`, `Left`, `Moved`/`Stayed`.
 - **Locations.** A `Location` is a folder of sources: a project's (`projects/<project_key>/`, shared by the
   project's workers) or a session's (`sessions/<id>/`, which also holds `subscriptions.json`, the `muted/` and
@@ -96,7 +96,7 @@ left out so the worker's own write is not a change), compared on each pass.
 ## ContextAbsorber
 
 Pure decision, no I/O of its own beyond the store. `pending` returns `nil` when the signature hasn't moved since the
-last `commit`, else a `Batch` of `Delivery` values (`name`, `note`, `subscription`, `wake_note`, `peer`, `agreed`):
+last `commit`, else a `Batch` of `Delivery` values (`name`, `note`, `subscription`, `wake_note`):
 
 | State of source vs the session's `Subscription` | Delivery |
 |---|---|
@@ -107,10 +107,7 @@ last `commit`, else a `Batch` of `Delivery` values (`name`, `note`, `subscriptio
 | no text yet | nothing |
 
 A muted source is skipped. Notes name the source as third-party text; the exact wording lives in the class constants
-and, for a peer's note, in `PeerNote` (`WAKE_LAST_LINE`, `PeerNote::WAKE_LINE`, `PeerNote::AGREED_LINE` were tuned in
-spikes: change one only with an eval). `PeerNote` holds a peer note's stateless parts (the wake lines, the read
-pointers, the text's block and `text_of`, the cap choice `body`, the `payload`); the absorber's `attached_text`,
-`updated_text` and `text_delivery` put them together.
+(`WAKE_LAST_LINE` was tuned in a spike: change it only with an eval).
 
 **Wake notes.** A delivery also carries a `wake_note` (the same note with the wake last line) when its source asked
 (`snapshot.wake_serial > sub.seen_serial`, so an earlier asking revision still counts) or, for a first text, only a
@@ -118,32 +115,14 @@ session's own pushed source (`first_text_wakes?`). Whether it *runs* is the work
 `WorkerInbound#context_wake_for` applies `context.wake`, `WorkerWakes#context_open?` (no continue offer, not paused,
 under `session.max_wakes`, past the start grace), and the per-source `CONTEXT_WAKE_WINDOW` (600 s, from
 `Subscription#wakes_at`); `Worker#pass` calls it only with nothing queued and no exit requested. A failed or
-stopped wake turn is rolled back (`unmark_wake`) to a plain note. The budget gates (`context_open?`, `context_ready?`,
-`peer_open?`, and `WorkerInbound#context_wake_waiting_for?`'s peer check) read one answer,
-`WorkerWakes#wake_hold(awaiting_continue:, peer:)`: nil or the first hold of `:paused`, `:continue`, `:max_wakes`,
-`:peer_turns`, apart from the start grace (the callers'). It logs nothing; `context_wake_held` is the callers' line.
+stopped wake turn is rolled back (`unmark_wake`) to a plain note. The budget gates (`context_open?`, `context_ready?`)
+read one answer, `WorkerWakes#wake_hold(awaiting_continue:, peer:)`: nil or the first hold of `:paused`, `:continue`,
+`:max_wakes` (and `:peer_turns` for the mail path), apart from the start grace (the callers'). It logs nothing;
+`context_wake_held` is the callers' line.
 
-**Peers.** `PeerSources` (the peer bundles' in-process declaration, `chi.peer_source`) marks a pushed session source
-as a peer's answers; `peer_label` then needs `context.peer_turns` > 0. A peer delivery has no 10-minute window; its
-budget is `WorkerWakes#peer_open?` (reset only by typed input), and an answer whose summary ends in `VERDICT OK`
-(`PeerNote.agrees?`) wakes once with the closing line, counted toward `session.max_wakes` only.
-
-**Whose answer a note is.** A text note (and its wake note) of a source `PeerSources` marks as a peer's (`peer_name`:
-a pushed source of the session's own that a loaded bundle declared; *not* gated on `context.peer_turns`, and nil for an
-absorber built without peer sources, `ContextCandidates.deliver_notes`') carries `peer: {peer, label, re, summary, serial,
-verdict, agreed}` (`peer_note`, `PeerNote.payload`; string keys, nils dropped): `re` the snapshot's, `verdict` the
-summary's last `PeerNote::VERDICT` match when one of `VERDICTS`, `agreed` `PeerNote.agrees?` directly. It is display data, as `objectives` is:
-`ContextNote::KEYS` keeps it (the key-by-key copier is `ChatLoop#plain`), `:context_added` carries it, the reload's note
-items (`Web::MessageDisplay`) carry it with `context_source`, and no wire sends it (role and content only), so the
-note's content, what the model reads, is the same byte for byte. `peer_label` and `Delivery#peer` keep deciding the
-wakes.
-
-**Exchange log.** `Plugin::Peer` appends successful sends and transport failures;
-`SessionAccess::Local#context_push` appends changed session outbox answers under the
-source lock, without nesting another lock. Appending failure is logged and does not
-fail a send or push. `PeerExchanges` joins by time and ref, falling back to the
-latest unanswered validate or question for an old skill. An owner-only chi web
-route reads it without a worker; no event or model-visible text changes.
+**Peers.** A peer agent's messages are not attached context: they come through the session's mailbox, with their own
+wake budget, note and receipts ([peers.md](peers.md)). A source named `claude-outbox` is an ordinary source, its notes
+and wakes as any other's.
 
 ## Candidates
 
@@ -219,13 +198,10 @@ second note; `words` is the few words `chi send --new --continues` prints; `to_h
 `moved_context` answer (an older chi web sends none: `from_h(nil)` is nil).
 
 **left.json.** For a *continue* the stayed sources are also written to the new link's `sessions/<id>/left.json`
-(`Left`: `name`, `hint`, `from`; the hint is the snapshot's, since a pushed source's hint is where a peer's re-pair
-pushes). `ctx.context.left_behind` reads it (`Plugin::AttachedContext#left_behind`) and `ctx.continues` names the
-previous link. `Plugin::Peer#pair_again` uses both: from its quiet init task it posts one `moved` message to the
-inbox left behind and records a marker under the bundle's `sessions/<id>/`, so it runs once. `Left#peer` /
-`PEER_NAME` exist only to word the second note (a peer's inbox and outbox are one group: "chi asks Claude to pair
-again" vs "Codex pairs again when it next answers"); `PeerSources` decides what a peer is. A fork writes no
-`left.json`.
+(`Left`: `name`, `hint`, `from`; the hint is the snapshot's). `ctx.context.left_behind` reads it
+(`Plugin::AttachedContext#left_behind`, public, with no shipped caller since the peers left context) and
+`ctx.continues` names the previous link. A fork writes no `left.json`. (A peer's pairing on a continue:
+[peers.md](peers.md), A continue.)
 
 The refusal side: a push into a session that has been continued is refused with the next link's id
 (`context_continued`, chi web 410, `chi context push` exit 1), from `SessionAccess` (`session_access.rb`) and chi web's push route (`web/session_access_routes.rb`).
@@ -235,27 +211,26 @@ The refusal side: a push into a session that has been continued is refused with 
 | Where | Gate |
 |---|---|
 | Absorb at all | the conversation has started (`conversation_started?`), or `before_turn: true`; the session isn't stopped on disk |
-| A wake turn | `context.wake`; `WorkerWakes#context_open?`; `CONTEXT_WAKE_WINDOW`; nothing queued and no exit requested; peer: `context.peer_turns`, `peer_open?` |
+| A wake turn | `context.wake`; `WorkerWakes#context_open?`; `CONTEXT_WAKE_WINDOW`; nothing queued and no exit requested |
 | Mention attach | `OwnerPrompt.turn?` (owner author) |
 | Judge | `context.candidates.mode` `audit`/`on` (default `off`); a System 1 client configured; not a participant's turn, scratch session or Continue |
 | Command source defined by the agent | `chi-context-cmd` guardrails rule asks, always; a parent agent can't approve it for a child |
 | Writes to the store | `ProtectedPaths` denies the file tools |
 
 Keys, all in [../configuration.md](../configuration.md): `context.every_seconds`, `context.wake`,
-`context.peer_turns`, `session.max_wakes`, `context.candidates.{mode,threshold,offer_threshold,reask_after_turns}`.
+`session.max_wakes`, `context.candidates.{mode,threshold,offer_threshold,reask_after_turns}`.
 
 ## Data files
 
 | File | Written by | Read by |
 |---|---|---|
 | `context/{projects/<key>,sessions/<id>}/<name>.json` | `chi context add`, a provider, a plugin (`ctx.context.attach`), `ContextCandidates.attach`, `ContextMove` | poller, absorber, `context_read`, chi web |
-| `<name>.snapshot.json` (a push's `re` too) | `ContextFetch`, `chi context push`, `ContextMove` | absorber, `context_read`, chi web chips |
+| `<name>.snapshot.json` | `ContextFetch`, `chi context push`, `ContextMove` | absorber, `context_read`, chi web chips |
 | `<name>.lock` | `ContextFetch` / `Location#locked` | same |
 | `sessions/<id>/subscriptions.json` | the worker (`commit`, `context_read`) only | absorber, chi web (unread dot) |
 | `sessions/<id>/{muted,declined}/<name>` | `chi context mute`, a removal, `ContextMove` | poller, absorber, candidates |
 | `sessions/<id>/candidates/<name>.json` | `ctx.context.propose` | candidates, judge, `/context` |
 | `sessions/<id>/left.json` | `ContextMove` (continue) | `ctx.context.left_behind` |
 | `context_candidates.jsonl` (beside `sessions/`) | `ContextCandidatesLog` | judge (`due?`), choice (`carded?`), `chi context report` |
-| `sessions/<id>/peer_exchanges.jsonl` (session sidecar, not context root) | `Plugin::Peer`, `SessionAccess::Local` | `GET /api/sessions/:id/peers` |
 
 Specs: `spec/context_*_spec.rb`; a store under test uses an isolated `XDG_STATE_HOME`.

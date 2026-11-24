@@ -2,9 +2,13 @@
 
 Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/sessions/<uuid>.json` (XDG-aware via `XDG_STATE_HOME`) plus a sidecar dir `<uuid>/` with `input/`/`notes/`/`output/`/`owner.lock`/`bridge.json` (`Session.session_dir`), `turn_drawings.jsonl` once a turn ended with a Bridge or in a one-shot run (each finished turn as live drew it, which the web's reload draws: [bridge.md](internals/bridge.md#turndrawings); a fork starts with its parent's lines for the turns its seed keeps unchanged, a continue with none: its turns, and any without a line, are drawn from their messages), and `tool_output/` once a long `execute` result was cut: its whole output, which the cut result names (`ToolOutputFiles`, the newest 50 kept; see [Tool output guardrails](internals/tool-output-limits.md#the-runners-cut-max_tool_output_chars)). Its keys are in [the Session file table](#session-file). A file from before `used_memory_names`, `preloaded_memory_names`, `muted_memory_names`, `parent_id` or `continues` reads those as empty lists, no parent and no previous link.
 
-The sidecar's `peer_exchanges.jsonl` records peer sends, transport failures
-and answer summaries, never answer text. It stays with the previous link on a
-continue; the new link starts empty. See [context storage](context.md#storage).
+The sidecar's `peer_exchanges.jsonl` records peer sends and transport
+failures, never their text, and `peer_receipts.json` what the worker did with
+each peer message (its worker writes it alone); the messages themselves are in
+the mailbox, `$XDG_STATE_HOME/samagotchi/mailbox/<uuid>/<peer>/`, apart from
+the sessions folder. All three stay with the previous link on a continue (its
+unread messages reach the new link as one note); a delete removes them. See
+[peers.md](peers.md).
 
 **Message times:** an entry of `messages` may carry `at`, when it happened: a local-offset ISO time with milliseconds (`2026-10-24T14:32:05.120+02:00`). User prompts, lines merged into a turn and steers, reminders, context and task notes, and the model's replies have one (a note's is its `created_at`); tool results, `!cmd` messages and chi's own turn notes don't, nor does anything saved before chi stamped messages (no backfill). It is for the UIs only (the gap dividers, a bubble's time): it never goes to the model, so it changes nothing in the requests or their prompt cache. The one time the model reads is the reminders': due reminders go into a turn as a system message headed `[SYSTEM: REMINDERS DUE 2026-10-24 14:32 local]` (the turn's local time; `ReminderQueue#inject!`), written into the saved content then, so a later request sends the same text.
 

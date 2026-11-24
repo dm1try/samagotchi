@@ -8,8 +8,29 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi peer pair|unpair|say|ls` (also through `--remote`), `claude_read` / `codex_read` for a long message, and chi
+  web's `…/peers` routes (a message's text, Unpair, a remote's pair and say).
+
 ### Changed
 
+- **Breaking:** peers (claude-peer, codex-peer) talk to chi through a mailbox, not attached context
+  ([docs/peers.md](docs/peers.md)). Each message from Claude or Codex is its own note, in order, with its text;
+  `chi peer say` prints what chi did with it (`#12 received · woke chi`, or `held: 3 peer turns in a row (peer.turns)
+  · waits for the user's next message`), and the peer chip's list says it too. The `claude-inbox` / `claude-outbox`
+  (`codex-…`) context sources are gone, with no compatibility. To upgrade:
+  1. `chi update` (claude-peer and codex-peer need this chi; an older peer bundle fails to load with "upgrade this
+     bundle", and chi starts without it).
+  2. In Claude Code: `/claude install-skill`, Replace. In Codex: `/codex install-skill`, and change its
+     `writable_roots` line in `config.toml` from `…/samagotchi/context` to `…/samagotchi/mailbox`.
+  3. Pair again (`pair with chi <id>`). Until then `/claude` says "paired the old way: pair again".
+- **Breaking:** `context.peer_turns` is renamed `peer.turns` (no alias: an old key in config.yml or the environment is ignored, so
+  rename it). `peer.turns: 0` means a peer's message never wakes chi; `context.wake` no longer applies to peers.
+- A continue leaves a peer's pairing with the previous session, as before: the peer is told the new id and pairs
+  again; what it said that the old session hadn't read reaches the new one as one note.
+- **Breaking:** plugins: `chi.peer_source` is gone (it raises how to upgrade); a peer bundle declares `chi.peer NAME` and reads
+  its pairing with `ctx.peers`.
 - `chi schedule list`: each row names its schedule (its title, or the start of its prompt in quotes), so a
   disabled one is easy to tell apart; the name column is padded to the widest name of the rows printed.
   `list_schedules` names them the same way.
