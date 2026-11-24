@@ -263,9 +263,10 @@ module Samagotchi
           enqueue_update("chi:#{kind}:#{version}", title, body) if kind
         end
 
-        # A recurring schedule chi web's tick turned off (SessionHub#publish_disabled).
-        # The key's +at+ (the tick's time) lets a later disable of the same
-        # schedule notify again; its chi: prefix keeps it out of WAITING_TAG.
+        # A recurring schedule a ticker (cron, run-now or chi web's own tick)
+        # turned off by its budget (SessionHub#publish_disabled). The key's +at+
+        # (the disabling tick's time) lets a later disable of the same schedule
+        # notify again; its chi: prefix keeps it out of WAITING_TAG.
         def notice_schedule_disabled(event)
           data = event.data
           id = data[:id]

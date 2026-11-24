@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A schedule turned off by its skip or failure budget notifies the phone whatever ran the tick: a cron
+  `chi schedule tick` or a `run-now` too, not only chi web's own tick (chi web pushes it, with `schedule.auto_tick`
+  off as well).
+
 ### Fixed
 
 - Pairing claude-peer or codex-peer again removes that peer's old inbox/outbox context sources (their chips).

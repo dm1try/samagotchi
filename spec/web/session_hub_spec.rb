@@ -811,31 +811,84 @@ RSpec.describe Samagotchi::Web::SessionHub do
       stopper&.join
     end
 
-    it "emits one schedule_disabled per outcome that disabled its schedule, for the notifier" do
-      hub, schedules = hub_with(true)
+    # A schedule some ticker (cron, run-now) turned off by its budget: the
+    # notice it left in schedules.json, as Schedules#skipped writes it.
+    def disabled_by_cron(title: "Heartbeat", at: Time.now.utc)
+      session = save_session
+      schedules = Samagotchi::Schedules.new(state_dir: state_dir)
+      entry = schedules.add(target: session.id, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1m"),
+                            title: title)
+      schedules.send(:write_under_lock) do |file|
+        file.entries.map! do |stored|
+          stored.with(enabled: false, skips: 12,
+                      disabled_notice: { kind: "skipped", count: 12, reason: "the session is running a turn",
+                                         at: at.iso8601 })
+        end
+      end
+      [entry, session, at]
+    end
+
+    def disabled_events(list = events) = list.select { |event| event.type == "schedule_disabled" }
+
+    it "emits one schedule_disabled for a notice another ticker left, after its own tick" do
+      hub, = hub_with(true)
       hub.subscribe(->(event) { events << event })
-      tick_now = Time.utc(2026, 11, 22, 12, 34, 56)
-      entry = Struct.new(:skips, :failures).new(12, 0)
-      bad = Samagotchi::Schedules::Outcome.new(id: "bad", status: "failed", detail: "bad event", disabled: true)
-      off = Samagotchi::Schedules::Outcome.new(id: "abc123", title: "Heartbeat", status: "skipped",
-                                               detail: "the session is running a turn", entry: entry, disabled: true,
-                                               session_id: "sess-1")
-      plain = Samagotchi::Schedules::Outcome.new(id: "def456", status: "skipped", detail: "busy", entry: entry)
-      allow(Time).to receive(:now).and_return(tick_now)
-      expect(schedules).to receive(:tick).with(now: tick_now)
-                                         .and_return(Samagotchi::Schedules::Tick.new(outcomes: [bad, plain, off]))
-      expect(Samagotchi::Log).to receive(:warn).with(
-        :web, "schedule_disabled_failed", hash_including(id: "bad", error: "NoMethodError")
-      ).once
+      entry, session, at = disabled_by_cron
       expect(Samagotchi::Log).not_to receive(:warn).with(:web, "schedule_tick_failed", anything)
 
       hub.send(:run_schedule_tick)
 
-      disabled = events.select { |event| event.type == "schedule_disabled" }
-      expect(disabled.map(&:data)).to match([
-        { id: "abc123", title: "Heartbeat", kind: "skipped", count: 12, reason: "the session is running a turn",
-          session_id: "sess-1", at: tick_now.utc.iso8601 }
+      expect(disabled_events.map(&:data)).to eq([
+        { id: entry.id, title: "Heartbeat", kind: "skipped", count: 12, reason: "the session is running a turn",
+          session_id: session.id, at: at.iso8601 }
       ])
+    end
+
+    it "emits it once, though the scan's pass and its own tick both claim" do
+      hub, = hub_with(true)
+      hub.subscribe(->(event) { events << event })
+      disabled_by_cron
+
+      hub.send(:schedule_tick)
+      wait_for("schedule tick to finish") { !hub.instance_variable_get(:@schedule_tick_in_flight) }
+      hub.send(:run_schedule_tick)
+
+      expect(disabled_events.size).to eq(1)
+    end
+
+    it "emits it with auto_tick off too, and never ticks" do
+      hub, schedules = hub_with(false)
+      hub.subscribe(->(event) { events << event })
+      entry, = disabled_by_cron
+
+      hub.send(:schedule_tick)
+      hub.send(:schedule_tick)
+
+      expect(disabled_events.map { |event| event.data[:id] }).to eq([entry.id])
+      expect(schedules).not_to have_received(:tick)
+    end
+
+    it "keeps a notice present at start-up for the first ticking scan, not the seeding one" do
+      hub, = hub_with(false)
+      hub.subscribe(->(event) { events << event })
+      entry, = disabled_by_cron
+
+      hub.scan(tick: false)
+      expect(disabled_events).to eq([])
+
+      hub.scan
+      expect(disabled_events.map { |event| event.data[:id] }).to eq([entry.id])
+    end
+
+    it "logs an unreadable schedules.json and goes on" do
+      hub, schedules = hub_with(false)
+      hub.subscribe(->(event) { events << event })
+      allow(schedules).to receive(:claim_disabled_notices).and_raise(Samagotchi::Schedules::Corrupt, "bad")
+      expect(Samagotchi::Log).to receive(:warn).with(:web, "schedule_notices_failed",
+                                                     hash_including(error: "Samagotchi::Schedules::Corrupt"))
+
+      hub.send(:schedule_tick)
+      expect(disabled_events).to eq([])
     end
 
     it "emits nothing and logs nothing for a tick result that is not a Tick" do

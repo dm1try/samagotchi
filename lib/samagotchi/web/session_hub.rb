@@ -52,8 +52,8 @@ module Samagotchi
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal, `chi` with
       #   the #chi_state fields when chi version state changes, `chi_notice`
-      #   (#publish_notice) and `schedule_disabled` (#publish_disabled) for
-      #   the Push::Notifier. seq is monotonic per
+      #   (#publish_notice) and `schedule_disabled` (#publish_disabled: any
+      #   ticker's budget turn-off) for the Push::Notifier. seq is monotonic per
       # hub, for the log's sake: there is no replay.
       Event = Struct.new(:type, :seq, :data, keyword_init: true)
 
@@ -112,6 +112,7 @@ module Samagotchi
         @root_cache = {}    # folder → project root, for sessions saved before project_root
         @next_full_probe = nil
         @next_schedule_tick = nil
+        @next_notice_claim = nil
         @schedule_tick_in_flight = false
         @schedule_tick_thread = nil
         @sweep_thread = nil
@@ -363,7 +364,12 @@ module Samagotchi
       # the same tick cron runs, gated by schedule.tick_interval_minutes and
       # sharing schedules.lock, so cron and the hub never both fire. The scan
       # loop only launches one tick at a time; it does not wait for a firing.
+      # The disabled notices any ticker left are pushed from here too, with
+      # auto_tick off as well (#claim_disabled_if_due). Only the scan(tick:
+      # true) path gets here: server.rb's seeding scan(tick: false) runs before
+      # the Notifier subscribes, and a notice claimed then would reach no one.
       def schedule_tick
+        claim_disabled_if_due
         return unless Config.get("schedule.auto_tick")
 
         now = @now.call
@@ -388,9 +394,9 @@ module Samagotchi
 
       def run_schedule_tick
         schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
-        now = Time.now
-        result = schedules.tick(now: now)
-        publish_disabled(result, now) if result.is_a?(Samagotchi::Schedules::Tick)
+        schedules.tick(now: Time.now)
+        # Right after the tick, so a turn-off of this tick is pushed now.
+        publish_disabled(schedules)
       rescue StandardError => e
         Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
       ensure
@@ -400,21 +406,36 @@ module Samagotchi
         end
       end
 
-      # A recurring schedule this tick turned off (Schedules::Outcome#disabled):
-      # one `schedule_disabled` event each, for the Push::Notifier (the page has
-      # no listener), emitted the way #publish_notice does. +at+ is the tick's
-      # time; +session_id+ is the session the schedule acts on.
-      def publish_disabled(result, now)
-        result.outcomes.select(&:disabled).each do |outcome|
-          entry = outcome.entry
-          kind = outcome.status == "skipped" ? "skipped" : "failed"
-          data = { id: outcome.id, title: outcome.title, kind: kind,
-                   count: kind == "skipped" ? entry.skips : entry.failures,
-                   reason: outcome.detail, session_id: outcome.session_id, at: now.utc.iso8601 }
+      # Once per schedule.tick_interval_minutes: a lock-free read of
+      # schedules.json (Schedules#claim_disabled_notices), so a cron tick's or
+      # a run-now's turn-off reaches the phone within one interval.
+      def claim_disabled_if_due
+        now = @now.call
+        due = @monitor.synchronize do
+          next false if @next_notice_claim && now < @next_notice_claim
+
+          @next_notice_claim = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
+          true
+        end
+        publish_disabled(Samagotchi::Schedules.new(state_dir: @state_dir)) if due
+      end
+
+      # A recurring schedule a ticker turned off by its budget (any ticker: the
+      # notice is in schedules.json, Schedules#claim_disabled_notices): one
+      # `schedule_disabled` event each, for the Push::Notifier (the page has no
+      # listener), emitted the way #publish_notice does, after the claim let
+      # the lock go. +at+ is the disabling tick's time; +session_id+ is the
+      # session the schedule acts on. The claim clears each notice before it
+      # is emitted: the Notifier's dedupe is per process, so two chi webs on
+      # one state dir would otherwise both push it.
+      def publish_disabled(schedules)
+        schedules.claim_disabled_notices(now: Time.now).each do |data|
           @monitor.synchronize { emit("schedule_disabled", data) }
         rescue StandardError => e
-          Log.warn(:web, "schedule_disabled_failed", id: outcome.id, error: e.class.name, msg: e.message)
+          Log.warn(:web, "schedule_disabled_failed", id: data[:id], error: e.class.name, msg: e.message)
         end
+      rescue StandardError => e
+        Log.warn(:web, "schedule_notices_failed", error: e.class.name, msg: e.message)
       end
 
       # A change (the first look too, unless it finds nothing) is a `chi`

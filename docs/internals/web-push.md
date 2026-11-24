@@ -186,16 +186,22 @@ from saying it twice across restarts). The key's `chi:` prefix keeps sw.js from 
 | `updated` | `chi:updated:<X>` | "chi updated to X" / "chi web and 3 sessions restarted; 1 restarts when idle." + the edited files |
 | `restart_failed` | `chi:restart_failed:<X>` | "chi X is installed; chi web didn't restart" / why (a failed `--version` preflight, no wrapper), "Restart chi web in its terminal." |
 
-**A disabled schedule's show.** `SessionHub#run_schedule_tick` emits one `schedule_disabled` hub event per
-`Schedules::Outcome#disabled` of its tick (`#publish_disabled`, under `@monitor` like `publish_notice`): `{id, title,
-kind: skipped|failed, count, reason, session_id, at}`, `session_id` being `Schedules#session_of` (the resolved
-target, else the head) and `at` the tick's wall time. The page's event stream passes it to the tabs, which have no
+**A disabled schedule's show.** Any ticker (chi web's, a cron `chi schedule tick`, a `run-now`) that turns a
+recurring schedule off by its budget leaves a `disabled_notice` on its entry (`Schedules#skipped` / `#failed`,
+under the rule `#mark_disabled` shares). The hub claims them with `Schedules#claim_disabled_notices` (a lock-free
+read, then a non-blocking lock that clears each notice before it is emitted: at most once, and once across two chi
+webs, since `@updates_seen` is per process) right after its own tick in `#run_schedule_tick` and once per
+`schedule.tick_interval_minutes` from `#schedule_tick`, auto_tick off too, but never from the seeding
+`scan(tick: false)`, which runs before the Notifier subscribes. `#publish_disabled` emits one `schedule_disabled`
+hub event per claimed notice (under `@monitor` like `publish_notice`): `{id, title, kind: skipped|failed, count,
+reason, session_id, at}`, `session_id` being the resolved target at claim time, else the head, and `at` the
+disabling tick's time. A notice older than a day or whose entry is on again is cleared unpushed. The page's event stream passes it to the tabs, which have no
 listener. The Notifier shows it with reason `schedule`, key and tag `chi:schedule_disabled:<id>:<at>` (`chi:`: not
 a waiting key; `<at>`: a later disable shows again; the same event twice shows once, `@updates_seen`), title
 "Schedule disabled: <title or the id's first 8>", body "skipped 12 times: <reason>" + a line `chi schedule enable
 <short id>`, url `Notifier.session_url` of the session's summary, `/` when it has none. Two exceptions to the rules
 above: it is pushed with a page in front (`UNSEEN_ON_PAGE`: the page has no schedules view), and it gets
-`UPDATE_TTL` (24 h) like an update. A cron tick or `chi schedule run-now` emits nothing (no hub).
+`UPDATE_TTL` (24 h) like an update. With no chi web running, a cron tick's notice waits in `schedules.json`.
 
 `updated` is sent by the **restarted** chi web (its AutoUpdate finds the run at `phase: web`): the exec ends the
 old process, and `Notifier#stop` does not flush the shows still in their hold, so a push queued just before it would

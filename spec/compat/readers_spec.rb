@@ -125,6 +125,8 @@ RSpec.describe "the recorded compatibility corpus" do
     schedule = Samagotchi::Schedules.new(state_dir: sessions_dir).entries.fetch(0)
     expect(schedule).to have_attributes(id: "compat-schedule", anchor: session.id, prompt: "compatibility corpus")
     expect(schedule.recurrence).to eq(kind: "every", interval: "1h")
+    # Recorded before schedules kept a disabled notice: none.
+    expect(schedule.disabled_notice).to be_nil
 
     expect_every_turn_drawn(sessions_dir, "compat-session")
     # Recorded since chi drew a sample's turn (0.162): its live line, not one made from its messages.

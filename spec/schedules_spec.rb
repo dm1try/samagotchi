@@ -326,6 +326,36 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  # N-1: 0.188.0 declares neither member; its StateFormat puts them in
+  # `extra` and Entry#to_h writes them back, through every rewrite it makes.
+  it "is read by 0.188.0's format, which keeps the members it does not know through a rewrite" do
+    Dir.mktmpdir("schedules-n-minus-1") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      entry = schedules.add(target: session(dir).id, prompt: "Audit", recurrence: every("1m"))
+      added = %i[disabled_notice]
+      notice = { "kind" => "skipped", "count" => 12, "reason" => "busy", "at" => "2026-11-24T10:00:00Z" }
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].first["disabled_notice"] = notice
+      File.write(schedules.path, JSON.generate(data))
+
+      older = Samagotchi::StateFormat.new(
+        version: described_class::VERSION,
+        members: described_class::FORMAT.members.reject { |member| added.include?(member.name) },
+        document_members: described_class::FORMAT.document_members
+      )
+      read = older.read(JSON.parse(File.read(schedules.path)), collection: "schedules")
+      record = read.entries.first
+      expect(record).to be_readable
+      expect(record.extra).to include("disabled_notice" => notice)
+
+      changed = record.with(attributes: record.attributes.merge(enabled: false))
+      body = older.write(read.with(entries: [changed]), collection: "schedules", updated_at: nil)
+      File.write(schedules.path, JSON.generate(body))
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, disabled_notice: notice.transform_keys(&:to_sym))
+    end
+  end
+
   it "defaults declared fields and keeps entries missing required fields through writes" do
     Dir.mktmpdir("schedules-missing-fields") do |root|
       dir = File.join(root, "sessions")
@@ -1026,6 +1056,162 @@ RSpec.describe Samagotchi::Schedules do
         end
 
         expect(schedules.tick(now: Time.now + 120).outcomes.first).to have_attributes(status: "skipped", disabled: false)
+      end
+    end
+  end
+
+  describe "the disabled notice any ticker leaves (#claim_disabled_notices, docs/scheduling.md)" do
+    def gone(dir, id)
+      FileUtils.rm_f(Samagotchi::Session.session_file(id, state_dir: dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: dir))
+    end
+
+    def busy(dir, id)
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(id, state_dir: dir), prompt: "wait for me")
+    end
+
+    def stored_notice(schedules, id)
+      JSON.parse(File.read(schedules.path)).fetch("schedules").find { |raw| raw["id"] == id }["disabled_notice"]
+    end
+
+    it "is left by a cron-style tick that used up the budget, claimed once with the push's payload" do
+      Dir.mktmpdir("schedules-notice-cron") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), title: "Heartbeat", max_skips: 2)
+        busy(dir, anchor)
+        first_at = Time.now + 120
+        schedules.tick(now: first_at)
+        expect(schedules.lookup(entry.id).disabled_notice).to be_nil
+
+        last_at = Time.now + 240
+        schedules.tick(now: last_at)
+        expect(stored_notice(schedules, entry.id)).to eq(
+          "kind" => "skipped", "count" => 2, "reason" => "a prompt is queued for it", "at" => last_at.utc.iso8601
+        )
+
+        expect(schedules.claim_disabled_notices(now: last_at)).to eq([
+          { id: entry.id, title: "Heartbeat", kind: "skipped", count: 2, reason: "a prompt is queued for it",
+            session_id: anchor, at: last_at.utc.iso8601 }
+        ])
+        expect(stored_notice(schedules, entry.id)).to be_nil
+        expect(schedules.claim_disabled_notices(now: last_at)).to eq([])
+      end
+    end
+
+    it "is left by a failure at the budget and by a run-now that used it up" do
+      Dir.mktmpdir("schedules-notice-fail") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        other = session(dir).id
+        schedules = store(dir)
+        failing = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 1)
+        run_now = schedules.add(target: other, prompt: "Check", recurrence: every("1h"), max_skips: 1)
+        gone(dir, anchor)
+        busy(dir, other)
+
+        schedules.tick(now: Time.now + 120)
+        expect(schedules.run_now(run_now.id)).to have_attributes(status: "skipped", disabled: true)
+
+        notices = schedules.claim_disabled_notices(now: Time.now + 120)
+        expect(notices.map { |notice| [notice[:id], notice[:kind], notice[:count]] })
+          .to contain_exactly([failing.id, "failed", 1], [run_now.id, "skipped", 1])
+        expect(notices.find { |notice| notice[:id] == run_now.id }[:session_id]).to eq(other)
+      end
+    end
+
+    it "is not left by a skip within budget, an owner's disable, or a date one-off that fails" do
+      Dir.mktmpdir("schedules-notice-none") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        other = session(dir).id
+        schedules = store(dir)
+        within = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 3)
+        owner = schedules.add(target: anchor, prompt: "Owner", recurrence: every("1h"))
+        one_off = schedules.add(target: other, prompt: "Once", recurrence: described_class.recurrence(date: "2026-11-20T09:00"),
+                                max_failures: 1)
+        busy(dir, anchor)
+        gone(dir, other)
+        schedules.disable(owner.id)
+
+        schedules.tick(now: Time.now + 120)
+        expect(schedules.lookup(within.id)).to have_attributes(enabled: true, skips: 1)
+        expect(schedules.lookup(one_off.id).enabled).to be(false)
+        expect([within, owner, one_off].map { |entry| stored_notice(schedules, entry.id) }).to eq([nil, nil, nil])
+        expect(schedules.claim_disabled_notices).to eq([])
+      end
+    end
+
+    it "returns [] and keeps the notice while another holds the lock" do
+      Dir.mktmpdir("schedules-notice-locked") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 1)
+        busy(dir, anchor)
+        schedules.tick(now: Time.now + 120)
+
+        File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
+          lock.flock(File::LOCK_EX)
+          expect(schedules.claim_disabled_notices).to eq([])
+        end
+        expect(stored_notice(schedules, entry.id)).not_to be_nil
+        expect(schedules.claim_disabled_notices.map { |notice| notice[:id] }).to eq([entry.id])
+      end
+    end
+
+    it "drops without returning a notice whose entry is on again, or one older than a day" do
+      Dir.mktmpdir("schedules-notice-drop") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        on_again = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 1)
+        old = schedules.add(target: anchor, prompt: "Old", recurrence: every("1h"), max_skips: 1)
+        at = Time.now
+        schedules.send(:write_under_lock) do |file|
+          file.entries.map! do |stored|
+            notice = { kind: "skipped", count: 1, reason: "busy" }
+            if stored.id == on_again.id
+              # An older chi's enable: on again, the notice still there.
+              stored.with(disabled_notice: notice.merge(at: at.utc.iso8601))
+            else
+              stored.with(enabled: false, skips: 1, disabled_notice: notice.merge(at: (at - 86_401).utc.iso8601))
+            end
+          end
+        end
+
+        expect(schedules.claim_disabled_notices(now: at)).to eq([])
+        expect([on_again, old].map { |entry| stored_notice(schedules, entry.id) }).to eq([nil, nil])
+      end
+    end
+
+    it "is cleared by the owner's enable" do
+      Dir.mktmpdir("schedules-notice-enable") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 1)
+        busy(dir, anchor)
+        schedules.tick(now: Time.now + 120)
+        expect(stored_notice(schedules, entry.id)).not_to be_nil
+
+        schedules.enable(entry.id)
+        expect(stored_notice(schedules, entry.id)).to be_nil
+        expect(schedules.claim_disabled_notices).to eq([])
+      end
+    end
+
+    it "writes nothing when no entry has a notice" do
+      Dir.mktmpdir("schedules-notice-quiet") do |root|
+        dir = File.join(root, "sessions")
+        schedules = store(dir)
+        schedules.add(target: session(dir).id, prompt: "Audit", recurrence: every("1m"))
+        before = File.read(schedules.path)
+        expect(schedules).not_to receive(:write)
+
+        expect(schedules.claim_disabled_notices).to eq([])
+        expect(File.read(schedules.path)).to eq(before)
       end
     end
   end
