@@ -22,7 +22,7 @@ require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "session_row"
 require_relative "state_format"
-require_relative "turn_checkpoint"
+require_relative "turn_outcome"
 require_relative "worker_link"
 require_relative "schedules/busy_part"
 require_relative "schedules/edit_part"
@@ -755,30 +755,27 @@ module Samagotchi
       "waiting for turn #{entry.pending_turn_id}"
     end
 
+    # In this order: the reply (fired), then a question this firing started
+    # and the turn has not ended before (waits, or "no outcome" once
+    # expired), then the settled turn (fired when it completed), then
+    # expiry.
     def resolve_pending(entry, now)
       session = Session.load(entry.pending_session_id, state_dir: @state_dir)
-      turn = session.last_turn if session.last_turn&.enqueued_id == entry.pending_turn_id
-      turn ||= TurnCheckpoint.settled_turn(Session.session_dir(entry.pending_session_id, state_dir: @state_dir),
-                                           entry.pending_turn_id)
-      if SessionInbox.reply_for(Session.session_dir(entry.pending_session_id, state_dir: @state_dir), entry.pending_turn_id)
-        return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "turn completed", entry: entry)
-      end
+      result = TurnOutcome.for(session, entry.pending_turn_id,
+                               session_dir: Session.session_dir(entry.pending_session_id, state_dir: @state_dir))
+      return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: result.detail, entry: entry) if result.replied
 
       question = session.pending_question
-      if question_started?(question, entry) && !question_after_turn?(question, turn)
+      if question_started?(question, entry) && !question_after_turn?(question, result.turn)
         return nil unless pending_expired?(entry, now)
 
         return Outcome.new(id: entry.id, title: entry.title, status: "failed",
                            detail: "no outcome", entry: entry)
       end
 
-      if turn
-        return Outcome.new(id: entry.id, title: entry.title, status: "fired", detail: "turn completed", entry: entry) if
-          turn.outcome == "completed"
-
-        reason = [turn.outcome, turn.error_kind, turn.cancel_reason, turn.stopped_by].compact.join(": ")
-        return Outcome.new(id: entry.id, title: entry.title, status: "failed",
-                           detail: "turn #{reason.empty? ? "did not complete" : reason}", entry: entry)
+      if result.turn
+        return Outcome.new(id: entry.id, title: entry.title, status: result.completed? ? "fired" : "failed",
+                           detail: result.detail, entry: entry)
       end
 
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no outcome", entry: entry) if

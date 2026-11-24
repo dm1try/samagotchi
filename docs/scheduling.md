@@ -245,7 +245,9 @@ and `show`. A question does not time out with the 40-second firing step: the tur
 stays pending until its hard limit, derived from the schedule interval (at least
 10 minutes and at most 6 hours). If no outcome is known by then, it counts as a
 failure with reason `no outcome`. Failed, canceled and expired turns are not
-re-fired; `next_due` remains at the next occurrence.
+re-fired; `next_due` remains at the next occurrence. The turn's outcome is read
+from its files by `TurnOutcome.for` (`turn_outcome.rb`: its reply, its settled turn and
+the words); `Schedules#resolve_pending` keeps the order: the reply, the question, the turn, expiry.
 
 A chain holds at most `schedule.max_per_session` enabled schedules (default 10) and
 the machine `schedule.max_total` (default 50); `schedule_task` and `chi schedule add`
