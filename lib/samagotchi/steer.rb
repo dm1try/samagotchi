@@ -360,7 +360,7 @@ module Samagotchi
     # A line of a participant's text that opens like one of chi's own
     # headers or frames (another participant's review header, a steer's, an
     # automatic input's, a delegate report's, a context note's, a task's, an
-    # objectives list's or a peer's message block (ContextAbsorber.peer_block)),
+    # objectives list's or a peer's message block (PeerNote.block)),
     # in any case, after any spaces, format characters or markdown leads
     # (.forged_frames).
     FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",

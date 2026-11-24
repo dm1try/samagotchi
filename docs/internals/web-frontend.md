@@ -876,13 +876,13 @@ parse is `peer_text.js`'s cut of an `inline` note's text block.
   `card_stamps.js`, `stage_handoff.js OPENING`, `reload_check.js` and `revise_stack.js` (its `.note-text` is the
   summary) read it as any wake note. With `peer.inline` the peer's text goes in `.peer-text` under the summary (an
   element of its own, not a `data-peer-slot`, its source in `data-peer-md`): already as markdown when a history
-  read sent the note's `peer_html` (`MessageDisplay#peer_text_html`, `ContextAbsorber.peer_text_of`, rendered and
+  read sent the note's `peer_html` (`MessageDisplay#peer_text_html`, `PeerNote.text_of`, rendered and
   sanitized as an answer is), else as plain text (a live `context_added`, an older server), the "what chi told the
   agent" fold shows the content without the block, and the bubble carries `data-peer-inline`. Without it (an older
   session, an answer over the cap) the bubble draws as before.
 - `peer_text.js` (pure): `peerBlock(content)` cuts the text out between the first `[PEER MESSAGE from …]` line and the
   last `[END PEER MESSAGE]` line and undoes the absorber's `(quoted) ` mark on forged frame lines
-  (`PEER_FORGED_OPENINGS` and `PEER_FORGED_LINES`, the Ruby `ContextAbsorber`'s, and the same line breaks and leads
+  (`PEER_FORGED_OPENINGS` and `PEER_FORGED_LINES`, the Ruby `PeerNote::FORGED_OPENINGS` and `FORGED_LINES`, and the same line breaks and leads
   as `Steer::FORGED_BREAKS` / `FORGED_LEAD`: `peer_text.test.js` keeps the lists alike and undoes the Ruby specs' cases);
   null without a block.
 - **The slot idiom.** Finished rows are never drawn again and a reload makes them anew, so what arrives later is

@@ -352,15 +352,15 @@ RSpec.describe Samagotchi::Worker, "attached context" do
         expect(content).to include("Its answer is long (2001 characters): read it with context_read(name: \"codex-outbox\")")
       end
 
-      it "holds a text over PEER_HELD_CHARS in the wake note only: read once woken, unread while held" do
+      it "holds a text over PeerNote::HELD_CHARS in the wake note only: read once woken, unread while held" do
         config["context.peer_turns"] = 1
         start_worker
-        middle = "m" * (Samagotchi::ContextAbsorber::PEER_HELD_CHARS + 1)
+        middle = "m" * (Samagotchi::PeerNote::HELD_CHARS + 1)
         answer(middle)
         expect(wake_turn&.last&.dig(:content)).to include("[PEER MESSAGE from Codex]\n#{middle}\n[END PEER MESSAGE]")
         expect(own.subscription("codex-outbox").read).to eq(Samagotchi::ContextSources.revision_of(middle))
 
-        held = "h" * (Samagotchi::ContextAbsorber::PEER_HELD_CHARS + 1)
+        held = "h" * (Samagotchi::PeerNote::HELD_CHARS + 1)
         answer(held)
         loop_rounds
         expect(wake_turns).to be_empty
@@ -371,7 +371,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       it "puts back a failed wake turn's note with the text it held, as a plain note" do
         start_worker
-        middle = "m" * (Samagotchi::ContextAbsorber::PEER_HELD_CHARS + 1)
+        middle = "m" * (Samagotchi::PeerNote::HELD_CHARS + 1)
         @fail_next = true
         answer(middle)
         wake_turn
