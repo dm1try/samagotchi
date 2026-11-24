@@ -48,6 +48,14 @@ module Samagotchi
         Log.exception(:worker, "peer_receipts_failed", e)
       end
 
+      def settle_peer_turn(id, result, error)
+        yielded = false
+        yield
+        yielded = true
+      ensure
+        peer_receipts_ended(id, result, error || (yielded ? nil : $!))
+      end
+
       # The receipts the turn +id+ woke or read (PeerReceipts#turn_ended): how
       # it ended, or held when a wake's note went back plain. Logged, never
       # raised: the turn's own save comes next.

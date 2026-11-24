@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Peer mail: settle wake receipts even if handling a turn's result raises an I/O error.
 - Peer mail: refuse further messages when 200 noted messages from a peer still await a turn.
 - Peer mail: retry a temporarily unreadable message instead of discarding it and later messages.
 - Peer mail: recovery retains an asking wake note's full text, just as a normally unmarked wake does.

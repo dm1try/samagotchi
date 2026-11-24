@@ -797,8 +797,7 @@ module Samagotchi
         @checkpoint.end_turn
         refuse_queued_commands
       end
-      yield result, error
-      peer_receipts_ended(turn_args[:id], result, error)
+      settle_peer_turn(turn_args[:id], result, error) { yield result, error }
       response = result&.output
       # A turn that ran out of iterations and asks whether to continue left
       # no reply: its text is what came before its last tool calls, and a

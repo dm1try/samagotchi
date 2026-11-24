@@ -462,5 +462,15 @@ RSpec.describe "the worker's peer mail" do
       start_worker
       wait_for("the dead turn's receipt to end") { states[1] == %w[ended failed] }
     end
+
+    it "settles a wake receipt when handling the failed turn raises an IO error" do
+      outcome[0] = :failed
+      worker = start_worker
+      inbound = worker.instance_variable_get(:@inbound)
+      allow(inbound).to receive(:unmark_wake).and_raise(IOError, "unmark failed")
+      say("hi")
+      pop!(turns, "the failed wake turn")
+      wait_for("the receipt to settle") { states[1] == %w[ended failed] }
+    end
   end
 end
