@@ -168,11 +168,23 @@ RSpec.describe Samagotchi::Plugin::Loader do
 
     it "doesn't start an older peer bundle (chi.peer_source), says how to upgrade it, and starts the others" do
       install_plugin("old-peer", <<~RUBY)
-        class Plugin
-          def register(chi)
-            chi.command("/claude", "old") { "x" }
-            chi.peer_source "claude-outbox", label: "Claude"
-          end
+        require "samagotchi/plugin/peer"
+
+        class Plugin < Samagotchi::Plugin::Peer
+          INBOX = "claude-inbox"
+          OUTBOX = "claude-outbox"
+          BUNDLE = "old-peer"
+          NAME = "Claude"
+          APP = "Claude Code"
+          COMMAND = "/claude"
+          TOOL = "claude_send"
+          TOOL_DESCRIPTION = "old"
+          TOOL_PARAMS = {}
+          STATUS_CARD = "claude"
+          SKILL_CARD = "claude-skill"
+          CHECKED_ON = "Claude Code 2.1.296"
+          USAGE = "old"
+          SCRIPTS_DIRS = []
         end
       RUBY
       install_plugin("marker", hook_plugin)

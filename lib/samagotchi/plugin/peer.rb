@@ -119,6 +119,10 @@ module Samagotchi
 
       def register(chi)
         peer = self.class
+        unless peer.const_defined?(:PEER) && peer.const_defined?(:READ_TOOL)
+          raise ArgumentError, "chi.peer_source is gone: upgrade this bundle " \
+                              "(chi bundle install #{peer::BUNDLE} --force)"
+        end
         # Two args: the run's tool id salts the send id, the same one the
         # block's deliver gets (ctx.tool_id).
         refs = lambda do |args, tool_id = nil|
