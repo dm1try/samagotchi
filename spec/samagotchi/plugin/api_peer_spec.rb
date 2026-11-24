@@ -48,9 +48,7 @@ RSpec.describe "chi.peer" do
       .to raise_error(ArgumentError, "this chi has no peer registry (plugins: false)")
   end
 
-  it "waits, with ctx.peers, in SINCE's Unreleased comment until the release names its version" do
-    source = File.read(File.expand_path("../../../lib/samagotchi/plugin/api.rb", __dir__))
-    expect(source[/^\s*# Unreleased\b.*$/]).to include('"chi.peer"', '"ctx.peers"')
-    expect(Samagotchi::Plugin::Api::SINCE).not_to have_key("chi.peer")
+  it "is in SINCE, with ctx.peers, as 0.188.0" do
+    expect(Samagotchi::Plugin::Api::SINCE).to include("chi.peer" => "0.188.0", "ctx.peers" => "0.188.0")
   end
 end
