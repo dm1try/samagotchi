@@ -1,0 +1,12 @@
+---
+name: schedules
+version: 0.1.0
+scope: system
+description: "A Schedules page in chi web (#/p/schedules, chi page run schedules): every durable schedule, why one is off and how to turn it on, and the recent runs; read-only"
+trust_level: reviewed
+# pages: and runtime.schedules are new in the next chi (release:bump sets the floor)
+requires_chi: ">= 0.188.0"
+requires_chi_next: true
+scripts:
+  schedules.rb: sha256:0359e99a4618d69a05bf8d06536f5b259dd2e98ec8afe8e9a25b923765d68812
+pages: [schedules.rb]
