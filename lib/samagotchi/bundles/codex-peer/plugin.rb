@@ -7,9 +7,10 @@ require "samagotchi/plugin/peer"
 # codex-peer (docs/bundles.md, The codex-peer bundle): a live link between
 # this chi session and an OpenAI Codex CLI session the user works with, the
 # claude-peer bundle with the transport swapped. Codex pairs (its chi-peer
-# skill, scripts/pair): it attaches the `codex-inbox` context, whose hint is
-# its thread id (CODEX_THREAD_ID), and `codex-outbox`, where its answers
-# come back as pushes that wake chi.
+# skill, scripts/pair: `chi peer pair codex <id> --address <thread>`), the
+# pairing's address being its thread id (CODEX_THREAD_ID); its answers come
+# back as messages in the session's mailbox (`chi peer say codex <id>`),
+# each a note that may wake chi (docs/peers.md).
 #
 # The codex_send tool sends a part of the work (a plan step, a diff, a
 # finding) with `codex queue --thread <uuid> --message <text>`, which wakes
@@ -29,7 +30,7 @@ require "samagotchi/plugin/peer"
 # /codex (anytime: it reads files, writes one and runs `codex queue`, up to
 # QUEUE_SECONDS) lets the user send without the model: `/codex` alone is a
 # status card (paired or not, the thread, the last send, the last
-# codex-outbox answer); `/codex validate|context <text>` sends the text as
+# message from Codex); `/codex validate|context <text>` sends the text as
 # it is, titled by its first line; `/codex last` sends the model's last
 # completed answer as context (mid-turn, a worker's ctx.messages holds the
 # running turn's partial text, so the before_turn and after_turn hooks keep
@@ -54,13 +55,18 @@ require "samagotchi/plugin/peer"
 # codex queue transport.
 
 class Plugin < Samagotchi::Plugin::Peer
-  INBOX = "codex-inbox"
-  OUTBOX = "codex-outbox"
+  PEER = "codex"
+  # The context sources an older codex-peer paired through: only the
+  # status card's "paired the old way" line reads them. Remove after the
+  # next release.
+  LEGACY_INBOX = "codex-inbox"
+  LEGACY_OUTBOX = "codex-outbox"
   BUNDLE = "codex-peer"
   NAME = "Codex"
   APP = "Codex"
   COMMAND = "/codex"
   TOOL = "codex_send"
+  READ_TOOL = "codex_read"
   # codex queue must be done within this long, or it is killed.
   QUEUE_SECONDS = 10
   # The Codex CLI version codex queue was checked on.
@@ -77,13 +83,13 @@ class Plugin < Samagotchi::Plugin::Peer
   CONTEXT_PLACEHOLDER = "__CHI_PEER_CONTEXT__"
 
   TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your " \
-                     "last answer) to the Codex CLI session paired with it (the codex-inbox " \
-                     "context), for Codex to validate, to take as context, or to answer a " \
-                     "question about. Only when the user asks for it, or to reply to its answer " \
-                     "in a peer turn. Needs a paired Codex session: without one it fails, and the " \
-                     "user pairs from Codex. Codex's answer comes back later as a codex-outbox " \
-                     "note with its text (a validate's wakes you): don't wait or poll. Never " \
-                     "send secrets or the whole conversation."
+                     "last answer) to the Codex CLI session paired with it, for Codex to " \
+                     "validate, to take as context, or to answer a question about. Only when the " \
+                     "user asks for it, or to reply to its answer in a peer turn. Needs a paired " \
+                     "Codex session: without one it fails, and the user pairs from Codex. Codex's " \
+                     "answer comes back later as a message from your peer agent Codex, with its " \
+                     "text (a validate's wakes you): don't wait or poll. Never send secrets or " \
+                     "the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,
             description: "validate: check this part and answer with a verdict; context: for Codex to know, no " \
@@ -97,9 +103,9 @@ class Plugin < Samagotchi::Plugin::Peer
 
   private
 
-  # The paired Codex's thread id: the codex-inbox context's hint.
+  # The paired Codex's thread id: the pairing's address.
   def check_hint!(hint)
-    raise SendError, "codex-inbox's hint isn't a Codex thread id (#{hint}): pair again from Codex" unless hint.match?(THREAD_ID)
+    raise SendError, "the pairing's address isn't a Codex thread id (#{hint}): pair again from Codex" unless hint.match?(THREAD_ID)
   end
 
   # There is no cheap check that the thread is still there, and a closed

@@ -358,7 +358,6 @@ module Samagotchi
       # its note up to the tool output cap, as a task's does (WorkerTaskWakes).
       @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
                                               project_root: @session.project_root, project_id: @session.project_id,
-                                              peer_sources: @engine.peer_sources, peer_turns: -> { @wakes.peer_turns },
                                               cap: -> { ToolOutputCut.max_chars(nil) })
       # What comes in between turns, and how each kind is saved.
       @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,

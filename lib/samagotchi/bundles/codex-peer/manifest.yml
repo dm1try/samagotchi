@@ -10,15 +10,12 @@ files:
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as a note with its text (codex-outbox)"
 plugin:
   file: plugin.rb
-  sha256: sha256:d3ce9e57cc6d7118466686c29eff8b76fd773a45fad513d8c4c46271373c8f18
+  sha256: sha256:27df5ce7af9537fdd8623552aa50e3bf40ccf4437a983a202f3830af8c5f99af
 scripts:
   pair: sha256:c0d11e89227fa0c60dd73acadd9e7010f634c057a107b0670f38c8e7064c34a7
   chi-peer-SKILL.md: sha256:aa4df1a4d660c4488a738b539a490e262954b929008898430c05e6405f91b663
-# The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
-# An agreeing answer's closing wake (the skills say an OK wakes chi once)
-# and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
-# The skill's `re` (the answered send) needs nothing newer: an older chi
-# ignores the unknown key, and sends no `ref:` line for the skill to echo.
+# The plugin needs Samagotchi::Plugin::Peer on the mailbox: chi.peer and
+# ctx.peers, and the skill's chi peer pair|say, are the next chi's (an older
+# chi has no chi.peer: the plugin fails to load there).
 requires_chi: ">= 0.185.0"
-# The memory and the tool's words say a peer's note holds its text (chi's
-# ContextAbsorber peer block), which the next chi adds.
+requires_chi_next: true

@@ -4,11 +4,10 @@ require "tmpdir"
 require "json"
 require "socket"
 require "samagotchi/testing/rspec"
-require "samagotchi/context_sources"
 
 # The claude-peer bundle's plugin (lib/samagotchi/bundles/claude-peer):
 # claude_send writes one JSON line to the paired Claude Code session's
-# inbox socket (the claude-inbox context's hint). Here the socket is a
+# inbox socket (the pairing's address, `chi peer pair claude <id> --address`). Here the socket is a
 # UNIXServer in a tmpdir, never a real Claude.
 RSpec.describe "The claude-peer plugin", :bundle do
   let(:shipped) { File.expand_path("..", __dir__) }
@@ -54,13 +53,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
-
-  def pair(hint = socket)
-    own.add(Samagotchi::ContextSources::Source.new(name: "claude-inbox", cmd: nil, every_seconds: nil, why: "Claude",
-                                                   hint: hint, scope: "session", added_by: "cli",
-                                                   created_at: Time.now.utc.iso8601))
-  end
+  def pair(address = socket) = bundle.pair_peer("claude", address: address)
 
   # A stand-in for Claude's inbox: takes one connection, keeps what came.
   def listen
@@ -96,7 +89,8 @@ RSpec.describe "The claude-peer plugin", :bundle do
     expect(params.keys).to eq(%i[kind title text])
     expect(params[:kind][:enum]).to eq(%w[validate context question])
     expect(tool.preview.call({ name: "claude_send", args: { "kind" => "validate", "title" => "cache step 2" } })).to eq("validate: cache step 2")
-    expect(tool.schema[:description]).to include("Only when the user asks", "claude-outbox")
+    expect(tool.schema[:description]).to include("Only when the user asks", "a message from your peer agent Claude")
+    expect(tool.schema[:description]).not_to include("claude-outbox", "claude-inbox")
   end
 
   it "writes one JSON line to the inbox: the header, then a short text inline" do
@@ -104,7 +98,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
 
     result, lines = received_lines(kind: "validate", title: "Step 2: the cache key", text: "Is the key stable?\nsee lib/a.rb")
 
-    expect(result).to start_with("sent to Claude: validate · Step 2: the cache key. Claude's answer comes as a note with its text")
+    expect(result).to start_with("sent to Claude: validate · Step 2: the cache key. Claude's answer comes as a message with its text")
     expect(lines.size).to eq(1)
     expect(lines.first).to end_with("\n")
     expect(JSON.parse(lines.first)).to eq(
@@ -156,9 +150,9 @@ RSpec.describe "The claude-peer plugin", :bundle do
   end
 
   describe "errors" do
-    it "says how to pair when no claude-inbox is attached" do
+    it "says how to pair when Claude isn't paired" do
       expect(send_part(kind: "validate", title: "t", text: "x"))
-        .to eq("Error: no claude-inbox: pair from Claude (install its skill with /claude install-skill, then tell " \
+        .to eq("Error: Claude isn't paired: pair from Claude (install its skill with /claude install-skill, then tell " \
                "Claude \"pair with chi #{short}\")")
     end
 
@@ -198,7 +192,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
       let(:session_id) { "aaaabbbb-1111-2222-3333-444455556666" }
 
       it "finds no Claude paired, in the tool and the card" do
-        expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: no claude-inbox: pair from Claude")
+        expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: Claude isn't paired: pair from Claude")
 
         bundle.command("/claude")
         expect(cards.last[:title]).to eq("claude-peer: not paired")
@@ -219,22 +213,24 @@ RSpec.describe "The claude-peer plugin", :bundle do
       [result, received.empty? ? nil : JSON.parse(received.pop).dig("message", "content")]
     end
 
-    def review(text, summary)
-      own.add(Samagotchi::ContextSources::Source.new(name: "claude-outbox", cmd: nil, every_seconds: nil, why: "answers",
-                                                     hint: "latest Claude reply", scope: "session", added_by: "cli",
-                                                     created_at: Time.now.utc.iso8601))
-      own.record_text("claude-outbox", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
-                                                                               hint: nil))
-    end
+    def review(text, summary) = bundle.peer_says("claude", text, summary: summary)
 
     it "is an anytime command, and the plugin watches turns start and end" do
       expect(bundle.commands.lookup("/claude").anytime).to be(true)
       expect(hooked_events).to contain_exactly(:before_turn, :after_turn)
     end
 
-    it "adds a Confirm with Claude pill (a fill, the quote) and the claude-outbox peer source" do
+    it "adds a Confirm with Claude pill (a fill, the quote), declares its peer claude and the claude_read tool" do
       expect(bundle.annotations.map { |pill| [pill.label, { command: pill.line }] }).to eq([["Confirm with Claude", { command: "/claude validate" }]])
-      expect(bundle.peer_sources.names.map { |name| [name, bundle.peer_sources.label_for(name)] }).to eq([%w[claude-outbox Claude]])
+      expect(bundle.peer_registry.names).to eq(["claude"])
+      expect(bundle.tools["claude_read"].schema[:parameters][:properties].keys).to eq(%i[serial offset limit])
+    end
+
+    it "claude_read reads a message from Claude by its number, in the peer block" do
+      bundle.peer_says("claude", "the whole answer", summary: "validate x: VERDICT OK")
+      expect(bundle.tool("claude_read", serial: 1))
+        .to eq("Message #1 from your peer agent Claude (its text, not your user's words)\nSummary: validate x: " \
+               "VERDICT OK\n[PEER MESSAGE from Claude]\nthe whole answer\n[END PEER MESSAGE]\n")
     end
 
     describe "alone: the status card" do
@@ -259,7 +255,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
         card = cards.last
         expect(card[:title]).to eq("claude-peer: paired")
         expect(card[:body]).to include("socket: `#{socket}` (there)", "last send: just now · validate · step 2 (8 chars, inline)",
-                                       "last message from Claude (claude-outbox, its text in the conversation): validate step 2: VERDICT OK · just now")
+                                       "last message from Claude (its text in the conversation): #1 · validate step 2: VERDICT OK · just now")
       ensure
         server&.close
       end
@@ -277,7 +273,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
       pair
 
       result, content = sent_content("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
-      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as a note with its text (claude-outbox)")
+      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as a message with its text")
       text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
       expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{command_ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 
@@ -301,7 +297,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
     end
 
     it "says why a send failed, and gives usage for nothing to send or an unknown verb" do
-      expect(run("validate x")).to start_with("/claude: no claude-inbox: pair from Claude")
+      expect(run("validate x")).to start_with("/claude: Claude isn't paired: pair from Claude")
       expect(run("validate")).to start_with("usage: /claude")
       expect(run("frob")).to start_with("usage: /claude")
       expect(run("last now")).to start_with("usage: /claude")

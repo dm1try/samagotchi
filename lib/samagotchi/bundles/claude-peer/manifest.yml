@@ -10,19 +10,13 @@ files:
     description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Claude's answer comes as a note with its text (claude-outbox)"
 plugin:
   file: plugin.rb
-  sha256: sha256:a1020fd0ce9e8d68918605a23562dc1039f65d6f45b9ceb00e4f011cd000072a
+  sha256: sha256:a7fa566ff03f6e63d2889196539acbc2fa0c3615aa3a75c1282c91d062bc5e6f
 scripts:
   pair-remote: sha256:d7681f87a194e540b629564f84cad9f2d0a763197502c74614276ef88a8920cc
   pair: sha256:23d79bb8cf37517d20d15b6716f6666038858a4c5c09d3b85085d1e98475d6b3
   chi-peer-SKILL.md: sha256:8d2266d3a13e9fe8091e0e431c08555eaf1b48fe154a6250ce171c8b0bd2d947
-# The plugin needs Samagotchi::Plugin::Peer and chi.peer_source (chi 0.67.0).
-# An agreeing answer's closing wake (the skills say an OK wakes chi once)
-# and the plugin's OUTBOX (Plugin::Peer's rename of REVIEW) need chi 0.70.0.
-# The skill's `re` (the answered send) needs nothing newer: an older chi
-# ignores the unknown key, and sends no `ref:` line for the skill to echo.
+# The plugin needs Samagotchi::Plugin::Peer on the mailbox: chi.peer and
+# ctx.peers, and the skill's chi peer pair|say, are the next chi's (an older
+# chi has no chi.peer: the plugin fails to load there).
 requires_chi: ">= 0.185.0"
-# The next chi: the installed skill's __CHI_PEER_PAIR_REMOTE__ placeholder
-# (scripts/pair-remote's path), which only its Plugin::Peer
-# #skill_target_and_text fills; an older chi would install the skill with it
-# left in. Also the memory and the tool's words say a peer's note holds its
-# text (chi's ContextAbsorber peer block), which the next chi adds.
+requires_chi_next: true

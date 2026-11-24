@@ -24,7 +24,8 @@ module Samagotchi
       # Resolved on use: Sessions alone loads ~150 files.
       MEMBERS = {
         "Plugin::Api" => { ctx: "Plugin::Context" },
-        "Plugin::Context" => { sessions: "Plugin::Sessions", context: "Plugin::AttachedContext", http: "Plugin::Http",
+        "Plugin::Context" => { sessions: "Plugin::Sessions", context: "Plugin::AttachedContext", peers: "Plugin::Peers",
+                               http: "Plugin::Http",
                                judgments: "Plugin::Judgments", cost: "SessionMetrics::Cost", usage: "SessionMetrics::Usage",
                                log: "Plugin::Context::Logger", secrets: "Plugin::Secrets" }
       }.freeze

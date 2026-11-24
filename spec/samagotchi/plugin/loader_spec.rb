@@ -166,6 +166,23 @@ RSpec.describe Samagotchi::Plugin::Loader do
       expect_not_loaded(eng, /boom/)
     end
 
+    it "doesn't start an older peer bundle (chi.peer_source), says how to upgrade it, and starts the others" do
+      install_plugin("old-peer", <<~RUBY)
+        class Plugin
+          def register(chi)
+            chi.command("/claude", "old") { "x" }
+            chi.peer_source "claude-outbox", label: "Claude"
+          end
+        end
+      RUBY
+      install_plugin("marker", hook_plugin)
+      eng = nil
+      expect { eng = engine }
+        .to output(/chi.peer_source is gone: upgrade this bundle \(chi bundle install old-peer --force\)/).to_stderr
+      expect(eng.command_registry.lookup("/claude")).to be_nil
+      expect(fire_before_turn(eng)[:marks]).to eq(["hit", "plugin.rb (bundle marker)"])
+    end
+
     it "doesn't stop the other bundles' plugins" do
       install_plugin("broken", "raise 'nope'\n")
       install_plugin("marker", hook_plugin)

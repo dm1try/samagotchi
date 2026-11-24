@@ -40,7 +40,7 @@ module Samagotchi
         "fallback_for:" => "0.35.0", "ctx.fork" => "0.45.0", "ctx.frontend" => "0.49.0",
         "ctx.prompt_files" => "0.60.0", "chi.annotation" => "0.66.0", "chi.toolkit" => "0.66.0",
         "ctx.use_toolkit" => "0.66.0", "ctx.toolkit" => "0.66.0", "ctx.declared_tools" => "0.66.0",
-        "chi.tool_source" => "0.67.0", "chi.peer_source" => "0.67.0", "ctx.http" => "0.80.0",
+        "chi.tool_source" => "0.67.0", "ctx.http" => "0.80.0",
         "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0", "ctx.load_tools" => "0.99.0",
         "ctx.usage" => "0.100.0", "ctx.sessions.stop" => "0.34.0", "ctx.turn_author" => "0.106.0",
         "ctx.sessions.send(delivery:)" => "0.64.0",
@@ -60,8 +60,8 @@ module Samagotchi
         "ctx.cancel_controller" => "0.183.0",
         "ctx.secrets" => "0.183.0",
         "ctx.sign_in" => "0.183.0",
-        "ctx.card(between_turns:)" => "0.183.0",
-        "chi.peer" => "0.188.0"
+        "ctx.card(between_turns:)" => "0.183.0"
+        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "chi.peer", "ctx.peers".
       }.freeze
 
       # chi.on's on_error: values. :log (the default) logs a raise and goes
@@ -86,7 +86,6 @@ module Samagotchi
         @inits = []
         @toolkits = []
         @prompt_sections = []
-        @peer_sources = []
         @peers = []
         @judgments = []
         @tool_source = nil
@@ -420,22 +419,11 @@ module Samagotchi
         nil
       end
 
-      # A context source that holds a peer agent's answers (the peer
-      # bundles' claude-outbox, codex-outbox): +label+ is the peer's name
-      # ("Codex", PeerSources::LABEL), said in chi's own lines. Such a
-      # source, when it is a pushed one of the session's own, wakes on
-      # context.peer_turns rather than the 10-minute window, with the peer
-      # line, or the closing line for an answer that agrees (docs/context.md,
-      # Waking). Declared here, in-process, never by
-      # a source file; gone with the bundle.
-      def peer_source(name, label:)
-        raise ArgumentError, "this chi has no peer sources (plugins: false)" unless @registries.peer_sources
-
-        name = @registries.peer_sources.check!(name, label: label, bundle: @bundle)
-        raise ArgumentError, "peer source #{name} is declared twice" if @peer_sources.any? { |item| item[:name] == name }
-
-        @peer_sources << { name: name, label: label.to_s }
-        nil
+      # Gone: a peer's answers come through its mailbox now (#peer). An
+      # older peer bundle that still calls it fails to load with how to
+      # upgrade, and chi starts without it (Plugin::Loader).
+      def peer_source(*, **)
+        raise ArgumentError, "chi.peer_source is gone: upgrade this bundle (chi bundle install #{@bundle} --force)"
       end
 
       # A peer agent this bundle speaks for (claude, codex): its messages in
@@ -483,7 +471,6 @@ module Samagotchi
       # anything is registered: a raise here leaves the registries as they were.
       def commit!
         check_annotations!
-        @peer_sources.each { |item| @registries.peer_sources.check!(item[:name], label: item[:label], bundle: @bundle) }
         @peers.each { |name| @registries.peer_registry.check!(name, bundle: @bundle) }
         context = @context
         @commands.each do |cmd|
@@ -522,7 +509,6 @@ module Samagotchi
           @registries.prompt_sections.add(bundle: @bundle, name: item[:name], context: context, &item[:block])
         end
         @registries.tool_index.add(@tool_source) if @tool_source
-        @peer_sources.each { |item| @registries.peer_sources.declare(item[:name], label: item[:label], bundle: @bundle) }
         @peers.each { |name| @registries.peer_registry.declare(name, bundle: @bundle) }
         @judgments.each { |declaration| @registries.judgments.declare(declaration) }
         @committed = true
@@ -542,7 +528,7 @@ module Samagotchi
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
                      services: @services.size, inits: @inits.size, toolkits: @toolkits.size,
                      prompt_sections: @prompt_sections.size,
-                     tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size, peers: @peers.size,
+                     tool_sources: @tool_source ? 1 : 0, peers: @peers.size,
                      judgments: @judgments.size }
 
       # Each annotation's command is one #command staged.

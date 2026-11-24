@@ -114,6 +114,38 @@ RSpec.describe "the worker's peer mail" do
       expect(receipt(1).turn).to eq(wake.turn_id)
     end
 
+    it "wakes for an agreeing message outside peer.turns, with the closing line, counting toward max_wakes only" do
+      3.times { wakes.count!(peer: true) }
+      say("looks right", summary: "step 2: VERDICT OK")
+      wake = inbound.absorb_mail
+      expect(wake).to have_attributes(agreed: true)
+      expect(saved_notes.last[:content]).to include("your peer agent Claude agreed with what you sent it (VERDICT OK)")
+      expect(states).to eq(1 => ["woke"])
+    end
+
+    it "wakes for a message the peer starts (no re) with the first-word line" do
+      say("heads-up: I moved the API", summary: "sync: API moved", re: nil)
+      inbound.absorb_mail
+      expect(saved_notes.last[:content]).to include("sent you this unasked", "[PEER MESSAGE from Claude]\nheads-up: I moved the API\n")
+      expect(saved_notes.last[:content]).not_to include("answered what you sent it")
+    end
+
+    it "holds a text up to the tool output cap in a wake note, and a longer one than HELD_CHARS out of a plain note" do
+      middle = "m" * (Samagotchi::PeerNote::HELD_CHARS + 1)
+      say(middle)
+      inbound.absorb_mail
+      expect(saved_notes.last[:content]).to include("[PEER MESSAGE from Claude]\n#{middle}\n[END PEER MESSAGE]")
+
+      say(middle, wake: false)
+      inbound.absorb_mail
+      expect(saved_notes.last[:content]).not_to include("[PEER MESSAGE")
+      expect(saved_notes.last[:content]).to include("Its message is long (2001 characters): read it with claude_read(serial: 2)")
+
+      say("y" * 10_001)
+      inbound.absorb_mail
+      expect(saved_notes.last[:content]).to include("Its answer is long (10001 characters): read it with claude_read(serial: 3)")
+    end
+
     it "attributes a wake to the asking peer even when another peer's note is last" do
       registry.declare("codex", bundle: "codex-peer")
       say("asks", peer: "claude")
@@ -447,6 +479,53 @@ RSpec.describe "the worker's peer mail" do
         say("hi")
         pop!(turns, "the wake turn")
         wait_for("the receipt #{expected.join(": ")}") { states[1] == expected }
+      end
+    end
+
+    describe "the peer budget (peer.turns), through real wake turns" do
+      let(:config) { { "context.peer_turns" => 2 } }
+
+      before do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("context.peer_turns") { config["context.peer_turns"] }
+      end
+
+      def wake_and_end(serial)
+        pop!(turns, "the wake turn for ##{serial}")
+        wait_for("##{serial}'s receipt to end") { states[serial] == %w[ended completed] }
+      end
+
+      it "wakes peer.turns times in a row, then holds with one notice" do
+        notices = []
+        start_worker
+        engine.event_log.subscribe(observer: ->(event) { notices << event[:text] if event[:type] == :hook_notice })
+        say("v1")
+        wake_and_end(1)
+        say("v2")
+        wake_and_end(2)
+        say("v3")
+        wait_for("#3 held") { states[3] == %w[held peer_turns] }
+        say("v4")
+        wait_for("#4 held") { states[4] == %w[held peer_turns] }
+        expect(turns).to be_empty
+        expect(notices).to eq(["Claude answered again; it waits as a note for your next message (2 wake turns in a " \
+                               "row, context.peer_turns)"])
+      end
+
+      it "takes typed input in the web or a TUI as the reset, not chi send (which a peer can run)" do
+        config["context.peer_turns"] = 1
+        start_worker
+        say("v1")
+        wake_and_end(1)
+        Samagotchi::SessionManager.write_turn_input(session.id, client_id: "cli:send", prompt: "go on", state_dir: state_dir)
+        pop!(turns, "the chi send turn")
+        say("v2")
+        wait_for("#2 held: chi send is no reset") { states[2] == %w[held peer_turns] }
+        Samagotchi::SessionManager.write_turn_input(session.id, client_id: "web:tab1", prompt: "go on", state_dir: state_dir)
+        pop!(turns, "the typed turn")
+        say("v3")
+        _, kwargs, = pop!(turns, "the wake turn after the reset")
+        expect(kwargs[:origin].client_id).to eq("peer:claude")
       end
     end
 

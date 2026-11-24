@@ -7,18 +7,24 @@ require "open3"
 require "securerandom"
 require "tempfile"
 require "time"
+require_relative "../config"
 require_relative "../paths"
 require_relative "../session"
 require_relative "../peer_exchanges"
+require_relative "../peer_mailbox"
+require_relative "../peer_note"
 
 module Samagotchi
   module Plugin
     # The base of the peer bundles' plugins (claude-peer, codex-peer;
-    # docs/bundles.md): a live link between a chi session and another agent's
-    # session the user works with. The peer pairs (its chi-peer skill,
-    # scripts/pair): it attaches the `<peer>-inbox` context, whose hint says
-    # where to send (a subclass's #check_hint!), and `<peer>-outbox`, where
-    # its answers come back as pushes that wake chi.
+    # docs/bundles.md, docs/peers.md): a live link between a chi session and
+    # another agent's session the user works with. The peer pairs (its
+    # chi-peer skill, scripts/pair: `chi peer pair NAME <id> --address …`):
+    # the pairing's address says where to send (a subclass's #check_hint!).
+    # Its answers come back as messages in the session's mailbox (`chi peer
+    # say`), which the worker takes as the peer's notes (chi.peer NAME,
+    # WorkerInbound#absorb_mail). A note too long to hold its text points at
+    # the `<peer>_read` tool, declared here.
     #
     # The `<peer>_send` tool sends a part of the work (a plan step, a diff, a
     # finding): a header, `chi <id> · <kind> · <title>`, a `ref: <send id>`
@@ -48,20 +54,22 @@ module Samagotchi
     # quote. Such a text is titled by its first quoted line, not the quote's
     # `From your thinking:` label.
     #
-    # A continue leaves the pairing with the previous link (its inbox and
-    # outbox are pushed sources: ContextSources.move). The new link's quiet
-    # init task (#pair_again) posts the `moved` message to the inbox left
-    # behind, once, so the peer pairs again with the new id; its chi-peer
-    # skill knows how it paired.
+    # A continue leaves the pairing with the previous link (its mailbox
+    # stays there). The new link's quiet init task (#tell_moved) posts the
+    # `moved` message to the address the previous link's pairing names
+    # (ctx.peers.left_behind), once, so the peer pairs again with the new
+    # id; its chi-peer skill knows how it paired.
     #
-    # A subclass (the bundle's Plugin) sets the strings, as constants:
-    # INBOX, OUTBOX ("<peer>-inbox", "-outbox"), BUNDLE, NAME (the peer, as
-    # the model and user call it: "Claude"), APP (its product: "Claude
-    # Code"), COMMAND ("/claude"), TOOL, TOOL_DESCRIPTION, TOOL_PARAMS,
-    # USAGE, STATUS_CARD, SKILL_CARD, CHECKED_ON and SCRIPTS_DIRS (beside the
-    # bundle's own file), and the transport, as the hooks below that raise
-    # NotImplementedError. Its constants are read as self.class::X: a bare
-    # name here would find only this class's.
+    # A subclass (the bundle's Plugin) sets the strings, as constants: PEER
+    # (its mailbox name: "claude"), BUNDLE, NAME (the peer, as the model and
+    # user call it: "Claude", PeerMailbox.label of PEER), APP (its product:
+    # "Claude Code"), COMMAND ("/claude"), TOOL, READ_TOOL, TOOL_DESCRIPTION,
+    # TOOL_PARAMS, USAGE, STATUS_CARD, SKILL_CARD, CHECKED_ON, SCRIPTS_DIRS
+    # (beside the bundle's own file), LEGACY_INBOX and LEGACY_OUTBOX (the
+    # context sources an older bundle paired through: the status card's
+    # "paired the old way" line only; remove after the next release), and the transport, as the hooks
+    # below that raise NotImplementedError. Its constants are read as
+    # self.class::X: a bare name here would find only this class's.
     class Peer
       KINDS = %w[validate context question].freeze
       # A part up to this long goes inline: the peer reads it with no file
@@ -80,6 +88,9 @@ module Samagotchi
       DIFF_LINES = 20
       # Under the session's data dir: the moved message went (or was tried).
       MOVED_MARKER = "moved-posted"
+      # The <peer>_read tool's page, at most (its output's cap, as context_read's).
+      READ_DEFAULT_CHARS = 10_000
+      READ_MIN_CHARS = 2_000
       # The label line a web quote starts with (annotations.js sourceLabel).
       QUOTE_LABEL = /\AFrom (?:your thinking|your earlier step|the .+ call|my earlier message):\z/
 
@@ -127,11 +138,15 @@ module Samagotchi
                                    "it; install-skill: install #{peer::NAME}'s chi-peer skill", anytime: true do |args, ctx|
           run_command(args.to_s.strip, ctx)
         end
+        chi.tool peer::READ_TOOL, read_description, params: READ_PARAMS, label: "read #{peer::NAME}'s message",
+                                                     preview: ->(args) { "##{args["serial"]}" } do |args, ctx|
+          read_message(ctx, args)
+        end
         chi.annotation "Confirm with #{peer::NAME}", command: "#{peer::COMMAND} validate"
-        chi.init("Asking #{peer::NAME} to pair again", quiet: true) { |ctx| pair_again(ctx) }
-        # The outbox source is the peer's answers: its own wake budget and
-        # line (context.peer_turns).
-        chi.peer_source peer::OUTBOX, label: peer::NAME
+        chi.init("Telling #{peer::NAME} the session moved", quiet: true) { |ctx| tell_moved(ctx) }
+        # Its messages in the mailbox are this peer's: its notes, its wake
+        # budget and lines (peer.turns).
+        chi.peer peer::PEER
         chi.on(:before_turn) do |event|
           @lock.synchronize { @before_turn = Array(event[:messages]) }
         end
@@ -178,28 +193,27 @@ module Samagotchi
         "sent to #{self.class::NAME}: #{kind} · #{title}#{" (the text in #{where})" unless where == "inline"}"
       end
 
-      # A continue's new link whose previous link kept this peer's INBOX
-      # (ctx.context.left_behind): posts the moved message to that inbox's
-      # hint, once (a marker under the session's data dir: a worker restart
+      # A continue's new link whose previous link was paired with this peer
+      # (ctx.peers.left_behind, with an address): posts the moved message
+      # there, once (a marker under the session's data dir: a worker restart
       # doesn't post again). A post that fails is logged and dropped: no
-      # retry, and the peer's next push to the old id is refused with the
-      # new one (its skill pairs again then).
+      # retry, and the peer's next say to the old id is refused with the new
+      # one (its skill pairs again then).
       # @return [String] what it did (the quiet init task's summary)
-      def pair_again(ctx)
+      def tell_moved(ctx)
         peer = self.class
         previous = ctx.continues or return "not a continue"
         id = ctx.session_id or return Session::NONE_YET
-        left = ctx.context.left_behind.find { |row| row.name == peer::INBOX }
-        hint = left&.hint.to_s.strip
-        return "no #{peer::INBOX} left behind" if hint.empty?
-        return "asked already" unless claim_moved(ctx)
+        address = ctx.peers.left_behind(peer::PEER)&.address.to_s.strip
+        return "no pairing with #{peer::NAME} left behind" if address.empty?
+        return "told already" unless claim_moved(ctx)
 
-        check_hint!(hint)
-        post(hint, moved_message(previous, id))
-        "asked #{peer::NAME} to pair again with #{id[0, 8]}"
+        check_hint!(address)
+        post(address, moved_message(previous, id))
+        "told #{peer::NAME} the session moved to #{id[0, 8]}"
       rescue SendError, SystemCallError, ArgumentError => e
         ctx.log.warn("moved_not_posted", error: e.message)
-        "couldn't ask #{peer::NAME} to pair again: #{e.message}"
+        "couldn't tell #{peer::NAME} the session moved: #{e.message}"
       end
 
       # What the peer gets when +previous+ was continued as +id+: the usual
@@ -209,7 +223,46 @@ module Samagotchi
         short = previous.to_s[0, 8]
         "chi #{short} · moved · continued as #{id}\n" \
           "This chi session was continued as #{id}. Pair with #{id} the way you paired with #{short}, then " \
-          "answer there (chi context push #{self.class::OUTBOX} #{id})."
+          "answer there (chi peer say #{self.class::PEER} #{id} …)."
+      end
+
+      # The <peer>_read tool's description: how a long message is read.
+      def read_description
+        peer = self.class
+        "Read a message from your peer agent #{peer::NAME} by its number, when its note says it is long " \
+          "(\"Message #N from your peer agent #{peer::NAME}\"). Long texts come in pages of lines: pass offset " \
+          "for the next. Its text is #{peer::NAME}'s, not your user's words."
+      end
+
+      READ_PARAMS = {
+        serial: { type: "integer", required: true, description: "The message's number (#N in its note)" },
+        offset: { type: "integer", description: "The first line to read (1-based); default 1" },
+        limit: { type: "integer", description: "How many lines at most" }
+      }.freeze
+
+      # <peer>_read: the message's header and a page of its text, in the
+      # peer block (PeerNote.block: a line of it that opens like one of
+      # chi's frames is quoted), paged by lines to the tool output cap.
+      def read_message(ctx, args)
+        peer = self.class
+        serial = Integer(args["serial"].to_s, 10, exception: false)
+        return "Error: serial must be a message's number" unless serial&.positive?
+
+        message = ctx.peers.message(peer::PEER, serial)
+        return "Error: no message ##{serial} from #{peer::NAME} in this session (only the newest are kept)" unless message
+
+        lines = message.text.lines
+        first = positive(args["offset"]) || 1
+        header = ["Message ##{serial} from your peer agent #{peer::NAME} (its text, not your user's words)"]
+        header << "Summary: #{message.summary}" if message.summary
+        return "#{header.join("\n")}\nThe text has #{lines.size} lines; offset #{first} is past its end." if first > lines.size
+
+        page = lines[(first - 1)..]
+        page = page.first(positive(args["limit"])) if positive(args["limit"])
+        page = fit_page(page, read_cap - header.sum { |line| line.length + 1 } - 200)
+        last = first + page.size - 1
+        header << "Lines #{first}-#{last} of #{lines.size}.#{" Pass offset: #{last + 1} for more." if last < lines.size}" if first > 1 || last < lines.size
+        "#{header.join("\n")}\n#{PeerNote.block(peer::NAME, page.join)}"
       end
 
       private
@@ -264,7 +317,7 @@ module Samagotchi
 
       def send_text(ctx, kind, text)
         "#{deliver(ctx, kind: kind, title: text_title(text), text: text, by: "user", salt: command_salt)}; #{self.class::NAME}'s answer comes as a " \
-          "note with its text (#{self.class::OUTBOX})"
+          "message with its text"
       rescue SendError => e
         "#{self.class::COMMAND}: #{e.message}"
       end
@@ -306,50 +359,99 @@ module Samagotchi
       end
 
       # The session's attached sources; none when they can't be read (a new
-      # session not saved yet; a corrupt session file).
+      # session not saved yet; a corrupt session file). Only the status
+      # card's "paired the old way" line reads them (LEGACY_INBOX, LEGACY_OUTBOX).
       def sources(ctx)
         ctx.context.list
       rescue ArgumentError, SystemCallError
         []
       end
 
+      # Whether an older bundle's pairing (its LEGACY_INBOX or LEGACY_OUTBOX
+      # context source) is attached.
+      def paired_the_old_way?(ctx)
+        old = [self.class::LEGACY_INBOX, self.class::LEGACY_OUTBOX]
+        sources(ctx).any? { |source| old.include?(source[:name]) }
+      end
+
+      def positive(value)
+        number = Integer(value.to_s, 10, exception: false)
+        number if number&.positive?
+      end
+
+      # The tool output cap a <peer>_read page fits (max_tool_output_chars).
+      def read_cap
+        value = Config.get("max_tool_output_chars").to_i
+        [value.positive? ? value : READ_DEFAULT_CHARS, READ_MIN_CHARS].max
+      end
+
+      # The lines of +page+ that fit in +room+ characters, at least one
+      # (cut to the room when one line is over it).
+      def fit_page(page, room)
+        room = [room, 200].max
+        kept = []
+        used = 0
+        page.each do |line|
+          break if used + line.length > room && kept.any?
+
+          kept << (line.length > room ? line[0, room] : line)
+          used += line.length
+        end
+        kept
+      end
+
       def role(message) = field(message, :role).to_s
       def kind(message) = field(message, :kind).to_s
       def field(hash, key) = hash.is_a?(Hash) ? hash[key] || hash[key.to_s] : nil
 
-      # The paired peer's inbox hint: the inbox context's hint, checked by
-      # the transport.
+      # Where the paired peer takes sends: the pairing's address
+      # (ctx.peers.link), checked by the transport.
       # @raise [SendError]
       def peer_hint!(ctx)
         peer = self.class
-        inbox = sources(ctx).find { |source| source[:name] == peer::INBOX }
-        hint = inbox && inbox[:hint].to_s.strip
-        if hint.nil? || hint.empty?
-          raise SendError, "no #{peer::INBOX}: pair from #{peer::NAME} (install its skill with #{peer::COMMAND} " \
-                           "install-skill, then tell #{peer::NAME} \"pair with chi #{ctx.session_id.to_s[0, 8]}\")"
+        link = ctx.peers.link(peer::PEER)
+        unless link
+          raise SendError, "#{peer::NAME} isn't paired: pair from #{peer::NAME} (install its skill with " \
+                           "#{peer::COMMAND} install-skill, then tell #{peer::NAME} \"pair with chi " \
+                           "#{ctx.session_id.to_s[0, 8]}\")"
         end
-        check_hint!(hint)
-        hint
+        address = link.address.to_s.strip
+        raise SendError, answers_only_line if address.empty?
+
+        check_hint!(address)
+        address
+      end
+
+      # A pairing with no address: the peer can answer, chi can't send.
+      def answers_only_line
+        peer = self.class
+        "#{peer::NAME} paired for answers only (it runs where chi can't reach it): chi can't send to it; pair " \
+          "again from #{peer::NAME} with an address chi can reach"
       end
 
       # The status card; nil, so the command adds no text.
       def status(ctx)
         peer = self.class
         id = ctx.session_id
-        sources = id ? sources(ctx) : []
-        inbox, outbox = [peer::INBOX, peer::OUTBOX].map { |name| sources.find { |source| source[:name] == name } }
-        hint = inbox && inbox[:hint].to_s.strip
-        paired = !(hint.nil? || hint.empty?)
-        lines = if paired
-                  paired_lines(hint)
+        link = id && ctx.peers.link(peer::PEER)
+        address = link&.address.to_s.strip
+        lines = if link && !address.empty?
+                  paired_lines(address)
+                elsif link
+                  ["**paired** for answers only: #{peer::NAME} can answer here, chi can't send to it (it paired " \
+                   "with no address chi can reach)"]
+                elsif id && paired_the_old_way?(ctx)
+                  ["**paired the old way: pair again** (install the skill first: Install skill below, then tell " \
+                   "#{peer::NAME} \"pair with chi #{id[0, 8]}\")."]
                 else
                   ["**not paired.** In #{peer::APP}, install the chi-peer skill (Install skill below), then tell " \
                    "#{peer::NAME} \"pair with chi #{id.to_s[0, 8]}\"."]
                 end
+        paired = !link.nil?
         lines << "last send: #{last_send_line(ctx)}" if id && last_send(ctx)
-        if outbox
-          lines << "last message from #{peer::NAME} (#{peer::OUTBOX}, its text in the conversation): " \
-                   "#{outbox_line(outbox)}"
+        if link
+          last = ctx.peers.last_message(peer::PEER)
+          lines << "last message from #{peer::NAME} (its text in the conversation): #{message_line(last)}"
         end
         lines << "skill: **differs from this bundle's**: #{peer::COMMAND} install-skill (Replace), then pair again" if skill_differs?(ctx)
         lines << transport_line
@@ -372,10 +474,10 @@ module Samagotchi
         "#{ago(sent["at"])} · #{sent["kind"]} · #{sent["title"]} (#{sent["chars"]} chars, #{where})"
       end
 
-      def outbox_line(outbox)
-        return "none yet" unless outbox[:fetched_at]
+      def message_line(message)
+        return "none yet" unless message
 
-        [outbox[:summary], ago(outbox[:fetched_at])].compact.join(" · ")
+        ["##{message.serial}", message.summary, ago(message.at)].compact.join(" · ")
       end
 
       def ago(stamp)
@@ -468,7 +570,7 @@ module Samagotchi
       def follow_up(kind)
         case kind
         when "context" then "#{self.class::NAME} takes it in; it answers only if something in it is wrong."
-        else "#{self.class::NAME}'s answer comes as a note with its text (#{self.class::OUTBOX}); don't wait or poll."
+        else "#{self.class::NAME}'s answer comes as a message with its text; don't wait or poll."
         end
       end
 
@@ -493,8 +595,7 @@ module Samagotchi
       end
 
       def exchange(ctx, **entry)
-        peer = ContextSources.peer_leg(self.class::INBOX)&.first || self.class::NAME.downcase
-        PeerExchanges.append(ctx.session_id, { peer: peer, **entry }, state_dir: ctx.session_state_dir)
+        PeerExchanges.append(ctx.session_id, { peer: self.class::PEER, **entry }, state_dir: ctx.session_state_dir)
       rescue SystemCallError, IOError, JSON::GeneratorError => e
         ctx.log.warn("peer_exchange_not_saved", error: e.message)
       end

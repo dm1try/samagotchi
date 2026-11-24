@@ -64,7 +64,6 @@ module Samagotchi
           },
           toolkits: @toolkit_binding.plugin_kits,
           tool_index: @tool_index,
-          peer_sources: @peer_sources,
           peer_registry: @peer_registry,
           prompt_sections: @prompt_sections,
           prompt_changed: -> { prompt_changed! },

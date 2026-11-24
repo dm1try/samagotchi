@@ -30,6 +30,7 @@ module Samagotchi
     # bundle test kit, don't need.
     autoload :Sessions, File.expand_path("sessions", __dir__)
     autoload :AttachedContext, File.expand_path("attached_context", __dir__)
+    autoload :Peers, File.expand_path("peers", __dir__)
     # ctx.http's file needs only json and uri (net/http loads with the first
     # real request); autoloaded so a bundle can name HttpError at load time.
     autoload :Http, File.expand_path("http", __dir__)
@@ -573,6 +574,12 @@ module Samagotchi
       # @return [AttachedContext]
       def context
         @context ||= AttachedContext.new(@host, bundle: @bundle)
+      end
+
+      # This session's peers: a pairing and a peer's messages (Peers).
+      # @return [Peers]
+      def peers
+        @peers ||= Peers.new(@host, continues: -> { continues })
       end
 
       # A single-select question through the question flow. Inside a

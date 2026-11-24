@@ -3,11 +3,10 @@
 require "tmpdir"
 require "json"
 require "samagotchi/testing/rspec"
-require "samagotchi/context_sources"
 
 # The codex-peer bundle's plugin (lib/samagotchi/bundles/codex-peer):
 # codex_send runs `codex queue --thread <uuid> --message <text>` for the
-# paired Codex session (the codex-inbox context's hint). Here `codex` is a
+# paired Codex session (the pairing's address, `chi peer pair codex <id> --address`). Here `codex` is a
 # fake (CODEX=), which records its arguments; never the real Codex CLI.
 RSpec.describe "The codex-peer plugin", :bundle do
   let(:shipped) { File.expand_path("..", __dir__) }
@@ -60,13 +59,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
-
-  def pair(hint = thread_id)
-    own.add(Samagotchi::ContextSources::Source.new(name: "codex-inbox", cmd: nil, every_seconds: nil, why: "Codex",
-                                                   hint: hint, scope: "session", added_by: "cli",
-                                                   created_at: Time.now.utc.iso8601))
-  end
+  def pair(address = thread_id) = bundle.pair_peer("codex", address: address)
 
   def send_part(**args)
     bundle.tool("codex_send", args)
@@ -86,7 +79,8 @@ RSpec.describe "The codex-peer plugin", :bundle do
     expect(params.keys).to eq(%i[kind title text])
     expect(params[:kind][:enum]).to eq(%w[validate context question])
     expect(tool.preview.call({ name: "codex_send", args: { "kind" => "validate", "title" => "cache step 2" } })).to eq("validate: cache step 2")
-    expect(tool.schema[:description]).to include("Only when the user asks", "codex-outbox")
+    expect(tool.schema[:description]).to include("Only when the user asks", "a message from your peer agent Codex")
+    expect(tool.schema[:description]).not_to include("codex-outbox", "codex-inbox")
   end
 
   it "runs codex queue for the paired thread: the header, then a short text inline" do
@@ -94,7 +88,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
 
     result = send_part(kind: "validate", title: "Step 2: the cache key", text: "Is the key stable?\nsee lib/a.rb")
 
-    expect(result).to start_with("sent to Codex: validate · Step 2: the cache key. Codex's answer comes as a note with its text")
+    expect(result).to start_with("sent to Codex: validate · Step 2: the cache key. Codex's answer comes as a message with its text")
     expect(queued).to eq(["queue", "--thread", thread_id, "--message",
                           "chi #{short} · validate · Step 2: the cache key\n" \
                           "#{ref("validate", "Step 2: the cache key", "Is the key stable?\nsee lib/a.rb")}\nIs the key stable?\nsee lib/a.rb"])
@@ -133,9 +127,9 @@ RSpec.describe "The codex-peer plugin", :bundle do
   end
 
   describe "errors" do
-    it "says how to pair when no codex-inbox is attached, running nothing" do
+    it "says how to pair when Codex isn't paired, running nothing" do
       expect(send_part(kind: "validate", title: "t", text: "x"))
-        .to eq("Error: no codex-inbox: pair from Codex (install its skill with /codex install-skill, then tell " \
+        .to eq("Error: Codex isn't paired: pair from Codex (install its skill with /codex install-skill, then tell " \
                "Codex \"pair with chi #{short}\")")
       expect(queued).to be_nil
     end
@@ -144,7 +138,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       pair("/tmp/claude.sock")
 
       expect(send_part(kind: "validate", title: "t", text: "x"))
-        .to eq("Error: codex-inbox's hint isn't a Codex thread id (/tmp/claude.sock): pair again from Codex")
+        .to eq("Error: the pairing's address isn't a Codex thread id (/tmp/claude.sock): pair again from Codex")
       expect(queued).to be_nil
     end
 
@@ -241,7 +235,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       let(:session_id) { "aaaabbbb-1111-2222-3333-444455556666" }
 
       it "finds no Codex paired, in the tool and the card" do
-        expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: no codex-inbox: pair from Codex")
+        expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: Codex isn't paired: pair from Codex")
 
         bundle.command("/codex")
         expect(cards.last[:title]).to eq("codex-peer: not paired")
@@ -253,13 +247,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
     def run(args = "") = bundle.command("/codex #{args}")
     def hook(event, payload) = bundle.fire(event, **payload)
 
-    def review(text, summary)
-      own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: "answers",
-                                                     hint: "latest Codex reply", scope: "session", added_by: "cli",
-                                                     created_at: Time.now.utc.iso8601))
-      own.record_text("codex-outbox", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
-                                                                              hint: nil))
-    end
+    def review(text, summary) = bundle.peer_says("codex", text, summary: summary)
 
     it "is an anytime command, and the plugin watches turns start and end" do
       expect(bundle.commands.lookup("/codex").anytime).to be(true)
@@ -287,7 +275,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
         card = cards.last
         expect(card[:title]).to eq("codex-peer: paired")
         expect(card[:body]).to include("thread: `#{thread_id}` (a closed Codex session still takes sends", "last send: just now · validate · step 2 (8 chars, inline)",
-                                       "last message from Codex (codex-outbox, its text in the conversation): validate step 2: VERDICT OK · just now")
+                                       "last message from Codex (its text in the conversation): #1 · validate step 2: VERDICT OK · just now")
       end
     end
 
@@ -295,7 +283,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       pair
 
       result = run("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
-      expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as a note with its text (codex-outbox)")
+      expect(result).to eq("sent to Codex: validate · Step 3 keeps the old key; Codex's answer comes as a message with its text")
       text = "Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40"
       expect(queued_message).to eq("chi #{short} · validate · Step 3 keeps the old key\n#{command_ref("validate", "Step 3 keeps the old key", text)}\n#{text}")
 
@@ -303,9 +291,10 @@ RSpec.describe "The codex-peer plugin", :bundle do
       expect(queued_message).to eq("chi #{short} · context · we chose Redis\n#{command_ref("context", "we chose Redis", "we chose Redis")}\nwe chose Redis")
     end
 
-    it "adds a Confirm with Codex pill (a fill, the quote) and the codex-outbox peer source" do
+    it "adds a Confirm with Codex pill (a fill, the quote), declares its peer codex and the codex_read tool" do
       expect(bundle.annotations.map { |pill| [pill.label, { command: pill.line }] }).to eq([["Confirm with Codex", { command: "/codex validate" }]])
-      expect(bundle.peer_sources.names.map { |name| [name, bundle.peer_sources.label_for(name)] }).to eq([%w[codex-outbox Codex]])
+      expect(bundle.peer_registry.names).to eq(["codex"])
+      expect(bundle.tools["codex_read"].schema[:parameters][:properties].keys).to eq(%i[serial offset limit])
     end
 
     it "titles a pill's quote by its first quoted line, not the From …: label" do
@@ -324,7 +313,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
     end
 
     it "says why a send failed, and gives usage for nothing to send or an unknown verb" do
-      expect(run("validate x")).to start_with("/codex: no codex-inbox: pair from Codex")
+      expect(run("validate x")).to start_with("/codex: Codex isn't paired: pair from Codex")
       expect(run("validate")).to start_with("usage: /codex")
       expect(run("frob")).to start_with("usage: /codex")
       expect(run("last now")).to start_with("usage: /codex")
