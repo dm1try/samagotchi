@@ -2417,10 +2417,12 @@ test("a peer's message through the mailbox: paired by the route, its bubble, the
     await expect(bubble).toHaveCount(1);
     await expect(bubble.locator(".note-text")).toHaveText("validate phase A: VERDICT CHANGES, 2 issues");
     await expect(bubble.locator(".peer-text strong")).toHaveText("The route");
+    // The message woke chi: its turn (the second) ends before the reload
+    // check, or a reload could draw it ended while the live page still ran it.
     await expectSameAfterReload(page, async (p) => {
+      await ended(2)(p);
       await expect(p.locator("#history .bubble.note.peer-answer")).toHaveCount(1);
     });
-    await turnEnded(page, 1);
     const held = chiCli(chi, ["peer", "say", "claude", id, "--wake", "--summary", "validate phase B",
                               "-m", "The follow-up", "--wait", "8"]);
     expect(held.trim()).toBe("#2 received · held: 1 peer turn in a row (peer.turns) · waits for the user's next message");
