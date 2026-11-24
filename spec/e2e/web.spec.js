@@ -2509,6 +2509,39 @@ test("a notice that stands in for the rendered answer isn't shown, live or after
   await expect(page.locator("#center")).not.toContainText("e2e fallback line");
 });
 
+// Background items under a turn's answer (quiet_notes.js): the
+// e2e-fallback-notice bundle's after-turn line and a context note after it
+// fold into one closed row, its items hidden; a tap opens it. After a reload
+// the same one closed row, the same words in the same order: the line stays
+// right under its turn, above the note (cards_place.js afterTurnEnd). The
+// variants are unit specs.
+test("a turn's background items fold into one closed notes row; a tap opens it; a reload draws the same row closed", async ({ page, script, chi }) => {
+  script("fallback_notice");
+  await send(page, "Name the ticket");
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .bubble.hook-notice").getByText("e2e plain line")).toHaveCount(1);
+  const id = decodeURIComponent(new URL(page.url()).hash.replace(/^#\/s\//, ""));
+  chiCli(chi, ["note", "--source", "e2e-inbox", "-m", "an inbox note", id]);
+  const rows = page.locator("#history > .quiet-notes");
+  const row = rows.first();
+  const closed = async () => {
+    await expect(rows).toHaveCount(1);
+    await expect(row).toHaveAttribute("aria-expanded", "false");
+    await expect(row.locator(".qn-count")).toHaveText("2 notes");
+    await expect(row.locator(".qn-names")).toHaveText("· e2e-fallback-notice, e2e-inbox");
+    await expect(page.locator("#history > .bubble.note")).toBeHidden();
+    await expect(page.locator("#history > .bubble.hook-notice")).toBeHidden();
+  };
+  await closed();
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#history > .bubble.note")).toBeVisible();
+  await expect(page.locator("#history > .bubble.hook-notice")).toBeVisible();
+  await page.reload();
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  await closed();
+});
+
 // Refs a plugin attached to the answer (the e2e-answer-refs test bundle's,
 // refs only: an answer_display with no display): JIRA-7 pairs with its
 // markdown link (the href is its first action's URL), its menu offers both

@@ -193,3 +193,17 @@ test("a peer's inline text reads as its source, live (its markdown swapped in) a
   assert.match(shape[0].text, /1\. \*\*a bug\*\*/);
   assert.equal(compareShapes(shape, historyShape(reload)).same, true);
 });
+
+test("historyShape: a notes row (quiet_notes.js) is no item, and the notes it hides keep their kinds", () => {
+  const shape = historyShape(historyOf([
+    '<div class="bubble output">a</div>',
+    '<button type="button" class="quiet-notes warn" aria-expanded="false"><span class="qn-count">2 notes</span><span class="qn-names">· slack, skills</span><span class="qn-warn">⚠ 1</span></button>',
+    '<div class="bubble note quiet-hidden"><div class="note-line">note from slack</div><div class="note-text">n</div></div>',
+    '<div class="bubble hook-notice warn quiet-hidden">skills: failed</div>',
+  ].join("")));
+  assert.deepEqual(shape, [
+    { kind: "answer", cls: "", text: "a" },
+    { kind: "note", cls: "", text: "note from slackn" },
+    { kind: "notice", cls: "warn", text: "skills: failed" },
+  ]);
+});

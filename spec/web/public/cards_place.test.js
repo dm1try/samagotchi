@@ -385,3 +385,11 @@ test("a between-turn line doesn't walk over a wake's opening note", () => {
   harness(h).cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "after", turns_since: 0 }]);
   assert.deepEqual(order(h), ["one", "a1", "woke", "a2", "h: after", "n"]);
 });
+
+test("a between-turn line walks over a notes row (quiet_notes.js) over the notes between the turns", () => {
+  const h = history('<div class="bubble user">one</div><div class="bubble output">a1</div><div class="turn-timing">t1</div>'
+    + '<div class="time-gap">gap</div><button class="quiet-notes">row</button><div class="bubble note">note</div>'
+    + '<div class="bubble user">two</div>');
+  harness(h).cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "after", turns_since: 1 }]);
+  assert.deepEqual(order(h), ["one", "a1", "t1", "h: after", "gap", "row", "note", "two"]);
+});
