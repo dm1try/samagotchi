@@ -316,20 +316,6 @@ module Samagotchi
       end
     end
 
-    # A continue's move: the session's mailbox folder renamed to the new id's.
-    # @return [Boolean] whether there was one to move
-    # @raise [SystemCallError] the target exists, or the rename failed
-    def move(from:, to:, state_dir: nil)
-      source = session_dir(from, state_dir: state_dir)
-      return false unless Dir.exist?(source)
-
-      target = session_dir(to, state_dir: state_dir)
-      raise Errno::EEXIST, target if File.exist?(target)
-
-      File.rename(source, target)
-      true
-    end
-
     # A deleted session's mailbox.
     # @return [Array<String>] the paths removed
     def remove_session(session_id, state_dir: nil)

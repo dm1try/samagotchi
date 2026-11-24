@@ -244,18 +244,14 @@ RSpec.describe "PeerMailbox" do
   end
 
   describe "a session's folders" do
-    it "lists the peer folders with a valid name, moves them and removes them" do
+    it "lists the peer folders with a valid name and removes them" do
       post(peer: "claude")
       post(peer: "codex")
       FileUtils.mkdir_p(File.join(mailbox.session_dir(id, state_dir: state_dir), "Bad-Name"))
       expect(mailbox.peers(id, state_dir: state_dir)).to eq(%w[claude codex])
 
-      expect(mailbox.move(from: id, to: "sess-0002", state_dir: state_dir)).to be(true)
-      expect(mailbox.peers(id, state_dir: state_dir)).to eq([])
-      expect(mailbox.peers("sess-0002", state_dir: state_dir)).to eq(%w[claude codex])
-
-      expect(mailbox.remove_session("sess-0002", state_dir: state_dir)).to eq([mailbox.session_dir("sess-0002", state_dir: state_dir)])
-      expect(Dir.exist?(mailbox.session_dir("sess-0002", state_dir: state_dir))).to be(false)
+      expect(mailbox.remove_session(id, state_dir: state_dir)).to eq([mailbox.session_dir(id, state_dir: state_dir)])
+      expect(Dir.exist?(mailbox.session_dir(id, state_dir: state_dir))).to be(false)
     end
   end
 

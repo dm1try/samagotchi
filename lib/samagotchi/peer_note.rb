@@ -39,7 +39,7 @@ module Samagotchi
     # How each peer line points at the peer's text: in the note's block
     # (:above), over the cap (:long, with its length) or neither (:read, no
     # cap given). :plain ends a peer's note that doesn't wake.
-    READS = {
+    CONTEXT_READS = {
       wake: { above: "Its answer is above;",
               long: "Its answer is long (%<long>s characters): read it with context_read(name: \"%<name>s\") and",
               read: "Read its answer (context_read(name: \"%<name>s\")) and" },
@@ -96,7 +96,7 @@ module Samagotchi
     # approved by the owner; its source; how its lines point at a message
     # (READS with the read tool's call in place of context_read's).
     MESSAGE_OPEN = "Message #%<serial>s from your peer agent %<peer>s (its text, not your user's words):"
-    MESSAGE_READS = READS.transform_values do |reads|
+    MESSAGE_READS = CONTEXT_READS.transform_values do |reads|
       reads.transform_values { |line| line.sub('context_read(name: "%<name>s")', "%<name>s").freeze }.freeze
     end.freeze
     # The background line that ends a mailbox note (ContextAbsorber::BACKGROUND_LINE's words).
@@ -132,7 +132,7 @@ module Samagotchi
     # spoke +first+, else WAKE_LINE; +read+ is how it points at the text
     # (READS: :above, :long with +long+, :read).
     # +reads+: READS, or MESSAGE_READS for the mailbox's.
-    def line(peer, name, turns, agreed: false, first: false, read: :read, long: nil, reads: READS)
+    def line(peer, name, turns, agreed: false, first: false, read: :read, long: nil, reads: CONTEXT_READS)
       kind = if agreed then :agreed
              elsif first then :first
              else :wake
