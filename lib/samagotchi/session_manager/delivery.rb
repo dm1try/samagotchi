@@ -52,14 +52,16 @@ module Samagotchi
       def detail = ack["detail"]
 
       # How a delivery that did not go in reads, as one line: the word for it
-      # (refused: a worker older than queueing would steer the running turn,
+      # (refused: a worker older than queueing or without a requested feature,
       # or a remote refused it as chi send refuses it here; failed: it simply
       # did not get in) and its reason. chi send prints it, and the delegate
       # tool's follow-up says it after "Error: session <id8>".
       # @return [String]
       def refusal_text
-        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] || continued? || wake_refused? || deleting? ||
-                  DeliverResult::REMOTE_REFUSALS.include?(error)
+        refused = error == Delivery::QUEUE_UNAVAILABLE["error"] ||
+                  error == Delivery::ASK_UNAVAILABLE["error"] ||
+                  error == Delivery::PAIR_UNAVAILABLE["error"] ||
+                  continued? || wake_refused? || deleting? || DeliverResult::REMOTE_REFUSALS.include?(error)
         "#{refused ? "refused" : "failed"}: #{detail || "could not queue it"}"
       end
 

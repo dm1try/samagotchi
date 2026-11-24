@@ -818,6 +818,20 @@ RSpec.describe Samagotchi::SessionManager do
 
         expect(result.refusal_text).to eq("refused: #{described_class::DeliverResult::STOPPED["detail"]}")
       end
+
+      it "reads an old worker's unavailable ask feature as refused" do
+        ack = Samagotchi::Delivery::ASK_UNAVAILABLE
+        result = described_class::DeliverResult.new(status: :refused, code: 409, ack: ack)
+
+        expect(result.refusal_text).to eq("refused: #{ack["detail"]}")
+      end
+
+      it "reads an old worker's unavailable pair feature as refused" do
+        ack = Samagotchi::Delivery::PAIR_UNAVAILABLE
+        result = described_class::DeliverResult.new(status: :refused, code: 409, ack: ack)
+
+        expect(result.refusal_text).to eq("refused: #{ack["detail"]}")
+      end
     end
 
     it "needs the sender's client_id" do
