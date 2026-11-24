@@ -158,6 +158,18 @@ RSpec.describe "PeerMailbox" do
       expect(serials).to eq((6..61).to_a)
     end
 
+    it "keeps a held message even after more than 50 later messages are taken" do
+      60.times { post }
+      peer = Samagotchi::PeerReceipts::Peer.new(box: "a1b2c3", taken: 60, receipts: [
+        Samagotchi::PeerReceipts::Receipt.new(serial: 1, state: "held", reason: "peer_turns", at: "x")
+      ])
+      Samagotchi::PeerReceipts.write(id, Samagotchi::PeerReceipts::Book.new(peers: { "claude" => peer }), state_dir: state_dir)
+
+      post("next", taken: 60)
+
+      expect(serials).to include(1)
+    end
+
     it "refuses the 201st untaken message and writes nothing" do
       200.times { post }
       expect { post }.to raise_error(Samagotchi::PeerMailbox::Full, /200 unread messages from claude/)

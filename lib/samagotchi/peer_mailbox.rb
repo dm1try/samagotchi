@@ -254,7 +254,9 @@ module Samagotchi
         raise Invalid, "the message is #{body.bytesize} bytes written; the limit is #{FILE_MAX_BYTES}" if body.bytesize > FILE_MAX_BYTES
 
         AtomicFile.write(File.join(dir, IN_DIR, "#{serial}.json"), body)
-        trim(dir, present, taken.to_i)
+        held = PeerReceipts.read(session_id, state_dir: state_dir).peer(peer).receipts
+                           .select { |receipt| %w[held noted].include?(receipt.state) }.map(&:serial)
+        trim(dir, present, taken.to_i, held: held)
         message
       end
     end
@@ -350,8 +352,8 @@ module Samagotchi
 
     # Removes the files at or below +taken+ but the newest TAKEN_KEPT of
     # them; an untaken message is never deleted.
-    def trim(dir, present, taken)
-      done = present.select { |serial| serial <= taken }
+    def trim(dir, present, taken, held: [])
+      done = present.select { |serial| serial <= taken && !held.include?(serial) }
       done[0...-TAKEN_KEPT].to_a.each { |serial| FileUtils.rm_f(File.join(dir, IN_DIR, "#{serial}.json")) } if done.size > TAKEN_KEPT
     end
   end
