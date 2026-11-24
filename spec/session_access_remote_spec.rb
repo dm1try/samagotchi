@@ -900,6 +900,18 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(access.peer_list("s-1").map { |peer| [peer.name, peer.messages.map(&:serial)] }).to eq([["claude", [1]]])
     end
 
+    it "pairs and says through chi web's routes in this process, the line the server built" do
+      session = make
+      session.messages = [{ role: "user", content: "hi" }]
+      session.save(state_dir: tmpdir)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox).and_return(:woken)
+      expect(remote.peer_pair(session.id, "claude", address: nil, from: "spec").status).to eq(:paired)
+      said = remote.peer_say(session.id, "claude", text: "hi", summary: nil, wake: true, re: nil, wait: 0)
+      expect(said.line("claude")).to eq("#1 received · no answer from chi yet")
+      expect(remote.peer_list(session.id).first.messages.map(&:serial)).to eq([1])
+      expect(remote.peer_unpair(session.id, "claude")).to be(true)
+    end
+
     it "says an older chi web has no chi peer" do
       access, = scripted([404, { error: "not_found", detail: "not found: /api/sessions/s-1/peers/claude/say" }])
       expect { access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil) }

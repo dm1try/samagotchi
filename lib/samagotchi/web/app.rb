@@ -339,7 +339,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image, :participant, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list, :owner, :session],
-        ["GET", %r{\A/api/sessions/([^/]+)/peers\z}, :handle_peers, :owner, :session],
+        *PeerRoutes::ROUTES,
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/context/([^/]+)/push\z}, :handle_context_push, :owner, :session],
@@ -1126,7 +1126,7 @@ module Samagotchi
       # delegates: chi --remote sessions delete --dry-run asks for this first.
       DELETE_PLAN_FEATURE = "delete_plan_all"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, McpRoute::FEATURE, Delivery::AGENT_FEATURE, ReplyFor::FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, McpRoute::FEATURE, Delivery::AGENT_FEATURE, ReplyFor::FEATURE, PeerMailbox::FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and

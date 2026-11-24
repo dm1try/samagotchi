@@ -27,7 +27,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
        handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
        handle_show handle_delete handle_context_list handle_peers handle_context_show handle_context_delete handle_render
        handle_resolve handle_summaries handle_wait_prepare handle_wait handle_notes handle_context_add
-       handle_context_push handle_verify_fresh]
+       handle_context_push handle_verify_fresh handle_peer_message handle_peer_unpair handle_peer_pair handle_peer_say]
   end
 
   before do
@@ -67,7 +67,8 @@ RSpec.describe Samagotchi::Web::App, "routing" do
               ["POST", "unarchive"], ["POST", "turn"], ["POST", "answer"], ["POST", "question/dismiss"],
               ["POST", "command"], ["POST", "images"], ["GET", "images/abc.png"], ["GET", nil], ["DELETE", nil],
               ["GET", "context"], ["GET", "peers"], ["GET", "context/pr-1"], ["DELETE", "context/pr-1"], ["POST", "wait/prepare"],
-              ["POST", "wait"], ["POST", "notes"], ["POST", "context"], ["POST", "context/pr-1/push"]]
+              ["POST", "wait"], ["POST", "notes"], ["POST", "context"], ["POST", "context/pr-1/push"],
+              ["GET", "peers/claude/messages/1"], ["DELETE", "peers/claude"], ["POST", "peers/claude/pair"], ["POST", "peers/claude/say"]]
     ["..", "..%2Fx", "%2Ftmp", "a%00b", "a%2Fb", "x.json"].each do |id|
       routes.each do |method, tail|
         path = ["/api/sessions/#{id}", tail].compact.join("/")
@@ -113,6 +114,10 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["GET", "/api/sessions/s1/images/abc.png"] => ["handle_image", "s1", "abc.png"],
       ["GET", "/api/sessions/s1/context"] => %w[handle_context_list s1],
       ["GET", "/api/sessions/s1/peers"] => %w[handle_peers s1],
+      ["GET", "/api/sessions/s1/peers/claude/messages/3"] => %w[handle_peer_message s1 claude 3],
+      ["DELETE", "/api/sessions/s1/peers/claude"] => %w[handle_peer_unpair s1 claude],
+      ["POST", "/api/sessions/s1/peers/claude/pair"] => %w[handle_peer_pair s1 claude],
+      ["POST", "/api/sessions/s1/peers/claude/say"] => %w[handle_peer_say s1 claude],
       ["GET", "/api/sessions/s1/context/pr-1"] => %w[handle_context_show s1 pr-1],
       ["DELETE", "/api/sessions/s1/context/pr-1"] => %w[handle_context_delete s1 pr-1],
       ["GET", "/api/sessions/s1"] => %w[handle_show s1],
