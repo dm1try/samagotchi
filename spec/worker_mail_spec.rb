@@ -114,6 +114,16 @@ RSpec.describe "the worker's peer mail" do
       expect(receipt(1).turn).to eq(wake.turn_id)
     end
 
+    it "attributes a wake to the asking peer even when another peer's note is last" do
+      registry.declare("codex", bundle: "codex-peer")
+      say("asks", peer: "claude")
+      say("doesn't", peer: "codex", wake: false)
+      wake = inbound.absorb_mail
+      expect(saved_notes.last[:peer]["peer"]).to eq("codex")
+      expect(wake).to have_attributes(peer: "claude", name: "peer Claude")
+      expect(wake.origin.client_id).to eq("peer:claude")
+    end
+
     {
       queued: ->(i, _) { i.absorb_mail(hold: :queued) },
       exit: ->(i, _) { i.absorb_mail(hold: :exit) },

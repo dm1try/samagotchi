@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Peer mail: label a wake turn with the peer that requested it, even when another peer's note arrives last.
 - Peer mail: refuse forged message files with multiline or otherwise unnormalized summaries.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not
   "failed: ...".

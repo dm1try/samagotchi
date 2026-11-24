@@ -82,7 +82,7 @@ module Samagotchi
         @peer_receipts.absorbed(items.map { |item| receipt_item(item) }, waking: waking, hold: reason)
         @mail_signature = signature
         mail_held(asking, reason)
-        waking && MailWake.new(peer: taken.last.peer, turn_id: waking, plain_note: plain, agreed: agreed?(asking))
+        waking && MailWake.new(peer: asking.peer, turn_id: waking, plain_note: plain, agreed: agreed?(asking))
       end
 
       # Whether #absorb_mail left a batch that would wake untaken for the
