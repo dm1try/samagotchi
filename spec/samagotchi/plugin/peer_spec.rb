@@ -153,13 +153,6 @@ RSpec.describe Samagotchi::Plugin::Peer do
       expect(salted).not_to include(id)
       expect(described_class.send_id("validate", "t", "x", "t1")).to eq(salted.first)
     end
-
-    it "takes a parse_output re" do
-      fetched = Samagotchi::ContextSources.parse_output(
-        JSON.generate(text: "ok", re: described_class.send_id("validate", "t", "x"))
-      )
-      expect(fetched.re).to eq(described_class.send_id("validate", "t", "x"))
-    end
   end
 
   describe "the tool's refs" do

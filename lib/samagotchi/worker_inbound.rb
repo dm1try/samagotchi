@@ -61,16 +61,9 @@ module Samagotchi
     # the turn +turn_id+.
     ContextWake = Data.define(:delivery, :turn_id) do
       def name = delivery.name
-      # For a peer agent's answer (its own budget, WorkerWakes#peer_open?).
-      def peer? = !delivery.peer.nil?
-      # Whether the wake counts toward context.peer_turns: a peer's answer
-      # that agrees closes the round and counts toward session.max_wakes only.
-      def peer_turn? = peer? && !delivery.agreed
       def origin = TurnOrigin.new(client_id: "#{ClientId::CONTEXT_PREFIX}#{name}")
-      # The plain note #unmark_wake puts back: with the wake note's text
-      # when only that held it (ContextAbsorber::Delivery#wake_plain), so a
-      # failed wake turn keeps the text it marked read.
-      def note = delivery.wake_plain || delivery.note
+      # The plain note #unmark_wake puts back.
+      def note = delivery.note
     end
 
     # A task finish wake turn to run (TaskWatch, TaskFinishNote): its wake
@@ -365,39 +358,22 @@ module Samagotchi
     # context.wake is on, the wake budget is open (WorkerWakes#context_open?:
     # no continue offer, not paused, under session.max_wakes, past the start
     # grace) and the source hasn't woken the session in the last
-    # CONTEXT_WAKE_WINDOW; a peer's answer (Delivery#peer) has no window but
-    # the peer budget (WorkerWakes#peer_open?). The others stay plain notes.
-    # Within the start grace a change is a note: it came while the session
-    # was away. A peer's answer held by either budget is announced once.
-    # Both gates read WorkerWakes#wake_hold, and so does
-    # #context_wake_waiting_for?.
+    # CONTEXT_WAKE_WINDOW. The others stay plain notes. Within the start
+    # grace a change is a note: it came while the session was away. The
+    # gate reads WorkerWakes#wake_hold, and so does
+    # #context_wake_waiting_for?. (A peer agent's messages have their own
+    # path and budget: #absorb_mail.)
     def context_wake_for(batch, now: Time.now)
       candidates = batch.deliveries.select(&:wake_note)
       return nil if candidates.empty? || !context_wakes_on?
+      return nil unless @wakes.context_open?(awaiting_continue: @awaiting_continue.call, names: candidates.map(&:name))
 
-      awaiting = @awaiting_continue.call
-      unless @wakes.context_open?(awaiting_continue: awaiting, names: candidates.map(&:name))
-        peer_held(candidates.find(&:peer)&.peer, ChildRing::MAX_WAKES_KEY) if @wakes.spent?
-        return nil
-      end
-
-      held = []
-      waking = candidates.select do |delivery|
-        next !woke_lately?(delivery.subscription, now) unless delivery.peer
-
-        next true if @wakes.peer_open?(awaiting_continue: awaiting, name: delivery.name)
-
-        held << delivery
-        false
-      end
-      peer_held(held.first&.peer, WorkerWakes::PEER_TURNS_KEY)
-      waking.first
+      candidates.find { |delivery| !woke_lately?(delivery.subscription, now) }
     end
 
     # Whether a wake in +batch+ would run but for the start grace: the
     # context gate open apart from it (WorkerWakes#context_ready?), and a
-    # candidate the peer budget (a peer's: WorkerWakes#wake_hold, unlogged)
-    # or the 10-minute window (another's) lets through.
+    # candidate the 10-minute window lets through.
     def context_wake_waiting_for?(batch)
       return false unless @wakes.in_grace?
 
@@ -407,15 +383,11 @@ module Samagotchi
       awaiting = @awaiting_continue.call
       return false unless @wakes.context_ready?(awaiting_continue: awaiting, names: candidates.map(&:name))
 
-      candidates.any? do |delivery|
-        next !woke_lately?(delivery.subscription, Time.now) unless delivery.peer
-
-        @wakes.wake_hold(awaiting_continue: awaiting, peer: true).nil?
-      end
+      candidates.any? { |delivery| !woke_lately?(delivery.subscription, Time.now) }
     end
 
-    # A peer's answer waits as a note: the UIs hear it once per
-    # interactive input (WorkerWakes#notice_peer_budget!). +label+: the
+    # A peer's message waits as a note (#absorb_mail): the UIs hear it once
+    # per interactive input (WorkerWakes#notice_peer_budget!). +label+: the
     # peer's name ("Codex"), +key+: the budget that holds it.
     def peer_held(label, key)
       return unless label && @wakes.notice_peer_budget!
@@ -437,10 +409,7 @@ module Samagotchi
 
     # +batch+ with +waking+'s subscription recording the wake (the 10-minute window).
     def woken(batch, waking)
-      # The wake note went in: its own read mark when it holds a text the
-      # plain note doesn't (ContextAbsorber::Delivery#wake_subscription).
-      subscription = waking.wake_subscription || waking.subscription
-      stamped = waking.with(subscription: subscription.with(wakes_at: Time.now.iso8601))
+      stamped = waking.with(subscription: waking.subscription.with(wakes_at: Time.now.iso8601))
       batch.with(deliveries: batch.deliveries.map { |delivery| delivery == waking ? stamped : delivery })
     end
   end

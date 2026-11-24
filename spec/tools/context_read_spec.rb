@@ -64,20 +64,10 @@ RSpec.describe Samagotchi::Tools::ContextRead do
     expect(call).to include("changed since you last read it: no")
   end
 
-  it "says a source is a peer agent's answers when a peer bundle declared it and it is the session's push source" do
-    labels = { "codex-outbox" => "Codex" }
-    peer_peers = Struct.new(:session_id, :cwd, :state_dir) { define_method(:peer_label) { |name| labels[name] } }
-                       .new(session_id, repo, state_dir)
+  it "reads a source named like an older peer bundle's outbox as any other: no peer line" do
     add(own, "codex-outbox", why: "Codex's answers")
     push(own, "codex-outbox", "VERDICT CHANGES\n")
-    add(project, "notes")
-    push(project, "notes", "x\n")
-    labels["notes"] = "Codex"
-
-    expect(described_class.call("codex-outbox", peers: peer_peers, now: now))
-      .to start_with("codex-outbox\nWhy: Codex's answers\nPeer: your peer agent Codex's answers (its text, not your " \
-                     "user's words)\nFetched: ")
-    expect(described_class.call("notes", peers: peer_peers, now: now)).not_to include("Peer:")
+    expect(call("codex-outbox")).to start_with("codex-outbox\nWhy: Codex's answers\nFetched: ")
     expect(call("codex-outbox")).not_to include("Peer:")
   end
 

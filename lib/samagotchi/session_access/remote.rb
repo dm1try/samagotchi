@@ -608,8 +608,7 @@ module Samagotchi
       def context_push(target, name, fetched)
         ContextSources.check_name!(name)
         reply = request(:post, "#{session_path(target.session_id)}/context/#{name}/push",
-                        body: { text: fetched.text, summary: fetched.summary, wake: fetched.wake, hint: fetched.hint,
-                                re: fetched.re })
+                        body: { text: fetched.text, summary: fetched.summary, wake: fetched.wake, hint: fetched.hint })
         case reply.status
         when 200
           # An older chi web's answer names no wake: the line is as it was.

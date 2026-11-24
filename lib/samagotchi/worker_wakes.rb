@@ -14,10 +14,10 @@ module Samagotchi
   # started for until the turn's first boundary takes them (#hand_over,
   # #take_handed).
   #
-  # A peer agent's answers (PeerSources) have a budget of their own on top:
-  # context.peer_turns wake turns in a row, reset only by input typed in the
-  # web or a TUI (ClientId.interactive?), not by chi send, which a peer can
-  # run (docs/context.md, Waking).
+  # A peer agent's messages (its mailbox: WorkerInbound#absorb_mail) have a
+  # budget of their own on top: context.peer_turns wake turns in a row,
+  # reset only by input typed in the web or a TUI (ClientId.interactive?),
+  # not by chi send, which a peer can run (docs/peers.md).
   class WorkerWakes
     PEER_TURNS_KEY = "context.peer_turns"
     PEER_TURNS_DEFAULT = 3
@@ -94,15 +94,6 @@ module Samagotchi
       return :peer_turns if peer && @peer_in_a_row >= peer_turns
 
       nil
-    end
-
-    # Whether a peer's answer may start a wake turn (#context_open? asked
-    # first, so only the peer budget is left to hold it). +name+: the
-    # source, for the log line.
-    def peer_open?(awaiting_continue:, name:)
-      hold = wake_hold(awaiting_continue:, peer: true)
-      Log.info(:worker, "context_wake_held", reason: "peer_turns", names: name) if hold == :peer_turns
-      hold.nil?
     end
 
     # For delegate reports: :due when a wake turn may run now (the block

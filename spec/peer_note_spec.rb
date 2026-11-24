@@ -81,18 +81,12 @@ RSpec.describe Samagotchi::PeerNote do
     end
   end
 
-  describe ".read_kind and .plain_read" do
-    it "points at the text above, says it is long, or names context_read" do
+  describe ".read_kind" do
+    it "points at the text above, says it is long, or neither" do
       expect(described_class.read_kind("t", nil)).to eq(:above)
       expect(described_class.read_kind("t", 9)).to eq(:above)
       expect(described_class.read_kind(nil, 9)).to eq(:long)
       expect(described_class.read_kind(nil, nil)).to eq(:read)
-      expect(described_class.plain_read("codex-outbox", "t", nil)).to eq("Its message is above.")
-      expect(described_class.plain_read("codex-outbox", nil, 2_001))
-        .to eq("Its message is long (2001 characters): read it with context_read(name: \"codex-outbox\") " \
-               "when your user's request is about it.")
-      expect(described_class.plain_read("codex-outbox", nil, nil))
-        .to eq("Read it with context_read(name: \"codex-outbox\") when your user's request is about it.")
     end
   end
 

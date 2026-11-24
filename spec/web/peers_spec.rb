@@ -86,11 +86,11 @@ RSpec.describe Samagotchi::Web::App, "peers" do
       expect(peer["messages"].size).to eq(1)
     end
 
-    it "keeps the context legs' rows as they were" do
+    it "lists no row for a context source named like an older bundle's outbox: peers are the mailbox's" do
       own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
       own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: nil, hint: nil,
                                                      scope: "session", added_by: "cli", created_at: nil))
-      expect(call(base).last["peers"]).to contain_exactly(include("name" => "codex", "outbox" => true, "messages" => []))
+      expect(call(base).last["peers"]).to eq([])
     end
   end
 

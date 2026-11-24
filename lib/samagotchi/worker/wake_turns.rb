@@ -124,7 +124,7 @@ module Samagotchi
       # +context_wake+: a WorkerInbound::ContextWake.
       def run_context_wake_turn(context_wake)
         name = context_wake.name
-        Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
+        Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!)
         run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake)
       end
 

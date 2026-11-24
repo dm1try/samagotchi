@@ -674,7 +674,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
         .to eq("Context moved with this session: ci. Left with #{previous.id[0, 8]}: notes (pushed).")
     end
 
-    it "keeps a peer's pairing left behind in the link's left.json, and says what chi does about it" do
+    it "keeps a pushed source left behind in the link's left.json, a name like an older peer pairing's as any other" do
       ids << previous.id
       old = location(previous.id)
       old.add(Samagotchi::ContextSources::Source.new(name: "claude-inbox", cmd: nil, every_seconds: nil, why: nil,
@@ -686,7 +686,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(location(link.id).left.map(&:to_h)).to eq([{ "name" => "claude-inbox", "hint" => "/tmp/c.sock",
                                                           "from" => previous.id }])
       expect(notes_of(link.id).last[:text]).to eq(
-        "Left with #{previous.id[0, 8]}: claude-inbox (Claude's pairing: chi asks Claude to pair again with this session)."
+        "Left with #{previous.id[0, 8]}: claude-inbox (pushed)."
       )
     end
 

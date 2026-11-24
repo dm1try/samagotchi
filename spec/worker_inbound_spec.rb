@@ -462,55 +462,6 @@ RSpec.describe Samagotchi::WorkerInbound do
       expect(engine.rolled_back.last).to eq(Samagotchi::ContextNote.message(**note))
     end
 
-    describe "a peer's answer" do
-      let(:wakes) { Samagotchi::WorkerWakes.new(grace: 0, max: -> { max[0] }, peer_max: -> { 2 }) }
-      let(:max) { [10] }
-      let(:announced) { engine.announced }
-      let(:peer_note) { { note_id: "ctx-codex-outbox-1", text: "Codex answered", source: "context" } }
-      let(:peer) do
-        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-outbox", note: peer_note, peer: "Codex",
-                                                  subscription: Samagotchi::ContextSources::Subscription.blank("codex-outbox")
-                                                                .with(wakes_at: Time.now.iso8601),
-                                                  wake_note: peer_note.merge(text: "Codex answered; peer line"))
-      end
-
-      before do
-        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
-      end
-
-      it "wakes past the 10-minute window, while the peer budget lasts; then a note and one notice" do
-        2.times do
-          wake = inbound.absorb_context(wake: true)
-          expect(wake).to have_attributes(name: "codex-outbox", peer?: true)
-          wakes.count!(peer: wake.peer?)
-        end
-
-        expect(inbound.absorb_context(wake: true)).to be_nil
-        expect(inbound.absorb_context(wake: true)).to be_nil
-        expect(announced).to eq([{ type: :hook_notice, hook: "context", level: :info, between_turns: true,
-                                   text: "Codex answered again; it waits as a note for your next message " \
-                                         "(2 wake turns in a row, context.peer_turns)" }])
-      end
-
-      it "is held by session.max_wakes too, and says so" do
-        max[0] = 1
-        wakes.count!
-
-        expect(inbound.absorb_context(wake: true)).to be_nil
-        expect(announced.map { |e| e[:text] })
-          .to eq(["Codex answered again; it waits as a note for your next message (1 wake turn in a row, session.max_wakes)"])
-      end
-
-      it "doesn't take a non-peer's 10-minute window; in a mixed batch a held peer is a note and the other wakes" do
-        2.times { wakes.count!(peer: true) }
-        other = delivery
-        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer, other]))
-
-        expect(inbound.absorb_context(wake: true)).to have_attributes(name: "ci", peer?: false)
-        expect(announced.size).to eq(1)
-      end
-    end
-
     # Today's log lines of the two wake gates (#context_wake_for, and
     # #context_wake_waiting_for? within the start grace), word for word:
     # which holds write context_wake_held, with which reason and names, and
@@ -519,11 +470,13 @@ RSpec.describe Samagotchi::WorkerInbound do
       let(:now) { [0] }
       let!(:wakes) { Samagotchi::WorkerWakes.new(grace: 2, clock: -> { now[0] }, max: -> { 3 }, peer_max: -> { 2 }) }
       let(:held) { [] }
-      let(:peer_note) { { note_id: "ctx-codex-outbox-1", text: "Codex answered", source: "context" } }
+      # A second source asking to wake (named like an older peer bundle's
+      # outbox: an ordinary source now).
+      let(:other_note) { { note_id: "ctx-codex-outbox-1", text: "Codex answered", source: "context" } }
       let(:peer) do
-        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-outbox", note: peer_note, peer: "Codex",
+        Samagotchi::ContextAbsorber::Delivery.new(name: "codex-outbox", note: other_note,
                                                   subscription: Samagotchi::ContextSources::Subscription.blank("codex-outbox"),
-                                                  wake_note: peer_note.merge(text: "Codex answered; peer line"))
+                                                  wake_note: other_note.merge(text: "Codex answered; wake line"))
       end
 
       def line(reason, names) = [:worker, "context_wake_held", { reason: reason, names: names }]
@@ -554,24 +507,6 @@ RSpec.describe Samagotchi::WorkerInbound do
         expect(inbound.absorb_context(wake: true)).to be_nil
         expect(inbound.context_wake_waiting?).to be(false)
         expect(held).to eq([line("max_wakes", "ci")])
-      end
-
-      it "past the grace, a spent peer budget logs the peer's source" do
-        past_grace
-        2.times { wakes.count!(peer: true) }
-        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
-
-        expect(inbound.absorb_context(wake: true)).to be_nil
-        expect(held).to eq([line("peer_turns", "codex-outbox")])
-      end
-
-      it "within the grace, a spent peer budget logs nothing, and the wake doesn't wait" do
-        2.times { wakes.count!(peer: true) }
-        allow(absorber).to receive(:pending).and_return(batch.with(deliveries: [peer]))
-
-        expect(inbound.absorb_context(wake: true)).to be_nil
-        expect(inbound.context_wake_waiting?).to be(false)
-        expect(held).to eq([])
       end
 
       it "a continue offer or a pause logs nothing, within the grace or past it, the budgets spent" do

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "../context_sources"
 require_relative "../peer_exchanges"
 require_relative "../peer_mailbox"
 require_relative "../peer_roster"
@@ -27,20 +26,15 @@ module Samagotchi
 
       # GET /api/sessions/:id/peers → {peers: [{name, label, inbox, outbox,
       # exchanges, paired_at, from, can_send, messages}]}: a row per peer
-      # with a context leg (a <peer>-inbox / -outbox pushed source of the
-      # session's own: an older bundle's pairing) or a mailbox folder.
-      # +exchanges+ joins chi's sends (peer_exchanges.jsonl) with the
-      # answers: the log's (an older pairing's) and the mailbox's messages
-      # (PeerExchanges.joined, unchanged). +messages+: the newest
-      # (PeerRoster), with their receipts; no text anywhere.
+      # with a mailbox folder. +exchanges+ joins chi's sends
+      # (peer_exchanges.jsonl) with the answers: the log's (an older
+      # pairing's) and the mailbox's messages (PeerExchanges.joined,
+      # unchanged). +messages+: the newest (PeerRoster), with their
+      # receipts; no text anywhere.
       def handle_peers(_req, id)
         @session_class.load(id, state_dir: default_state_dir)
         entries = PeerExchanges.read(id, state_dir: default_state_dir).group_by { |entry| entry["peer"] }
         rows = {}
-        context_legs(id).each do |peer, leg|
-          row = (rows[peer] ||= peer_row(peer))
-          row[leg.to_sym] = true
-        end
         PeerRoster.build(id, state_dir: default_state_dir).each do |peer|
           row = (rows[peer.name] ||= peer_row(peer.name))
           row.merge!(paired_at: peer.paired_at, from: peer.from, can_send: peer.paired? && !peer.address.nil?,
@@ -54,13 +48,6 @@ module Samagotchi
       def peer_row(peer)
         { name: peer, label: PeerMailbox.label(peer), inbox: false, outbox: false, paired_at: nil, from: nil,
           can_send: false, messages: [] }
-      end
-
-      # The session's own pushed <peer>-inbox / -outbox sources: [[peer, leg]…].
-      def context_legs(id)
-        ContextSources.session_location(id, state_dir: default_state_dir).sources.filter_map do |source|
-          source.push? ? ContextSources.peer_leg(source.name) : nil
-        end
       end
 
       # A peer's mailbox messages as the exchange log's answer lines.

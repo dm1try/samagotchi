@@ -354,11 +354,9 @@ module Samagotchi
       # This session's own delegate children's news (rings in children/).
       @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir,
                                         predecessor: @session.continues)
-      # Its attached context's notes (ContextSources); a peer's text goes in
-      # its note up to the tool output cap, as a task's does (WorkerTaskWakes).
+      # Its attached context's notes (ContextSources).
       @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
-                                              project_root: @session.project_root, project_id: @session.project_id,
-                                              cap: -> { ToolOutputCut.max_chars(nil) })
+                                              project_root: @session.project_root, project_id: @session.project_id)
       # What comes in between turns, and how each kind is saved.
       @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,
                                    event_log: @event_log, turn_state: @turn_state, context_absorber: @context_absorber, wakes: @wakes,

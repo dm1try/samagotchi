@@ -78,8 +78,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     push(name, text)
   end
 
-  def push(name, text, wake: false, summary: nil, re: nil)
-    own.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: wake, hint: nil, re: re))
+  def push(name, text, wake: false, summary: nil)
+    own.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: wake, hint: nil))
   end
 
   def saved_context_notes

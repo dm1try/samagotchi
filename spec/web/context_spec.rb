@@ -40,33 +40,14 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
     location.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: false, hint: nil))
   end
 
-  it "lists own pushed peers and their joined exchanges without a worker" do
+  it "lists no peer for sources named like an older bundle's pairing, and keeps no answer line for their pushes" do
     add(own, "claude-outbox")
     add(own, "codex-inbox")
-    add(project, "review-outbox")
-    add(own, "other-outbox", cmd: "echo x")
-    Samagotchi::PeerExchanges.append(session.id, { t: "sent", peer: "claude", id: "s-a", kind: "validate",
-                                                   title: "plan", by: "model" }, state_dir: state_dir)
-    status, body = call("/api/sessions/#{session.id}/peers")
-    expect(status).to eq(200)
-    expect(body["peers"]).to contain_exactly(
-      include("name" => "claude", "label" => "Claude", "inbox" => false, "outbox" => true,
-              "exchanges" => [include("id" => "s-a", "state" => "waiting")]),
-      include("name" => "codex", "inbox" => true, "outbox" => false, "exchanges" => [])
-    )
-    expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/peers").first).to eq(404)
-  end
-
-  it "joins a pushed answer's serial and ref to its send without exposing the answer text" do
-    add(own, "claude-outbox")
-    Samagotchi::PeerExchanges.append(session.id, { t: "sent", peer: "claude", id: "s-a", kind: "validate",
-                                                   title: "plan", by: "model" }, state_dir: state_dir)
     path = "/api/sessions/#{session.id}/context/claude-outbox/push"
     expect(call(path, method: "POST", body: { text: "private answer", summary: "VERDICT OK", re: "s-a", wake: false }).first).to eq(200)
-    row = call("/api/sessions/#{session.id}/peers").last.fetch("peers").first.fetch("exchanges").first
-    expect(row).to include("id" => "s-a", "state" => "answered",
-                           "answer" => include("serial" => own.snapshot("claude-outbox").serial, "verdict" => "OK"))
-    expect(JSON.generate(row)).not_to include("private answer")
+    expect(call("/api/sessions/#{session.id}/peers").last).to eq("peers" => [])
+    expect(Samagotchi::PeerExchanges.read(session.id, state_dir: state_dir)).to be_empty
+    expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/peers").first).to eq(404)
   end
 
   it "lists the sources with what the chips show, never a command" do
@@ -89,21 +70,15 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
     expect(JSON.generate(body)).not_to include("secret-token-cmd")
   end
 
-  it "says which peer a pushed session source named <peer>-inbox / -outbox is a pairing's, by name only" do
+  it "draws a source named <peer>-inbox / -outbox as any other: no peer, no leg" do
     add(own, "claude-inbox", hint: "/tmp/sock")
     add(own, "claude-outbox")
-    add(own, "review-outbox")
-    add(own, "notes")
-    add(project, "codex-outbox")
-    add(own, "x-inbox", cmd: "echo hi")
 
-    rows = call("/api/sessions/#{session.id}/context")[1]["sources"].to_h { |row| [row["name"], row] }
+    rows = call("/api/sessions/#{session.id}/context")[1]["sources"]
 
-    expect(rows["claude-inbox"]).to include("peer" => "claude", "leg" => "inbox", "label" => "Claude")
-    expect(rows["claude-outbox"]).to include("peer" => "claude", "leg" => "outbox", "label" => "Claude")
-    expect(rows["review-outbox"]).to include("peer" => "review", "leg" => "outbox", "label" => "Review")
-    expect([rows["notes"], rows["codex-outbox"], rows["x-inbox"]]).to all(satisfy { |row| !row.key?("peer") && !row.key?("leg") })
-    expect(call("/api/sessions/#{session.id}/context/claude-outbox")[1]).to include("peer" => "claude", "leg" => "outbox")
+    expect(rows.map { |row| row["name"] }).to contain_exactly("claude-inbox", "claude-outbox")
+    expect(rows).to all(satisfy { |row| !row.key?("peer") && !row.key?("leg") && !row.key?("label") })
+    expect(call("/api/sessions/#{session.id}/context/claude-outbox")[1]).not_to include("peer", "leg")
   end
 
   it "shows one source's text, and 404s an unknown or bad name and an unknown session" do

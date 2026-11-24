@@ -394,16 +394,12 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(call("#{path}/notes/push", method: "POST", body: {})).to match([400, include("error" => "missing_fields")])
     end
 
-    it "carries a push's re (the send a peer's answer names) to the snapshot; a bad one or none is nil" do
+    it "ignores a push's re (an older peer skill's): the snapshot keeps none" do
       call(path, method: "POST", body: { name: "claude-outbox", push: true })
 
       call("#{path}/claude-outbox/push", method: "POST", body: { text: "one", summary: "VERDICT OK", re: "s-ab12cd" })
-      expect(location.snapshot("claude-outbox")).to have_attributes(text: "one", re: "s-ab12cd")
-      call("#{path}/claude-outbox/push", method: "POST", body: { text: "two", re: { "id" => "s-ab12cd" } })
-      expect(location.snapshot("claude-outbox")).to have_attributes(text: "two", re: nil)
-      call("#{path}/claude-outbox/push", method: "POST", body: { text: "three", re: "s-ab12cd" })
-      call("#{path}/claude-outbox/push", method: "POST", body: { text: "four" })
-      expect(location.snapshot("claude-outbox")).to have_attributes(text: "four", re: nil)
+      expect(location.snapshot("claude-outbox").text).to eq("one")
+      expect(location.snapshot("claude-outbox").to_h).not_to have_key("re")
     end
 
     it "answers 410 context_continued with the next link's id for a push into a continued session" do

@@ -232,31 +232,16 @@ RSpec.describe Samagotchi::WorkerWakes do
     let(:peers) { [2] }
     let!(:wakes) { described_class.new(grace: 0, max: -> { budget[0] }, peer_max: -> { peers[0] }) }
 
-    it "opens for peer_turns peer wakes in a row, each counting toward both budgets, then logs the hold" do
+    it "opens for peer_turns peer wakes in a row, each counting toward both budgets, then holds" do
       budget[0] = 4
-      allow(Samagotchi::Log).to receive(:info)
-      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(true)
+      expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to be_nil
       expect(wakes.count!(peer: true)).to eq(1)
       wakes.count!
-      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(true)
+      expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to be_nil
       wakes.count!(peer: true)
 
       expect([wakes.in_a_row, wakes.peer_in_a_row]).to eq([3, 2])
-      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(false)
-      expect(Samagotchi::Log).to have_received(:info).once
-        .with(:worker, "context_wake_held", reason: "peer_turns", names: "codex-outbox")
-    end
-
-    # Its callers ask #context_open? (or #context_ready?) first, which logs
-    # a spent session.max_wakes and holds every wake: past it, only the
-    # peer budget is peer_open?'s to log.
-    it "logs only the peer budget's hold" do
-      allow(Samagotchi::Log).to receive(:info)
-      3.times { wakes.count!(peer: true) }
-      expect(wakes.peer_open?(awaiting_continue: false, name: "codex-outbox")).to be(false)
-      wakes.human_input!(interactive: false)
-      expect(wakes.peer_open?(awaiting_continue: true, name: "codex-outbox")).to be(false)
-      expect(Samagotchi::Log).not_to have_received(:info)
+      expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:peer_turns)
     end
 
     it "is never more than session.max_wakes, and 0 with peer_turns 0" do
@@ -264,7 +249,7 @@ RSpec.describe Samagotchi::WorkerWakes do
       expect(wakes.peer_turns).to eq(3)
       peers[0] = 0
       expect(wakes.peer_turns).to eq(0)
-      expect(wakes.peer_open?(awaiting_continue: false, name: "x")).to be(false)
+      expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:peer_turns)
     end
 
     it "is reset with its notice by interactive input only; chi send resets session.max_wakes alone" do
