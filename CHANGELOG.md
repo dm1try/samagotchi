@@ -10,6 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `chi schedule list`: each row names its schedule (its title, or the start of its prompt in quotes), so a
+  disabled one is easy to tell apart; the name column is padded to the widest name of the rows printed.
+  `list_schedules` names them the same way.
 - chi web: plugin lines and context notes under a turn's answer fold into one closed row, "▸ 3 notes · source-links,
   skills, claude-inbox"; tap it to read them. A warning marks the row. Your prompt, the answer, a peer's answer and a
   note that starts a turn stay as they are.

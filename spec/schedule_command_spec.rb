@@ -168,7 +168,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       entry = schedules.add(target: id, prompt: "Audit", recurrence: hourly)
       status, printed, error = run("list")
       expect(status).to eq(0), error
-      expect(printed).to eq("#{entry.id}  chain  every 1h  " \
+      expect(printed).to eq("#{entry.id}  \"Audit\"  chain  every 1h  " \
                             "#{Time.iso8601(entry.next_due).localtime.strftime("%Y-%m-%d %H:%M")}  #{id[0, 8]}\n" \
                             "#{tick_warning}\n")
 
@@ -206,6 +206,38 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(printed).to include("#{entry.id} ", "disabled after 1 failure")
     end
 
+    it "names each row: its title, or the start of its prompt in quotes" do
+      id = session
+      titled = schedules.add(target: id, title: "coordinator-heartbeat", prompt: "Audit the open PRs", recurrence: hourly)
+      cut = schedules.add(target: id, prompt: "Check the pod logs, then write a recap", recurrence: hourly)
+      brief = schedules.add(target: id, prompt: "Review the weekly\nmetrics", recurrence: hourly)
+
+      status, printed, error = run("list")
+      expect(status).to eq(0), error
+      rows = printed.lines.map(&:chomp)
+
+      expect(rows.find { |line| line.start_with?(titled.id) }).to include("  coordinator-heartbeat  ")
+      expect(rows.find { |line| line.start_with?(cut.id) }).to include("\"Check the pod logs, then write…\"")
+      expect(rows.find { |line| line.start_with?(brief.id) }).to include("\"Review the weekly metrics\"")
+    end
+
+    it "pads the name column to the widest name so the columns after it line up" do
+      id = session
+      short = schedules.add(target: id, title: "Audit", prompt: "Audit", recurrence: hourly)
+      wide = schedules.add(target: id, prompt: "Check the pod logs, then write a recap", recurrence: hourly)
+      name_width = "\"Check the pod logs, then write…\"".length
+
+      status, printed, error = run("list")
+      expect(status).to eq(0), error
+      due = Time.iso8601(short.next_due).localtime.strftime("%Y-%m-%d %H:%M")
+      rows = printed.lines.map(&:chomp)
+
+      expect(rows.find { |line| line.start_with?(short.id) })
+        .to eq("#{short.id}  #{"Audit".ljust(name_width)}  chain  every 1h  #{due}  #{id[0, 8]}")
+      expect(rows.find { |line| line.start_with?(wide.id) })
+        .to eq("#{wide.id}  \"Check the pod logs, then write…\"  chain  every 1h  #{due}  #{id[0, 8]}")
+    end
+
     it "--format json gives the entries for scripts" do
       id = session
       entry = schedules.add(target: id, prompt: "Audit", title: "Audit", recurrence: every)
@@ -216,7 +248,23 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(rows.size).to eq(1)
       expect([rows.first["id"], rows.first["mode"], rows.first["recurrence_words"]]).to eq([entry.id, "chain", "every 1m"])
       expect(rows.first["skip_window"]).to eq("≈1 h at a 5 min tick")
+      expect(rows.first["title"]).to eq("Audit")
       expect(error).to eq("#{tick_warning}\n")
+    end
+
+    it "--format json carries the title, and never the quoted prompt stand-in" do
+      id = session
+      titled = schedules.add(target: id, title: "Audit", prompt: "Audit the open PRs", recurrence: every)
+      untitled = schedules.add(target: id, prompt: "Check the pod logs, then write a recap", recurrence: every)
+
+      status, printed, error = run("list", "--format", "json")
+      expect(status).to eq(0), error
+      rows = JSON.parse(printed)
+
+      expect(rows.find { |row| row["id"] == titled.id }["title"]).to eq("Audit")
+      expect(rows.find { |row| row["id"] == untitled.id }["title"]).to be_nil
+      expect(rows.find { |row| row["id"] == untitled.id }["prompt"]).to eq("Check the pod logs, then write a recap")
+      expect(rows.flat_map(&:values)).not_to include("\"Check the pod logs, then write…\"")
     end
   end
 

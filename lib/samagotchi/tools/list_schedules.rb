@@ -4,7 +4,8 @@ require_relative "../tool_names"
 
 module Samagotchi
   module Tools
-    # The durable schedules of this session's chain (docs/scheduling.md): id,
+    # The durable schedules of this session's chain (docs/scheduling.md): each
+    # line names the schedule (its title, or the start of its prompt), then its
     # mode, recurrence, next due and target. Another session's schedules are
     # out of reach unless the call says `all: true`; `chi schedule list` is the
     # machine-wide view. Schedules is required inside the call, so the testing
@@ -16,8 +17,11 @@ module Samagotchi
 
       def self.call(_content, include_disabled: false, all: false, peers: nil)
         # Required here, not at the top of the file: the kit does not pay
-        # for the session lifecycle until a schedule is actually used.
+        # for the session lifecycle until a schedule is actually used
+        # (spec/samagotchi/testing/sandbox_spec.rb counts the chi files the
+        # kit loads, and schedule_display joins the same require).
         require_relative "../schedules"
+        require_relative "../schedule_display"
         wanted = include_disabled == true || include_disabled.to_s.strip.casecmp?("true")
         want_all = all == true || all.to_s.strip.casecmp?("true")
         schedules = Samagotchi::Schedules.new(state_dir: peers&.state_dir)
@@ -32,7 +36,8 @@ module Samagotchi
             flags = []
             flags << "skips #{entry.skips} of #{entry.max_skips}" if entry.skips.positive?
             flags << "disabled after #{entry.failures} failures" unless entry.enabled
-            "#{entry.id}  #{entry.target_words}  #{entry.recurrence_words}  next #{entry.next_due}  #{flags.join(", ")}".rstrip
+            "#{entry.id}  #{ScheduleDisplay.name(entry)}  #{entry.target_words}  #{entry.recurrence_words}  " \
+              "next #{entry.next_due}  #{flags.join(", ")}".rstrip
           end
           lines << "These are this session's chain only; `chi schedule list` shows every schedule on this machine." if scoped
           lines.join("\n")

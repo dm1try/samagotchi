@@ -6,6 +6,7 @@ require "time"
 require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
+require_relative "schedule_display"
 require_relative "schedules"
 require_relative "session"
 
@@ -156,7 +157,8 @@ module Samagotchi
         print_tick_warning
         return CLI::Exit::OK
       end
-      entries.each { |entry| @stdout.puts(entry_line(entry)) }
+      name_width = ScheduleDisplay.name_width(entries)
+      entries.each { |entry| @stdout.puts(entry_line(entry, name_width: name_width)) }
       print_tick_warning
       CLI::Exit::OK
     end
@@ -243,7 +245,11 @@ module Samagotchi
       iso.to_s
     end
 
-    def entry_line(entry)
+    # One `list` row: id, name, mode, recurrence, next due, target head, and the
+    # notes (skips, why it is disabled, the last result). +name_width+ is the
+    # widest name among the rows printed; without it the name column is just
+    # the name.
+    def entry_line(entry, name_width: nil)
       note = ""
       note += " skips #{entry.skips} of #{entry.max_skips} (#{skip_window(entry)})" if entry.skips.positive?
       unless entry.enabled
@@ -258,7 +264,8 @@ module Samagotchi
                 end
       end
       note += " last: #{entry.last_result}" if entry.last_result
-      "#{entry.id}  #{entry.mode}  #{entry.recurrence_words}  #{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
+      "#{entry.id}  #{ScheduleDisplay.name(entry, width: name_width)}  #{entry.mode}  #{entry.recurrence_words}  " \
+        "#{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
     end
 
     # A skip budget as a time window: 3 of 12 at a 5 minute tick is about 1 hour
