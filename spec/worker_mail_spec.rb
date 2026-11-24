@@ -139,11 +139,11 @@ RSpec.describe "the worker's peer mail" do
       say(middle, wake: false)
       inbound.absorb_mail
       expect(saved_notes.last[:content]).not_to include("[PEER MESSAGE")
-      expect(saved_notes.last[:content]).to include("Its message is long (2001 characters): read it with claude_read(serial: 2)")
+      expect(saved_notes.last[:content]).to include("Its message is long (2001 characters): read it with claude_read(serial: 2, box:")
 
       say("y" * 10_001)
       inbound.absorb_mail
-      expect(saved_notes.last[:content]).to include("Its answer is long (10001 characters): read it with claude_read(serial: 3)")
+      expect(saved_notes.last[:content]).to include("Its answer is long (10001 characters): read it with claude_read(serial: 3, box:")
     end
 
     it "attributes a wake to the asking peer even when another peer's note is last" do
