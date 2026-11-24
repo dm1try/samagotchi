@@ -273,16 +273,8 @@ module Samagotchi
       raise Usage, "mode must be one of #{MODES.join(", ")}" unless MODES.include?(mode)
 
       given_catch_up = catch_up.nil? || catch_up.to_s.strip.empty? ? Config.get("schedule.default_catch_up") : catch_up.to_s.strip
-      raise Usage, "catch_up must be one of #{CATCH_UP.join(", ")}" unless CATCH_UP.include?(given_catch_up)
-
-      prompt = prompt.to_s
-      raise Usage, "a schedule needs a prompt" if prompt.strip.empty?
-      # It fires from a schedule, never a person: a shell line would be
-      # refused at every firing (CommandIntake); a /word one is the model's text.
-      raise Usage, CommandIntake::REFUSED if CommandIntake.shell_line?(prompt)
-      if prompt.bytesize > PROMPT_MAX_BYTES
-        raise Usage, "the prompt is #{prompt.bytesize} bytes; the limit is 16 KiB (#{PROMPT_MAX_BYTES} bytes)"
-      end
+      validate_catch_up!(given_catch_up)
+      prompt = validate_prompt!(prompt)
 
       anchor = Session.resolve!(target.to_s, state_dir: @state_dir)
       if Session.load(anchor, state_dir: @state_dir).scratch
@@ -644,13 +636,40 @@ module Samagotchi
       result
     end
 
+    # The checks a schedule's fields pass, for #add and #edit.
+    # @raise [Usage]
+    def validate_catch_up!(value)
+      raise Usage, "catch_up must be one of #{CATCH_UP.join(", ")}" unless CATCH_UP.include?(value)
+    end
+
+    # @return [String] the prompt
+    # @raise [Usage]
+    def validate_prompt!(prompt)
+      prompt = prompt.to_s
+      raise Usage, "a schedule needs a prompt" if prompt.strip.empty?
+      # It fires from a schedule, never a person: a shell line would be
+      # refused at every firing (CommandIntake); a /word one is the model's text.
+      raise Usage, CommandIntake::REFUSED if CommandIntake.shell_line?(prompt)
+      if prompt.bytesize > PROMPT_MAX_BYTES
+        raise Usage, "the prompt is #{prompt.bytesize} bytes; the limit is 16 KiB (#{PROMPT_MAX_BYTES} bytes)"
+      end
+
+      prompt
+    end
+
+    # A whole number given for +name+, at least +min+; nil when none was given.
+    # @raise [Usage] not a number
+    def int_value(value, min:, name:)
+      return nil if value.nil? || value.to_s.strip.empty?
+      raise Usage, "#{name} must be a number, got #{value.inspect}" unless value.to_s.strip.match?(/\A-?\d+\z/)
+
+      [value.to_i, min].max
+    end
+
     # +name+ is what the caller's flag is called, so a bad value says which one.
     def int_or_default(value, key, fallback, min:, name: key.split(".").last)
-      unless value.nil? || value.to_s.strip.empty?
-        raise Usage, "#{name} must be a number, got #{value.inspect}" unless value.to_s.strip.match?(/\A-?\d+\z/)
-
-        return [value.to_i, min].max
-      end
+      given = int_value(value, min: min, name: name)
+      return given unless given.nil?
 
       configured = Config.get(key)
       configured.to_s.strip.match?(/\A-?\d+\z/) ? [configured.to_i, min].max : fallback

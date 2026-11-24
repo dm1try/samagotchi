@@ -47,20 +47,25 @@ module Samagotchi
     # usage_error builds its line from this).
     def command_name = SUBCOMMANDS.include?(@argv.first.to_s) ? "chi schedule #{@argv.first}" : "chi schedule"
 
+    # The flags that set a schedule's fields (add's, and the ones edit changes).
+    FIELD_FLAGS = lambda do |f|
+      f.value "-m", "--message", "--prompt", key: :prompt
+      f.value "--title"
+      f.value "--every"
+      f.value "--weekday"
+      f.value "--time"
+      f.value "--date"
+      f.value "--catch-up"
+      f.value "--keep-links"
+      f.value "--max-failures"
+      f.value "--max-skips"
+    end
+
     FLAGS = {
       "add" => CLI::Flags.new(args: true) do |f|
         f.value "--session", "--continues", key: :target
-        f.value "-m", "--message", "--prompt", key: :prompt
-        f.value "--title"
-        f.value "--every"
-        f.value "--weekday"
-        f.value "--time"
-        f.value "--date"
         f.value "--mode"
-        f.value "--catch-up"
-        f.value "--keep-links"
-        f.value "--max-failures"
-        f.value "--max-skips"
+        FIELD_FLAGS.call(f)
       end,
       "list" => CLI::Flags.new(args: false) do |f|
         f.switch "--all", key: :include_disabled
