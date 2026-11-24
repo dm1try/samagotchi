@@ -707,6 +707,29 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(notes_of(link.id).map { |note| note[:source] }).not_to include(Samagotchi::PeerContinue::NOTE_SOURCE)
     end
 
+    it "skips refused serials and peers with no pairing and no receipts" do
+      say("refused one", peer: "claude")
+      Samagotchi::PeerReceipts.write(previous.id, Samagotchi::PeerReceipts::Book.new(peers: {
+        "claude" => Samagotchi::PeerReceipts::Peer.new(box: "a1b2c3", taken: 0, receipts: [
+          Samagotchi::PeerReceipts::Receipt.new(serial: 1, state: "refused", reason: "undeclared", at: "x")
+        ])
+      }), state_dir: tmpdir)
+      mailbox.post(previous.id, "orphan", text: "no declaration", summary: nil, wake: true, re: nil,
+                   state_dir: tmpdir)
+
+      expect(Samagotchi::PeerContinue.unread(previous.id, state_dir: tmpdir)).to be_empty
+    end
+
+    it "names the previous session when it cuts a long continued message" do
+      mailbox.pair(previous.id, "claude", address: "/tmp/c.sock", from: "spec", state_dir: tmpdir)
+      say("x" * 5000)
+
+      link = continue(previous.id)
+
+      text = notes_of(link.id).find { |note| note[:source] == Samagotchi::PeerContinue::NOTE_SOURCE }[:text]
+      expect(text).to include("chi peer ls #{previous.id}")
+    end
+
     it "refuses a say to the previous link, naming the new one" do
       mailbox.pair(previous.id, "claude", address: "/tmp/c.sock", from: "spec", state_dir: tmpdir)
       link = continue(previous.id)
