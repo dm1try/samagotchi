@@ -33,7 +33,10 @@ module Samagotchi
     LOCK_FILE = "lock"
     NAME_RE = /\A[a-z][a-z0-9]{0,23}\z/
     # A message file's name: its serial, no leading zero, up to 15 digits
-    # (a JavaScript number holds it whole).
+    # (a JavaScript number holds it whole). No gap limit: a writer of the
+    # mailbox folder can plant a SERIAL_MAX file and use up a peer's
+    # serials (later says raise "serials are used up"). The folder's
+    # writers are trusted that far, as they can delete its files.
     FILE_RE = /\A([1-9]\d{0,14})\.json\z/
     SERIAL_MAX = (10**15) - 1
     # A message file is refused above this, before it is read: the text's
