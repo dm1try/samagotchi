@@ -1353,6 +1353,14 @@ RSpec.describe Samagotchi::Web::App do
                   context_source: "claude-outbox", peer: peer }])
     end
 
+    it "includes the sender client id in a reloaded user message" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      message = { "role" => "user", "content" => "fix the build", "client_id" => "agent:claude", "turn_id" => "t1" }
+
+      expect(app.send(:messages_for_display, [message]))
+        .to eq([{ role: "user", content: "fix the build", client_id: "agent:claude", turn_id: "t1" }])
+    end
+
     it "leaves out KernelLoop's recovery line (a row of its turn, shown live as nothing) and passes an id-less opening's opening_id" do
       messages = [{ role: "user", content: "run", turn_id: "T1" },
                   { role: "assistant", content: "<tool_call>" },

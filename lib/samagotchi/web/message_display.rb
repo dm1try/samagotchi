@@ -180,6 +180,8 @@ module Samagotchi
           next unless %w[user assistant].include?(norm_role)
 
           message = { role: norm_role, content: stripped, **time_of(m) }
+          client_id = m[:client_id] || m["client_id"]
+          message[:client_id] = client_id.to_s if norm_role == "user" && client_id
           # Merged into the running turn (Steer::INPUT_KIND): part of it,
           # read by step +step+; a wake turn's report starts its turn
           # (Steer.turn_prompt?). Its sender (a delegate report, chi send):

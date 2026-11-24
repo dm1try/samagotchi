@@ -190,6 +190,7 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "shortens a memories folder under the home directory with ~" do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memories_dir).and_call_original
       allow(Samagotchi::Tools::MemoryRead).to receive(:memories_dir).with("project")
         .and_return(File.join(Dir.home, ".config", "samagotchi", "memories", "projects", "repo_abc"))
       expect(project_prompt_in(repo))
@@ -300,6 +301,18 @@ RSpec.describe Samagotchi::Engine do
       expect(returned.conversation).to eq(result.conversation)
       expect(session.last_prompt).to eq("hi")
       expect(session.messages).to eq(result.conversation)
+    end
+
+    it "stores the turn origin's client id on the opening user message" do
+      allow(kernel).to receive(:run) do |messages, **|
+        Samagotchi::LLM::ModelResult.new(text: "hello back", conversation: messages + [{ role: "model", content: "hello back" }])
+      end
+      session = make_session
+      engine = build_engine(profile: "gemma4")
+
+      engine.run_turn(session, "from the agent", origin: { client_id: "agent:claude" })
+
+      expect(session.messages.find { |message| message[:role] == "user" }).to include(client_id: "agent:claude")
     end
 
     it "stamps a verified claim anchor on the opening user message only (matched by turn id, not text)" do

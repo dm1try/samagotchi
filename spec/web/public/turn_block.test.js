@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { stepText, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { drawnHistory } from "./drawn_history.js";
 
 const thumbs = () => "";
@@ -294,4 +295,18 @@ test("a reloaded participant's block says so, as live stamps it; the owner's doe
   ];
   assert.match(historyHtml(turn("p:p_0001abcd")), /<details class="turn-work done" data-end="completed" data-participant="1"/);
   assert.doesNotMatch(historyHtml(turn(null)), /data-participant/);
+});
+
+test("a reloaded user bubble keeps the live sender label; this tab's own line stays unlabelled", () => {
+  const myId = "web:mine";
+  const clientId = "agent:Claude";
+  const live = promptOps({
+    type: "turn_started",
+    prompt: "update the page",
+    origin: { client_id: clientId },
+  }, { myId, known: () => false })[0];
+  const user = (id) => [{ role: "user", content: "update the page", client_id: id }];
+
+  assert.equal(history(user(clientId), null, { clientId: myId }).querySelector(".origin-label")?.textContent, live.label);
+  assert.ok(history(user(myId), null, { clientId: myId }).querySelector(".origin-label") === null);
 });
