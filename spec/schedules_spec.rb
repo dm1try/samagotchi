@@ -1381,6 +1381,19 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "writes no owner row for an enable of an enabled entry or a disable of a disabled one" do
+    Dir.mktmpdir("schedules-change-noop-row") do |root|
+      dir = File.join(root, "sessions")
+      schedules = store(dir)
+      entry = schedules.add(target: session(dir).id, prompt: "Audit", recurrence: every("1m"))
+      schedules.enable(entry.id)
+      2.times { schedules.disable(entry.id) }
+      2.times { schedules.enable(entry.id) }
+
+      expect(schedules.lookup(entry.id).history.map { |row| row[:status] }).to eq(%w[disabled enabled])
+    end
+  end
+
   it "resets skips and failures when a schedule is enabled again" do
     Dir.mktmpdir("schedules-enable-reset") do |root|
       dir = File.join(root, "sessions")

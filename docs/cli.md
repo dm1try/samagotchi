@@ -492,10 +492,12 @@ change, and the skip and failure counters, `enabled` and the history stay (it ad
 `edited` row naming the fields). The session and the mode don't change: `--session`,
 `--continues` and `--mode` are refused ("cancel it and add a new one"). A new
 recurrence starts its clock now, as `add`'s does, and is refused while a firing is in
-flight ("a run is in progress; edit the time after it settles"); a prompt, title or
-budget edit then applies to the next firing. A spent `--date` one-off stays disabled
-after an edit: `chi schedule enable` it. No flag to change exits 2 ("nothing to
-change"), as does a title another schedule of the chain has; a missing id exits 1.
+flight ("a run is in progress; edit the time after it settles", exit 1); a prompt,
+title or budget edit then applies to the next firing. A spent `--date` one-off stays
+disabled after an edit: `chi schedule enable` it. No flag to change, or only values the
+schedule already has, exits 2 ("nothing to change"), as does an edit that would make it
+say what another schedule of the chain says (its new title, or its new prompt and
+recurrence); a missing id exits 1.
 
 `tick` prints one line per entry it touched (`fired`, `skipped`, `missed`,
 `failed`, or `would fire` under `--dry-run`), with the reason; nothing due prints

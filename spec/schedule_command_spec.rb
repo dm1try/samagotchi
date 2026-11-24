@@ -565,6 +565,51 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(schedules.lookup(first.id).max_skips).to eq(5)
     end
 
+    # A twin made without edit: X off, Y added with X's title (or X's prompt and
+    # recurrence), X on again (#change checks no duplicate).
+    def twins(x, y)
+      first = schedules.add(**x)
+      schedules.disable(first.id)
+      schedules.add(**y)
+      schedules.enable(first.id)
+      first
+    end
+
+    it "takes a prompt or recurrence edit of an entry whose unchanged title a twin has" do
+      id = session
+      x = twins({ target: id, prompt: "p1", title: "Audit", recurrence: hourly },
+                { target: id, prompt: "p2", title: "Audit", recurrence: every })
+
+      status, _, error = run("edit", x.id, "-m", "p1 better")
+      expect(status).to eq(0), error
+      status, _, error = run("edit", x.id, "--every", "3h")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(x.id)).to have_attributes(prompt: "p1 better", recurrence: { kind: "every", interval: "3h" })
+    end
+
+    it "takes a title edit of an entry whose unchanged prompt and recurrence a twin has" do
+      id = session
+      x = twins({ target: id, prompt: "Same", title: "A", recurrence: hourly },
+                { target: id, prompt: "Same", title: "B", recurrence: hourly })
+
+      status, _, error = run("edit", x.id, "--title", "C")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(x.id).title).to eq("C")
+    end
+
+    it "says nothing to change, and writes no row, when every value given is the stored one" do
+      entry = schedules.add(target: session, prompt: "Audit", recurrence: hourly, max_skips: 7)
+
+      [["--title", ""], ["-m", "Audit"], ["--every", "1h"], ["--max-skips", "7"]].each do |flag|
+        status, _, error = run("edit", entry.id, *flag)
+        expect(status).to eq(2)
+        expect(error.lines.first).to start_with("chi schedule edit: nothing to change")
+      end
+      status, _, error = run("edit", entry.id, "-m", "Audit", "--max-skips", "8")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(entry.id).history.map { |row| row[:detail] }).to eq(["max_skips"])
+    end
+
     it "refuses a recurrence edit while a firing is in flight, and takes a prompt edit for the next firing" do
       entry = schedules.add(target: session, prompt: "Audit", recurrence: hourly)
       schedules.send(:write_under_lock) do |file|
@@ -572,8 +617,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       end
 
       status, _, error = run("edit", entry.id, "--every", "2h")
-      expect(status).to eq(2)
-      expect(error).to include("a run is in progress; edit the time after it settles")
+      expect([status, error]).to eq([1, "a run is in progress; edit the time after it settles\n"])
       expect(schedules.lookup(entry.id).recurrence).to eq(hourly)
 
       status, _, error = run("edit", entry.id, "-m", "Audit later")

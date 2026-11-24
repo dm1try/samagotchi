@@ -332,28 +332,6 @@ module Samagotchi
       entries(include_disabled: include_disabled).select { |entry| ids.include?(entry.anchor) || ids.include?(entry.head) }
     end
 
-    # An enabled schedule of the same chain that says the same thing: the same
-    # prompt and recurrence, or the same title.
-    # @return [Entry, nil]
-    # +except+: the id of the entry an edit changes, which is no duplicate of itself.
-    def duplicate_in_chain(session_id, prompt:, title:, recurrence:, except: nil)
-      given_title = title.to_s.strip
-      ids = chain_of(session_id)
-      entries.find do |entry|
-        next if entry.id == except
-        next unless ids.include?(entry.anchor) || ids.include?(entry.head)
-
-        (entry.prompt == prompt && entry.recurrence == recurrence) ||
-          (!given_title.empty? && entry.title.to_s.strip.casecmp?(given_title))
-      end
-    end
-
-    # @raise [Usage] naming the schedule that already says the same thing
-    def refuse_duplicate!(same, mode)
-      raise Usage, "#{same.id} already schedules this (#{same.recurrence_words}, #{mode}: #{same.prompt}); " \
-                   "cancel it with chi schedule cancel #{same.id} to change it"
-    end
-
     # How many enabled schedules one chain may hold, and one machine.
     def per_chain_limit = positive_config("schedule.max_per_session", 10)
     def total_limit = positive_config("schedule.max_total", 50)
@@ -633,8 +611,11 @@ module Samagotchi
           file.entries[position] = nil
           file.entries.compact!
         else
+          stored = file.entries[position]
           word = enabled ? "enabled" : "disabled"
-          changed = with_history(file.entries[position].with(enabled: enabled, last_result: word), word, nil, at: @clock.call)
+          # The owner's row only for a change: an enable of an enabled entry adds none.
+          changed = stored.with(enabled: enabled, last_result: word)
+          changed = with_history(changed, word, nil, at: @clock.call) unless stored.enabled == enabled
           # Enabled again with a fresh budget: its next skip must not end it at
           # once, and the turn-off it was disabled by is no news any more.
           result = file.entries[position] = enabled ? changed.with(skips: 0, failures: 0, disabled_notice: nil) : changed

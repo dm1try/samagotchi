@@ -468,7 +468,7 @@ Samagotchi/FileSize:
     lib/samagotchi/guardrails/pair_command.rb: 1452
     lib/samagotchi/kernel_loop.rb: 1265
     lib/samagotchi/llm/chat_loop.rb: 1252
-    lib/samagotchi/schedules.rb: 1245
+    lib/samagotchi/schedules.rb: 1226
     lib/samagotchi/send_command.rb: 1106
     lib/samagotchi/session.rb: 1077
     lib/samagotchi/session_metrics.rb: 1434

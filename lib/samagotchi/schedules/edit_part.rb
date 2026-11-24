@@ -7,27 +7,37 @@ module Samagotchi
     # session and mode (cancel and add for those), its counters, `enabled`
     # (a spent `date` one-off stays disabled) and the firing fields.
     module EditPart
+      # A recurrence edit while a firing is in flight: a state, not a usage
+      # error (`chi schedule edit` exits 1).
+      class InFlight < StandardError
+        def initialize(msg = "a run is in progress; edit the time after it settles") = super
+      end
+
       # Each argument nil keeps the field; only the fields given change.
       # @param recurrence [Hash, nil] a whole one, from Schedules.recurrence
       # @return [Entry, nil] the entry as edited; nil when no schedule matches
       #   (or it is gone by the time the lock is held)
       # @raise [Usage] nothing to change, a field that is wrong, a duplicate
-      #   in the chain, or a recurrence edit while a firing is in flight
+      #   in the chain
+      # @raise [InFlight] a recurrence edit while a firing is in flight
       def edit(id_or_name, title: nil, prompt: nil, recurrence: nil, catch_up: nil, keep_links: nil, max_failures: nil,
                max_skips: nil)
         entry = lookup(id_or_name)
         return nil if entry.nil?
 
-        changes = edit_changes(title: title, prompt: prompt, recurrence: recurrence, catch_up: catch_up,
-                               keep_links: keep_links, max_failures: max_failures, max_skips: max_skips)
+        changes = differing(entry, edit_changes(title: title, prompt: prompt, recurrence: recurrence, catch_up: catch_up,
+                                                keep_links: keep_links, max_failures: max_failures, max_skips: max_skips))
         raise Usage, "nothing to change" if changes.empty?
 
-        # Only an edit of what a duplicate is judged on: a budget edit of a
-        # disabled entry whose twin is on must not be refused.
-        if changes.key?(:title) || changes.key?(:prompt) || changes.key?(:recurrence)
+        # Each duplicate test only on what the edit changes: a clash in a field
+        # it leaves alone (a twin `enable` let in) is not of its making.
+        by_title = changes.key?(:title)
+        by_content = changes.key?(:prompt) || changes.key?(:recurrence)
+        if by_title || by_content
           same = duplicate_in_chain(entry.anchor, prompt: changes.fetch(:prompt, entry.prompt),
                                                   title: changes.fetch(:title, entry.title),
-                                                  recurrence: changes.fetch(:recurrence, entry.recurrence), except: entry.id)
+                                                  recurrence: changes.fetch(:recurrence, entry.recurrence), except: entry.id,
+                                                  by_title: by_title, by_content: by_content)
           refuse_duplicate!(same, entry.mode) if same
         end
 
@@ -41,7 +51,35 @@ module Samagotchi
         result
       end
 
+      # The duplicate rule #add and #edit share: an enabled schedule of the
+      # same chain that says the same thing, the same prompt and recurrence
+      # or the same title. An edit passes +except+ (its own entry is no
+      # duplicate of itself) and turns off the test whose fields it leaves
+      # alone (+by_content+: the prompt and recurrence; +by_title+).
+      # @return [Entry, nil]
+      def duplicate_in_chain(session_id, prompt:, title:, recurrence:, except: nil, by_content: true, by_title: true)
+        given_title = title.to_s.strip
+        ids = chain_of(session_id)
+        entries.find do |entry|
+          next if entry.id == except
+          next unless ids.include?(entry.anchor) || ids.include?(entry.head)
+
+          (by_content && entry.prompt == prompt && entry.recurrence == recurrence) ||
+            (by_title && !given_title.empty? && entry.title.to_s.strip.casecmp?(given_title))
+        end
+      end
+
+      # @raise [Usage] naming the schedule that already says the same thing
+      def refuse_duplicate!(same, mode)
+        raise Usage, "#{same.id} already schedules this (#{same.recurrence_words}, #{mode}: #{same.prompt}); " \
+                     "cancel it with chi schedule cancel #{same.id} to change it"
+      end
+
       private
+
+      # The +changes+ whose value is not +entry+'s already (`--title ""` on
+      # an untitled entry changes nothing).
+      def differing(entry, changes) = changes.reject { |field, value| entry.public_send(field) == value }
 
       # The fields given, checked as #add checks them.
       def edit_changes(title:, prompt:, recurrence:, catch_up:, **budgets)
@@ -64,12 +102,14 @@ module Samagotchi
       # starts now, as #add's does; while a firing is in flight it is refused:
       # #record would put that firing's due_was back over the new clock.
       def edited(stored, changes)
+        # Against the entry as stored now: what another writer already set is no change.
+        changes = differing(stored, changes)
+        return stored if changes.empty?
+
         now = @clock.call
         updated = stored.with(**changes)
         if changes.key?(:recurrence)
-          if stored.firing_since || stored.pending_turn_id
-            raise Usage, "a run is in progress; edit the time after it settles"
-          end
+          raise InFlight if stored.firing_since || stored.pending_turn_id
 
           updated = updated.with(next_due: next_due_for(changes[:recurrence], from: now).utc.iso8601, due_was: nil)
         end

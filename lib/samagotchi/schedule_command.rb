@@ -172,6 +172,8 @@ module Samagotchi
 
       @stdout.puts(entry_line(entry))
       CLI::Exit::OK
+    rescue Schedules::EditPart::InFlight => e
+      failed(e.message)
     rescue Schedules::Usage => e
       usage_error(e.message)
     end
