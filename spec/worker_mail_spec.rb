@@ -236,6 +236,19 @@ RSpec.describe "the worker's peer mail" do
       expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:paused)
     end
 
+    it "recovers an asking wake note with the same full text as normal unmarking" do
+      text = "x" * 3000
+      say(text)
+      box = receipts.box_for("claude")
+      marked = Samagotchi::ContextNote.message(note_id: "peer-claude-#{box}-1", text: "wake text", source: "peer Claude",
+                                               turn_start: true, turn_id: "t-crash", peer: { "peer" => "claude", "serial" => 1 })
+      session.messages = history + [marked]
+      session.save(state_dir: state_dir)
+
+      expect(inbound.absorb_mail).to be_nil
+      expect(Samagotchi::PeerNote.text_of(saved_notes.first[:content])).to eq(text)
+    end
+
     it "does not wake a replayed batch whose plain note was saved before its receipt" do
       say("held")
       inbound.absorb_mail(hold: :queued)

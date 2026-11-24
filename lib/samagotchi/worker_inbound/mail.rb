@@ -187,7 +187,7 @@ module Samagotchi
         marked_notes.each do |marked|
           item = items.find { |i| i.note_id == marked[:note_id] }
           index = messages.index { |m| m[:note_id] == marked[:note_id] }
-          messages[index] = ContextNote.message(**mail_note(item, cap: @mail_cap&.call, held: true)) if index
+          messages[index] = ContextNote.message(**mail_note(item, cap: @mail_cap&.call, held: !item.asked)) if index
         end
         @engine.rollback_to(messages)
         @wakes.pause!
