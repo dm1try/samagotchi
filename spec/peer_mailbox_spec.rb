@@ -158,6 +158,18 @@ RSpec.describe "PeerMailbox" do
       expect(serials).to eq((6..61).to_a)
     end
 
+    it "keeps a held message even after more than 50 later messages are taken" do
+      60.times { post }
+      peer = Samagotchi::PeerReceipts::Peer.new(box: "a1b2c3", taken: 60, receipts: [
+        Samagotchi::PeerReceipts::Receipt.new(serial: 1, state: "held", reason: "peer_turns", at: "x")
+      ])
+      Samagotchi::PeerReceipts.write(id, Samagotchi::PeerReceipts::Book.new(peers: { "claude" => peer }), state_dir: state_dir)
+
+      post("next", taken: 60)
+
+      expect(serials).to include(1)
+    end
+
     it "refuses the 201st untaken message and writes nothing" do
       200.times { post }
       expect { post }.to raise_error(Samagotchi::PeerMailbox::Full, /200 unread messages from claude/)
@@ -244,18 +256,78 @@ RSpec.describe "PeerMailbox" do
   end
 
   describe "a session's folders" do
-    it "lists the peer folders with a valid name, moves them and removes them" do
+    it "lists the peer folders with a valid name and removes them" do
       post(peer: "claude")
       post(peer: "codex")
       FileUtils.mkdir_p(File.join(mailbox.session_dir(id, state_dir: state_dir), "Bad-Name"))
       expect(mailbox.peers(id, state_dir: state_dir)).to eq(%w[claude codex])
 
-      expect(mailbox.move(from: id, to: "sess-0002", state_dir: state_dir)).to be(true)
-      expect(mailbox.peers(id, state_dir: state_dir)).to eq([])
-      expect(mailbox.peers("sess-0002", state_dir: state_dir)).to eq(%w[claude codex])
+      expect(mailbox.remove_session(id, state_dir: state_dir)).to eq([mailbox.session_dir(id, state_dir: state_dir)])
+      expect(Dir.exist?(mailbox.session_dir(id, state_dir: state_dir))).to be(false)
+    end
+  end
 
-      expect(mailbox.remove_session("sess-0002", state_dir: state_dir)).to eq([mailbox.session_dir("sess-0002", state_dir: state_dir)])
-      expect(Dir.exist?(mailbox.session_dir("sess-0002", state_dir: state_dir))).to be(false)
+  describe "directory links (never followed)" do
+    let(:elsewhere) { File.join(root, "elsewhere") }
+
+    before do
+      FileUtils.mkdir_p(elsewhere)
+      File.write(File.join(elsewhere, "1.json"), "{}")
+      File.write(File.join(elsewhere, "2.json"), "{}")
+    end
+
+    it "doesn't list a symlinked peer folder" do
+      post(peer: "claude")
+      File.symlink(elsewhere, File.join(mailbox.session_dir(id, state_dir: state_dir), "codex"))
+      expect(mailbox.peers(id, state_dir: state_dir)).to eq(%w[claude])
+    end
+
+    it "refuses a say into a symlinked in folder and touches nothing in the link's target" do
+      FileUtils.mkdir_p(mailbox.peer_dir(id, "claude", state_dir: state_dir))
+      File.symlink(elsewhere, in_dir)
+      expect { post("x", taken: 60) }.to raise_error(Samagotchi::PeerMailbox::Invalid, /link/)
+      expect(Dir.children(elsewhere).sort).to eq(%w[1.json 2.json])
+      expect(mailbox.serials(id, "claude", state_dir: state_dir)).to eq([])
+    end
+
+    it "refuses a say into a symlinked peer folder" do
+      FileUtils.mkdir_p(mailbox.session_dir(id, state_dir: state_dir))
+      FileUtils.mkdir_p(File.join(elsewhere, "in"))
+      File.symlink(elsewhere, mailbox.peer_dir(id, "claude", state_dir: state_dir))
+      expect { post("x") }.to raise_error(Samagotchi::PeerMailbox::Invalid, /link/)
+      expect(Dir.children(File.join(elsewhere, "in"))).to eq([])
+      expect(mailbox.serials(id, "claude", state_dir: state_dir)).to eq([])
+    end
+
+    it "refuses pairing through a symlinked peer folder" do
+      FileUtils.mkdir_p(File.join(elsewhere, "in"))
+      FileUtils.mkdir_p(mailbox.session_dir(id, state_dir: state_dir))
+      File.symlink(elsewhere, mailbox.peer_dir(id, "claude", state_dir: state_dir))
+
+      expect { mailbox.pair(id, "claude", address: nil, from: nil, state_dir: state_dir) }
+        .to raise_error(Samagotchi::PeerMailbox::Invalid, /link/)
+    end
+
+    it "refuses reading through a symlinked peer or session folder" do
+      FileUtils.mkdir_p(mailbox.peer_dir(id, "claude", state_dir: state_dir))
+      FileUtils.mkdir_p(File.join(elsewhere, "in"))
+      File.symlink(elsewhere, mailbox.in_dir(id, "claude", state_dir: state_dir))
+      expect { mailbox.message(id, "claude", 1, state_dir: state_dir) }
+        .to raise_error(Samagotchi::PeerMailbox::Invalid, /link/)
+
+      FileUtils.rm_rf(mailbox.session_dir(id, state_dir: state_dir))
+      File.symlink(elsewhere, mailbox.session_dir(id, state_dir: state_dir))
+      expect { mailbox.message(id, "claude", 1, state_dir: state_dir) }
+        .to raise_error(Samagotchi::PeerMailbox::Invalid, /link/)
+    end
+
+    it "fails on a symlinked lock file rather than writing through it" do
+      dir = mailbox.peer_dir(id, "claude", state_dir: state_dir)
+      FileUtils.mkdir_p(File.join(dir, "in"))
+      target = File.join(elsewhere, "lockfile")
+      File.symlink(target, File.join(dir, "lock"))
+      expect { mailbox.locked(dir) { :ran } }.to raise_error(SystemCallError)
+      expect(File.exist?(target)).to be(false)
     end
   end
 end

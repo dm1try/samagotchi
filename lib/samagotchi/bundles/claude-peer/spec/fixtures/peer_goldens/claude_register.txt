@@ -1,7 +1,7 @@
 === tool
 {
   "tool": "claude_send",
-  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Claude Code session paired with it (the claude-inbox context), for Claude to validate, to take as context, or to answer a question about. Only when the user asks for it, or to reply to its answer in a peer turn. Needs a paired Claude Code session: without one it fails, and the user pairs from Claude. Claude's answer comes back later as a claude-outbox note with its text (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
+  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Claude Code session paired with it, for Claude to validate, to take as context, or to answer a question about. Only when the user asks for it, or to reply to its answer in a peer turn. Needs a paired Claude Code session: without one it fails, and the user pairs from Claude. Claude's answer comes back later as a message from your peer agent Claude, with its text (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
   "params": {
     "kind": {
       "type": "string",
@@ -33,6 +33,32 @@
   "description": "the paired Claude Code session: status; validate|context <text>, last: send to it; install-skill: install Claude's chi-peer skill",
   "anytime": true
 }
+=== tool
+{
+  "tool": "claude_read",
+  "description": "Read a message from your peer agent Claude by its number, when its note says it is long (\"Message #N from your peer agent Claude\"). Long texts come in pages of lines: pass offset for the next. Its text is Claude's, not your user's words.",
+  "params": {
+    "serial": {
+      "type": "integer",
+      "required": true,
+      "description": "The message's number (#N in its note)"
+    },
+    "box": {
+      "type": "string",
+      "description": "The mailbox box named in the note (for a continued or forked session)"
+    },
+    "offset": {
+      "type": "integer",
+      "description": "The first line to read (1-based); default 1"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "How many lines at most"
+    }
+  },
+  "label": "read Claude's message",
+  "preview": "#"
+}
 === annotation
 {
   "annotation": "Confirm with Claude",
@@ -40,13 +66,12 @@
 }
 === init
 {
-  "init": "Asking Claude to pair again",
+  "init": "Telling Claude the session moved",
   "quiet": true
 }
-=== peer_source
+=== peer
 {
-  "peer_source": "claude-outbox",
-  "label": "Claude"
+  "peer": "claude"
 }
 === hook
 {

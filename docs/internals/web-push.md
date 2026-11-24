@@ -149,7 +149,7 @@ the top and in `pending_question` / `pending_card`, strings in `last_turn`), `no
   3. a top-level turn whose `last_turn["ended_at"]` changed (a delegated child's is its parent's to report):
      a newly recorded verdict is `verdict`, keyed by `"<sid>:<check_turn_id>"`; otherwise `failed`, or `done` when
      `completed` and `seconds` ≥ `DONE_MIN_SECONDS` 10 or its origin is in `UNWATCHED_ORIGINS`
-     (`delegate_report`, `context`, `task`), keyed by `"<sid>:<ended_at>"`. A verdict wins over the done/no-event
+     (`delegate_report`, `context`, `task`, `peer`: a peer's message's wake turn), keyed by `"<sid>:<ended_at>"`. A verdict wins over the done/no-event
      rule, including for a short turn. A reminder turn follows the same rules (no reminder event of its own).
 - `WAITING` (approval, question, continue, card) are the reasons that stay open until answered: badged, in `open`,
   cleaned up, and pushed only while still open. A failed, done or verdict turn has nothing to answer.

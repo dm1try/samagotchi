@@ -9,7 +9,6 @@ require_relative "../commands/registry"
 require_relative "../session_commands"
 require_relative "../tools/builtins"
 require_relative "../tools/tool_index"
-require_relative "../peer_sources"
 require_relative "../toolkit"
 require_relative "../guardrails/gate"
 require_relative "../turn_context"
@@ -93,16 +92,19 @@ module Samagotchi
         def shipped(name, **) = load(File.join(SHIPPED_DIR, name.to_s), **)
 
         # Registries as an Engine's start: chi's built-in commands and
-        # tools, empty services, toolkits, tool index and peer sources;
+        # tools, empty services, toolkits, tool index and peer registry;
         # +fields+ set the rest (hooks:, context_for:, init: ...) or replace
         # these. Bundle#build_registries and Install's load both start here.
         # @api private
         # @return [Plugin::Registries]
         def registries(**fields)
+          # Here, not at the kit's load: the kit stays under its file budget
+          # (spec/samagotchi/testing/sandbox_spec.rb).
+          require_relative "../peer_registry"
           Plugin::Registries.new(
             commands: SessionCommandCatalog.register_builtins(Commands::Registry.new), tools: Tools::Builtins.registry,
             services: Plugin::Services.new, stage_tools: ->(*) {}, toolkits: [], tool_index: Tools::ToolIndex.new,
-            peer_sources: PeerSources.new, prompt_sections: Plugin::PromptSections.new,
+            peer_registry: PeerRegistry.new, prompt_sections: Plugin::PromptSections.new,
             judgments: SystemOne::Judgments.new, **fields
           )
         end
@@ -339,8 +341,8 @@ module Samagotchi
       def toolkits = @registries.toolkits
       # @return [Tools::ToolIndex]
       def tool_index = @registries.tool_index
-      # @return [PeerSources]
-      def peer_sources = @registries.peer_sources
+      # @return [PeerRegistry] the peers it declared (chi.peer)
+      def peer_registry = @registries.peer_registry
 
       # The prompt sections as chi's next prompt build runs them, for the
       # session now (its id: a failure keeps that session's last good text).
@@ -434,6 +436,39 @@ module Samagotchi
         @recorder.set(**values)
         self
       end
+
+      # ── A peer's side (PeerMailbox, as `chi peer` writes it) ──────────
+
+      # Pair peer +name+ with the session (+session_id+, default the
+      # session now), as `chi peer pair NAME ID --address ADDR` does:
+      # ctx.peers.link reads it. +address+ nil: answers only.
+      # @return [PeerMailbox::PeerLink]
+      def pair_peer(name, address:, from: nil, session_id: nil)
+        require_relative "../peer_mailbox"
+        PeerMailbox.pair(session_id || peer_session_id, name.to_s, address: address, from: from,
+                                                                   state_dir: peer_state_dir)
+      end
+
+      # End the pairing, as `chi peer unpair` does (the messages stay).
+      def unpair_peer(name, session_id: nil)
+        require_relative "../peer_mailbox"
+        PeerMailbox.unpair(session_id || peer_session_id, name.to_s, state_dir: peer_state_dir)
+      end
+
+      # A message from peer +name+ in the session's mailbox, as `chi peer
+      # say` writes it (no worker takes it here): ctx.peers.message reads it.
+      # @return [PeerMailbox::PeerMessage]
+      def peer_says(name, text, summary: nil, wake: true, re: nil, session_id: nil)
+        require_relative "../peer_mailbox"
+        PeerMailbox.post(session_id || peer_session_id, name.to_s, text: text, summary: summary, wake: wake, re: re,
+                                                                   state_dir: peer_state_dir)
+      end
+
+      def peer_session_id = @recorder[:session_id] || raise(ArgumentError, "the session has no id: set(session_id: …)")
+      private :peer_session_id
+
+      def peer_state_dir = @recorder[:state_dir] || Session.default_state_dir
+      private :peer_state_dir
 
       def newest_sign_in
         sign_ins.last or raise ArgumentError, "no ctx.sign_in was started"

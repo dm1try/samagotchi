@@ -119,12 +119,12 @@ module Samagotchi
       # turn from context:<name> whose first message is the wake note already
       # in the conversation (named by +turn_id+), on the same rules as a
       # delegate report's wake turn (#run_wake): it counts toward
-      # session.max_wakes (a peer's answer toward context.peer_turns too,
+      # session.max_wakes (a peer's answer toward peer.turns too,
       # unless it agrees).
       # +context_wake+: a WorkerInbound::ContextWake.
       def run_context_wake_turn(context_wake)
         name = context_wake.name
-        Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
+        Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!)
         run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake)
       end
 
@@ -132,7 +132,7 @@ module Samagotchi
       # continue turn from peer:<name> whose first message is the batch's
       # last note, already in the conversation (named by its turn id), on
       # #run_wake's rules. It counts toward session.max_wakes and, unless the
-      # message agrees, toward context.peer_turns.
+      # message agrees, toward peer.turns.
       # +mail_wake+: a WorkerInbound::MailWake.
       def run_mail_wake_turn(mail_wake)
         Log.info(:worker, "mail_wake_turn", peer: mail_wake.peer, in_a_row: @wakes.count!(peer: !mail_wake.agreed))

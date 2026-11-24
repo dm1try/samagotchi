@@ -57,16 +57,10 @@ module Samagotchi
       ALLOWED_REQUIRES = (ALLOWED.map(&:file) + %w[samagotchi/testing/rspec samagotchi/testing/minitest]).uniq.freeze
 
       SESSION = "a saved session (context sources are keyed by its id): needs a kit helper that saves one"
-      SOURCES = "the session's context sources (the peer's inbox / outbox): needs a kit helper that attaches one"
       REF_LIMITS = "a ref's kinds and limits (event[:refs] checks them too): could be stable constants"
-      # The peers' specs pair a session through its context sources.
-      PEER_SPEC = {
-        'require "samagotchi/context_sources"' => "spec: #{SOURCES}",
-        "Samagotchi::Session.new_session" => "spec: #{SESSION}",
-        "Samagotchi::ContextSources.session_location" => "spec: #{SOURCES}",
-        "Samagotchi::ContextSources::Source.new" => "spec: #{SOURCES}",
-        "Samagotchi::ContextSources::Fetched.new" => "spec: an outbox answer as the context poller records it"
-      }.freeze
+      # The peers' specs pair through the kit (Bundle#pair_peer, #peer_says);
+      # a saved session is still theirs to make.
+      PEER_SPEC = { "Samagotchi::Session.new_session" => "spec: #{SESSION}" }.freeze
 
       # bundle => {reference => why}: what each shipped bundle reaches
       # beyond ALLOWED today, its specs' (why "spec: …") included.
@@ -76,10 +70,7 @@ module Samagotchi
           "Samagotchi::Guardrails::GitInfo.new" => "the work tree's top for the AGENTS.md chain (ctx.repo_root covers the top only)"
         },
         # Both bundles' goldens live in claude-peer's spec/.
-        "claude-peer" => PEER_SPEC.merge(
-          "Samagotchi::ContextSources.move" => "spec: a continue leaving the pairing behind, as SessionContinue " \
-                                               "moves it: needs a kit helper that continues a session"
-        ),
+        "claude-peer" => PEER_SPEC,
         "codex-peer" => PEER_SPEC,
         "coordinator" => {
           "Samagotchi::MemoryPaths.scope_dir" => "where the coordinator's memories live: needs a ctx memory-path API",

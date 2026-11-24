@@ -123,7 +123,7 @@ module Samagotchi
       end
 
       # Why the batch's newest asking message can't wake chi now: :off
-      # (context.peer_turns is 0), else WorkerWakes#wake_hold's (an agreeing
+      # (peer.turns is 0), else WorkerWakes#wake_hold's (an agreeing
       # message is held by session.max_wakes only); nil: it may.
       def mail_hold(asking)
         return :off if @wakes.peer_max.zero?
@@ -157,11 +157,12 @@ module Samagotchi
         message = item.message
         label = PeerMailbox.label(item.peer)
         body = PeerNote.body(message.text, cap, held: held)
+        box = @peer_receipts.box_for(item.peer)
         text = PeerNote.message_text(label: label, serial: item.serial, summary: message.summary, body: body,
-                                     read: PeerNote.read_pointer(item.peer, item.serial))
+                                     read: PeerNote.read_pointer(item.peer, item.serial, box: box))
         { note_id: item.note_id, text: text, source: PeerNote.source(label), created_at: Time.now.utc.iso8601,
           peer: PeerNote.payload(peer: item.peer, label: label, re: message.re, summary: message.summary,
-                                 serial: item.serial, inline: body.key?(:text)).merge("box" => @peer_receipts.box_for(item.peer)) }
+                                 serial: item.serial, inline: body.key?(:text)).merge("box" => box) }
       end
 
       # The wake line of +asking+ (the newest message that asked): the
@@ -169,7 +170,8 @@ module Samagotchi
       def mail_wake_line(asking, cap)
         body = PeerNote.body(asking.message.text, cap)
         agreed = agreed?(asking)
-        PeerNote.message_wake_line(PeerMailbox.label(asking.peer), PeerNote.read_pointer(asking.peer, asking.serial),
+        PeerNote.message_wake_line(PeerMailbox.label(asking.peer), PeerNote.read_pointer(asking.peer, asking.serial,
+                                                                                         box: @peer_receipts.box_for(asking.peer)),
                                    @wakes.peer_turns, body: body, agreed: agreed, first: !agreed && asking.message.re.nil?)
       end
 

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "../context_sources"
 require_relative "../peer_exchanges"
 require_relative "../peer_mailbox"
 require_relative "../peer_roster"
@@ -25,26 +24,24 @@ module Samagotchi
 
       private
 
-      # GET /api/sessions/:id/peers → {peers: [{name, label, inbox, outbox,
-      # exchanges, paired_at, from, can_send, messages}]}: a row per peer
-      # with a context leg (a <peer>-inbox / -outbox pushed source of the
-      # session's own: an older bundle's pairing) or a mailbox folder.
-      # +exchanges+ joins chi's sends (peer_exchanges.jsonl) with the
-      # answers: the log's (an older pairing's) and the mailbox's messages
-      # (PeerExchanges.joined, unchanged). +messages+: the newest
-      # (PeerRoster), with their receipts; no text anywhere.
+      # GET /api/sessions/:id/peers → {peers: [{name, label, paired_at, from,
+      # address, can_send, messages, exchanges}]}: a row per peer with a
+      # mailbox folder (the peer chip's only feed). +exchanges+ joins chi's
+      # sends (peer_exchanges.jsonl) with the answers: the log's (an older
+      # pairing's) and the mailbox's messages (PeerExchanges.joined,
+      # unchanged). +messages+: the newest (PeerRoster), with their receipts
+      # and the receipt in chi's words (+words+: PeerRoster.state_words,
+      # "held · peer turns"); no text anywhere.
       def handle_peers(_req, id)
         @session_class.load(id, state_dir: default_state_dir)
         entries = PeerExchanges.read(id, state_dir: default_state_dir).group_by { |entry| entry["peer"] }
         rows = {}
-        context_legs(id).each do |peer, leg|
-          row = (rows[peer] ||= peer_row(peer))
-          row[leg.to_sym] = true
-        end
+        entries.each_key { |name| rows[name] ||= peer_row(name) }
         PeerRoster.build(id, state_dir: default_state_dir).each do |peer|
           row = (rows[peer.name] ||= peer_row(peer.name))
-          row.merge!(paired_at: peer.paired_at, from: peer.from, can_send: peer.paired? && !peer.address.nil?,
-                     messages: peer.messages.map(&:to_h))
+          row.merge!(paired_at: peer.paired_at, from: peer.from, address: peer.address,
+                     can_send: peer.paired? && !peer.address.nil?,
+                     messages: peer.messages.map { |message| message.to_h.merge("words" => PeerRoster.state_words(message.receipt)) })
           (entries[peer.name] ||= []).concat(answer_entries(peer))
         end
         rows.each_value { |row| row[:exchanges] = PeerExchanges.joined(entries.fetch(row[:name], [])) }
@@ -52,15 +49,7 @@ module Samagotchi
       end
 
       def peer_row(peer)
-        { name: peer, label: PeerMailbox.label(peer), inbox: false, outbox: false, paired_at: nil, from: nil,
-          can_send: false, messages: [] }
-      end
-
-      # The session's own pushed <peer>-inbox / -outbox sources: [[peer, leg]…].
-      def context_legs(id)
-        ContextSources.session_location(id, state_dir: default_state_dir).sources.filter_map do |source|
-          source.push? ? ContextSources.peer_leg(source.name) : nil
-        end
+        { name: peer, label: PeerMailbox.label(peer), paired_at: nil, from: nil, address: nil, can_send: false, messages: [] }
       end
 
       # A peer's mailbox messages as the exchange log's answer lines.
@@ -73,9 +62,13 @@ module Samagotchi
 
       # GET /api/sessions/:id/peers/:name/messages/:serial → the message
       # (its text) and its receipt; 404 no_message.
-      def handle_peer_message(_req, id, name, serial)
+      def handle_peer_message(req, id, name, serial)
         @session_class.load(id, state_dir: default_state_dir)
         return invalid_peer(name) unless PeerMailbox.valid_name?(name)
+
+        box = req.GET["box"].to_s
+        expected = PeerReceipts.read(id, state_dir: default_state_dir).peer(name).box
+        return error_response(409, "wrong_box", "this message belongs to another session") if !box.empty? && expected != box
 
         message = PeerMailbox.message(id, name, serial, state_dir: default_state_dir)
         return error_response(404, "no_message", "no message #{serial.to_s[0, 20]} from #{name}") unless message

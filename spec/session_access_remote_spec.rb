@@ -151,16 +151,12 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to eq(Samagotchi::SessionAccess::ContextAdded.new(name: "pr-1", movable_dropped: true))
     end
 
-    it "sends a push's re in the body (nil when the push has none); an older chi web's 200 is a push" do
-      fetched = Samagotchi::ContextSources::Fetched.new(text: "x", summary: "s", wake: true, hint: nil, re: "s-ab12cd")
+    it "sends a push's text, summary, wake and hint; an older chi web's 200 is a push" do
+      fetched = Samagotchi::ContextSources::Fetched.new(text: "x", summary: "s", wake: true, hint: nil)
       access, calls = scripted([200, { status: "pushed", name: "claude-outbox", before: nil, revision: "r" }])
       expect(access.context_push(target, "claude-outbox", fetched))
         .to eq(Samagotchi::SessionAccess::ContextPush.new(status: :pushed, before: nil, revision: "r", wake: nil))
-      expect(calls.last.last[:body]).to eq(text: "x", summary: "s", wake: true, hint: nil, re: "s-ab12cd")
-
-      access, calls = scripted([200, { status: "pushed", name: "notes", revision: "r" }])
-      access.context_push(target, "notes", fetched.with(re: nil))
-      expect(calls.last.last[:body]).to include(re: nil)
+      expect(calls.last.last[:body]).to eq(text: "x", summary: "s", wake: true, hint: nil)
     end
 
     it "maps a push's 410 context_continued to :continued with the next id; another 410 is a refusal" do

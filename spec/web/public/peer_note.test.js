@@ -109,3 +109,11 @@ test("without inline (an older session, a long answer) or with inline but no blo
     assert.equal(el.querySelector(".peer-told-text").textContent, note.content);
   }
 });
+
+test("a mailbox message's note (its peer hash has a box): no outbox source, its box and serial on the bubble", () => {
+  const el = elementOf(peerNoteTemplate(wakeNote({ context_source: undefined, label: "peer Claude", peer: peer({ box: "a1b2c3", serial: 12 }) })));
+  assert.deepEqual({ ...el.dataset }, { openingId: "t9", peerName: "claude", peerRe: "s-ab12cd", peerSerial: "12", peerBox: "a1b2c3" });
+  // An older context answer (no box) keeps its outbox fallback.
+  const old = elementOf(peerNoteTemplate(wakeNote({ context_source: undefined })));
+  assert.equal(old.dataset.peerSource, "claude-outbox");
+});

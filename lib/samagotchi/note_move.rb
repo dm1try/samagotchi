@@ -7,6 +7,7 @@ require_relative "archive_store"
 require_relative "context_move"
 require_relative "log"
 require_relative "objectives"
+require_relative "peer_continue"
 require_relative "session"
 require_relative "session_chain"
 require_relative "session_inbox"
@@ -27,7 +28,8 @@ module Samagotchi
     # The notes a continue writes into its new link itself (the chain note,
     # ChildMove's, the attached context's, the objectives' carry): a failed
     # continue deletes them with the link.
-    CONTINUE_SOURCES = [SessionChain::NOTE_SOURCE, ContextMove::NOTE_SOURCE, Objectives::SOURCE].freeze
+    CONTINUE_SOURCES = [SessionChain::NOTE_SOURCE, ContextMove::NOTE_SOURCE, Objectives::SOURCE,
+                        PeerContinue::NOTE_SOURCE].freeze
 
     module_function
 

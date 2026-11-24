@@ -27,7 +27,7 @@ RSpec.describe Samagotchi::SessionManager do
     let(:reminders) { Samagotchi::ReminderStore.new }
     let(:event_log) { Samagotchi::SessionObserver.new }
     let(:engine) do
-      instance_double(Samagotchi::Engine, **idle_engine_parts, event_log: event_log, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_sources: nil, peer_registry: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
+      instance_double(Samagotchi::Engine, **idle_engine_parts, event_log: event_log, announce_participants: nil, command_registry: Samagotchi::SessionCommandCatalog.builtin_registry, peer_registry: nil, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, warm_toolkit_suggestion!: nil, "interface=": nil, "participant_stop=": nil, "block_fix_ready=": nil, apply_block_fixes: 0, recap: nil, "recap_awaiting_continue=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
                                           reminder_store: reminders, sign_in_waiting?: false,
                                           messages_checkpoint: [], used_memory_names: [], write_recap_now: nil, recap_timeout: nil)
     end

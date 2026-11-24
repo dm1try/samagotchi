@@ -139,31 +139,11 @@ RSpec.describe Samagotchi::ContextSources do
       expect(loc.snapshot("a")).to eq(second)
     end
 
-    it "keeps a new revision's re, clears it with a revision without one, and keeps it for the same text" do
-      first = loc.record_text("a", described_class::Fetched.new(text: "one", summary: nil, wake: true, hint: nil, re: "s-ab12cd"))
-      expect(JSON.parse(File.read(File.join(loc.dir, "a.snapshot.json")))).to include("re" => "s-ab12cd")
-      same = loc.record_text("a", fetched("one"))
-      second = loc.record_text("a", fetched("two"))
-
-      expect(first.re).to eq("s-ab12cd")
-      expect(same.re).to eq("s-ab12cd")
-      expect(second.re).to be_nil
-      expect(JSON.parse(File.read(File.join(loc.dir, "a.snapshot.json")))).not_to have_key("re")
-    end
-
-    it "reads an older snapshot (no re) with none, and builds Fetched and Snapshot without re" do
-      old = { "text" => "t", "summary" => "s", "revision" => "r", "serial" => 1 }
-      expect(described_class::Snapshot.from_h(old).re).to be_nil
-      expect(described_class::Snapshot.empty.re).to be_nil
-      expect(described_class::Fetched.new(text: "t", summary: nil, wake: false, hint: nil).re).to be_nil
-      expect(described_class::Snapshot.empty.to_h).not_to have_key("re")
-    end
-
-    it "validates a snapshot's re on reload" do
-      [{}, "x" * 33, "bad ref"].each do |bad|
-        expect(described_class::Snapshot.from_h("re" => bad).re).to be_nil
-      end
-      expect(described_class::Snapshot.from_h("re" => "s-ab12cd").re).to eq("s-ab12cd")
+    it "reads an older snapshot's re (a peer answer an older chi pushed) as nothing, and writes none" do
+      old = { "text" => "t", "summary" => "s", "revision" => "r", "serial" => 1, "re" => "s-ab12cd" }
+      expect(described_class::Snapshot.from_h(old).to_h).not_to have_key("re")
+      expect(described_class::Snapshot.members).not_to include(:re)
+      expect(described_class::Fetched.members).not_to include(:re)
     end
 
     it "summarises a plain-text change by its line counts" do
@@ -302,13 +282,12 @@ RSpec.describe Samagotchi::ContextSources do
         .to eq([])
     end
 
-    it "words a peer's pairing left behind as one group: an inbox gets asked, an outbox alone pairs on its next answer" do
-      %w[claude-inbox claude-outbox codex-outbox notes].each { |name| from.add(source(name)) }
+    it "words a source named like an older peer pairing left behind as any other" do
+      %w[claude-inbox claude-outbox notes].each { |name| from.add(source(name)) }
       from.add(source("zed-inbox", cmd: "x").with(movable: false))
 
       expect(move.note_text(session_id)).to eq(
-        "Left with 11111111: claude-inbox, claude-outbox (Claude's pairing: chi asks Claude to pair again with this " \
-        "session), codex-outbox (Codex pairs again when it next answers), notes (pushed), zed-inbox (not movable)."
+        "Left with 11111111: claude-inbox (pushed), claude-outbox (pushed), notes (pushed), zed-inbox (not movable)."
       )
     end
 
@@ -429,21 +408,7 @@ RSpec.describe Samagotchi::ContextSources do
     expect(Dir.exist?(loc.dir)).to be(false)
   end
 
-  it "names a <peer>-inbox / -outbox name's peer and leg, and words the peer as chi does" do
-    expect(described_class.peer_leg("claude-outbox")).to eq(%w[claude outbox])
-    expect(described_class.peer_leg("codex-inbox")).to eq(%w[codex inbox])
-    expect([described_class.peer_leg("notes"), described_class.peer_leg("claude-outbox-2"), described_class.peer_leg(nil)])
-      .to all(be_nil)
-    expect(described_class.peer_label("claude")).to eq("Claude")
-  end
-
   describe ".parse_output (the contract)" do
-    it "logs malformed peer refs without logging the answer" do
-      expect(Samagotchi::Log).to receive(:debug).with(:context, "invalid_peer_ref").once
-      described_class.parse_output(JSON.generate(text: "private answer", re: { x: 1 }))
-      described_class.parse_output(JSON.generate(text: "private answer", re: nil))
-    end
-
     it "takes plain text whole" do
       expect(described_class.parse_output("line 1\nline 2\n"))
         .to eq(fetched("line 1\nline 2\n"))
@@ -455,14 +420,8 @@ RSpec.describe Samagotchi::ContextSources do
       expect(described_class.parse_output(JSON.generate(text: "t", wake: "yes")).wake).to be(false)
     end
 
-    it "keeps re only when it is a short id string (a peer's answer naming its send)" do
-      re = ->(value) { described_class.parse_output(JSON.generate(text: "t", re: value)).re }
-
-      expect(re.call("s-ab12cd")).to eq("s-ab12cd")
-      expect([re.call(nil), re.call(12), re.call(["s-ab12cd"]), re.call("S-AB12CD"), re.call("s ab"), re.call(""),
-              re.call("s-#{"a" * 31}"), re.call("s-1\n")]).to all(be_nil)
-      expect(described_class.parse_output(JSON.generate(text: "t")).re).to be_nil
-      expect(described_class.parse_output("plain").re).to be_nil
+    it "ignores an older peer skill's re, as any unknown key" do
+      expect(described_class.parse_output(JSON.generate(text: "t", re: "s-ab12cd"))).to eq(fetched("t"))
     end
 
     it "cuts a long summary at 200 chars" do

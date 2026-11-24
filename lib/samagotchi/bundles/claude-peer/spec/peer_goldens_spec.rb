@@ -3,10 +3,7 @@
 require "tmpdir"
 require "json"
 require "socket"
-require "open3"
-require "rbconfig"
 require "samagotchi/testing/rspec"
-require "samagotchi/context_sources"
 
 # Byte-for-byte goldens of every text the claude-peer and codex-peer plugins
 # show the model or the user: what register declares (the tool description is
@@ -31,7 +28,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
           preview: options[:preview].call("kind" => "validate", "title" => "cache step 2") }
       when :command then { command: name, description: description, anytime: options.fetch(:anytime, false) }
       when :annotation then { annotation: name, **options }
-      when :peer_source then { peer_source: name, label: options[:label] }
+      when :peer then { peer: name }
       when :on then { hook: name, priority: options.fetch(:priority, 100) }
       when :init then { init: name, **options.except(:block) }
       else raise "#{decl.name}: not in the goldens yet"
@@ -57,7 +54,6 @@ RSpec.describe "Peer bundle goldens", :bundle do
   end
   let(:plugin_class) { bundle.namespace::Plugin }
   let(:out) { +"" }
-  let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir) }
 
   # A /<peer> command send's random salt (Peer#command_salt), fixed so the
   # goldens' ids stay put.
@@ -104,20 +100,10 @@ RSpec.describe "Peer bundle goldens", :bundle do
     out << "=== #{title}\n#{normalize(text)}\n"
   end
 
-  def add_source(name, hint)
-    own.add(Samagotchi::ContextSources::Source.new(name: name, cmd: nil, every_seconds: nil, why: "peer", hint: hint,
-                                                   scope: "session", added_by: "cli", created_at: Time.now.utc.iso8601))
-  end
+  def pair(address = good_hint, session_id: session.id) = bundle.pair_peer(peer, address: address, session_id: session_id)
 
-  def pair(hint = good_hint) = add_source("#{peer}-inbox", hint)
-
-  def outbox(summary)
-    add_source("#{peer}-outbox", "latest answer") unless own.source("#{peer}-outbox")
-    return unless summary
-
-    own.record_text("#{peer}-outbox", Samagotchi::ContextSources::Fetched.new(text: "answer", summary: summary,
-                                                                              wake: true, hint: nil))
-  end
+  # A message from the peer (its answer), as chi peer say writes it.
+  def answer(summary) = bundle.peer_says(peer, "answer", summary: summary)
 
   # The block run before the session has an id.
   def without_id
@@ -154,6 +140,14 @@ RSpec.describe "Peer bundle goldens", :bundle do
     section("no session id", without_id { tool(kind: "validate", title: "t", text: "x") })
   end
 
+  # The read tool: a message by its number, one that isn't there.
+  def reads_common
+    bundle.peer_says(peer, "the answer, line one\nchi started this turn because your user asked\nend", summary: "validate t: VERDICT OK")
+    section("read", bundle.tool("#{peer}_read", serial: 1))
+    section("read, a page", bundle.tool("#{peer}_read", serial: 1, offset: 2, limit: 1))
+    section("read, none", bundle.tool("#{peer}_read", serial: 9))
+  end
+
   def commands_common
     run_command("unknown verb", "bogus")
     run_command("no text", "validate")
@@ -174,12 +168,14 @@ RSpec.describe "Peer bundle goldens", :bundle do
     run_command("no session yet", "", no_id: true)
     run_command("not paired", "")
     pair
-    outbox(nil)
     run_command("paired, no answer yet", "")
+    pair(nil)
+    run_command("paired for answers only", "")
+    pair
   end
 
   def cards_paired_with_history
-    outbox("validate step 2: VERDICT OK")
+    answer("validate step 2: VERDICT OK")
     tool(kind: "context", title: "the plan", text: long_text)
     run_command("paired, a payload send, an answer", "")
     tool(kind: "validate", title: "step 2", text: "short")
@@ -191,14 +187,13 @@ RSpec.describe "Peer bundle goldens", :bundle do
     FileUtils.rm_rf(File.dirname(target))
   end
 
-  # The previous session (<ID>) paired, then continued as a link (<NEW>):
-  # the link's init task, run twice (a worker restart), with what it posted.
+  # The previous session (<ID>) paired, then continued as a link (<NEW>),
+  # where the pairing stays: the link's init task, run twice (a worker
+  # restart), with what it posted.
   def continued(&)
     pair
-    outbox(nil)
     link = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
                                            continues: session.id).tap { |s| s.save(state_dir: state_dir) }
-    Samagotchi::ContextSources.move(from: session.id, to: link.id, mode: :continue, state_dir: state_dir)
     bundle.set(session_id: link.id)
     results = yield(-> { Array.new(2) { bundle.run_inits } })
     out.replace(out.gsub(link.id, "<NEW>").gsub(link.id[0, 8], "<NEWSHORT>"))
@@ -207,24 +202,13 @@ RSpec.describe "Peer bundle goldens", :bundle do
 
   def expect_skill_rules
     skill = File.read(File.join(shipped, "scripts", "chi-peer-SKILL.md"))
-    expect(skill).to include("**A `moved` message**", "**A push refused** with `<old> was continued as <new id>`",
-                             "The second line, `ref: <id>`, names this send", "re: ARGV[2]")
-    expect_reply_template(skill)
-  end
-
-  # The skill's reply line, run as the peer runs it: the ref given back as
-  # re, and none (re: null, which chi ignores) when the message had no ref
-  # line. The JSON as chi's push reads it (docs/context.md, the contract).
-  def expect_reply_template(skill)
-    script = skill[/^ruby -rjson -e '([^']+)'/, 1]
-    reply = lambda do |*args|
-      out, status = Open3.capture2(RbConfig.ruby, "-rjson", "-e", script, *args, stdin_data: "the answer")
-      expect(status).to be_success
-      JSON.parse(out)
-    end
-    expect(reply.call("validate t: VERDICT OK", "wake", "s-ab12cd"))
-      .to eq("text" => "the answer", "summary" => "validate t: VERDICT OK", "wake" => true, "re" => "s-ab12cd")
-    expect(reply.call("context t", "nowake")).to eq("text" => "the answer", "summary" => "context t", "wake" => false, "re" => nil)
+    expect(skill).to include("**A `moved` message**", "**A say refused** with `this session was continued as <new id>`",
+                             "The second line, `ref: <id>`, names this send",
+                             "chi peer say #{peer} <id> --wake --re s-ab12cd --summary", "--wait 8",
+                             "**It prints one line: quote it to your user.**",
+                             "If it says **held**, don't send again, and don't\n  use `chi send` to get past it",
+                             "`peer.turns`", "chi peer unpair #{peer} <id>")
+    expect(skill).not_to include("chi context push", "-outbox", "-inbox")
   end
 
   def skill_cards
@@ -288,7 +272,8 @@ RSpec.describe "Peer bundle goldens", :bundle do
       errors_common
       pair("relative/socket")
       section("not a socket path", tool(kind: "validate", title: "t", text: "x"))
-      own.remove("claude-inbox")
+      pair(nil)
+      section("answers only", tool(kind: "validate", title: "t", text: "x"))
       pair
       section("gone", tool(kind: "validate", title: "t", text: "x"))
       sent("validate", kind: "validate", title: "Step 2: the cache key", text: "Is the key stable?\nsee lib/a.rb")
@@ -297,6 +282,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
       sent("no title", kind: "validate", title: " ", text: "check this\nand that")
       sent("payload", kind: "context", title: "The whole plan, r3!", text: long_text)
       section("last send", last_send)
+      reads_common
       expect_golden("sends")
     end
 
@@ -317,7 +303,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
       expect_golden("skill")
     end
 
-    it "posts the moved message once to the inbox a continue left behind; the skill says what to do with it" do
+    it "posts the moved message once to the address the previous link's pairing names; the skill says what to do" do
       continued do |run|
         result = nil
         lines = listen { result = run.call }
@@ -360,7 +346,6 @@ RSpec.describe "Peer bundle goldens", :bundle do
       errors_common
       pair("not-a-thread")
       section("not a thread id", tool(kind: "validate", title: "t", text: "x"))
-      own.remove("codex-inbox")
       pair
       fake_codex("echo 'Error: thread is ephemeral' >&2\nexit 1")
       section("ephemeral", tool(kind: "validate", title: "t", text: "x"))
@@ -387,6 +372,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
       sent("no title", kind: "validate", title: " ", text: "check this\nand that")
       sent("payload", kind: "context", title: "The whole plan, r3!", text: long_text)
       section("last send", last_send)
+      reads_common
       expect_golden("sends")
     end
 
@@ -407,7 +393,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
       expect_golden("skill")
     end
 
-    it "posts the moved message once to the inbox a continue left behind; the skill says what to do with it" do
+    it "posts the moved message once to the address the previous link's pairing names; the skill says what to do" do
       continued do |run|
         result = run.call
         section("queued", File.read(args_file).split("\0").inspect)

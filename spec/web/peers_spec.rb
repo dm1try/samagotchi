@@ -71,9 +71,11 @@ RSpec.describe Samagotchi::Web::App, "peers" do
       status, body = call(base)
       expect(status).to eq(200)
       peer = body["peers"].find { |row| row["name"] == "claude" }
-      expect(peer).to include("label" => "Claude", "from" => "claude-code", "can_send" => true, "inbox" => false, "outbox" => false)
+      expect(peer).to include("label" => "Claude", "from" => "claude-code", "address" => "/tmp/c.sock", "can_send" => true)
+      expect(peer.keys).not_to include("inbox", "outbox")
       expect(peer["paired_at"]).to match(/\A\d{4}-/)
-      expect(peer["messages"].map { |m| [m["serial"], m.dig("receipt", "state")] }).to eq([[2, "held"], [1, "ended"]])
+      expect(peer["messages"].map { |m| [m["serial"], m.dig("receipt", "state"), m["words"]] })
+        .to eq([[2, "held", "held · peer turns"], [1, "ended", "completed"]])
       expect(peer["exchanges"].find { |row| row["id"] == "s-a" }).to include("state" => "answered",
                                                                              "answer" => include("serial" => 1, "verdict" => "OK"))
       expect(JSON.generate(body)).not_to include("private answer")
@@ -86,11 +88,24 @@ RSpec.describe Samagotchi::Web::App, "peers" do
       expect(peer["messages"].size).to eq(1)
     end
 
-    it "keeps the context legs' rows as they were" do
+    it "lists a peer from the exchange log when its mailbox has no folder" do
+      Samagotchi::PeerExchanges.append(session.id, { t: "sent", peer: "claude", id: "s-old", kind: "validate",
+                                                     title: "old plan", by: "model" }, state_dir: state_dir)
+      Samagotchi::PeerExchanges.append(session.id, { t: "answer", peer: "claude", re: "s-old", serial: 4,
+                                                     summary: "old plan: VERDICT OK" }, state_dir: state_dir)
+
+      status, body = call(base)
+
+      expect(status).to eq(200)
+      expect(body["peers"]).to include(include("name" => "claude", "paired_at" => nil,
+                                               "exchanges" => include(include("id" => "s-old", "state" => "answered"))))
+    end
+
+    it "lists no row for a context source named like an older bundle's outbox: peers are the mailbox's" do
       own = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
       own.add(Samagotchi::ContextSources::Source.new(name: "codex-outbox", cmd: nil, every_seconds: nil, why: nil, hint: nil,
                                                      scope: "session", added_by: "cli", created_at: nil))
-      expect(call(base).last["peers"]).to contain_exactly(include("name" => "codex", "outbox" => true, "messages" => []))
+      expect(call(base).last["peers"]).to eq([])
     end
   end
 

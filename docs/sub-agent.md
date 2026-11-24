@@ -26,15 +26,15 @@ The other direction, chi sending a part of its work to a Claude Code session
 you already work with (to validate, as context, or with a question), is the
 [claude-peer bundle](bundles.md#the-claude-peer-bundle): Claude pairs with the
 chi session, chi's `claude_send` tool or `/claude` writes to Claude's inbox,
-and Claude's answer comes back as attached context, its whole text in a note
-of chi's conversation (Claude can also tell chi something unasked, which wakes
-chi under the same count). The
+and Claude's answer comes back with `chi peer say` as a message in the
+session's mailbox, its whole text in a note of chi's conversation, and the
+say prints what chi did with it (Claude can also tell chi something unasked,
+which wakes chi under the same count). The
 [codex-peer bundle](bundles.md#the-codex-peer-bundle) does the same with a
 Codex CLI session (`codex_send`, `/codex`, through `codex queue`). The peer's
 answers wake chi in a short loop (fix or disagree, send again) until it says
 `VERDICT OK` (one closing wake: chi carries on or tells you what was agreed)
-or after `context.peer_turns` turns: [Waking: peer
-sources](context.md#peer-sources-the-peer-loop).
+or after `peer.turns` turns: [peers.md](peers.md).
 
 A client with no chi of its own (an iOS Shortcut, a script) can do the same
 over HTTP: one `POST …/ask` to chi web, then a wait token until the answer

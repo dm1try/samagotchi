@@ -224,9 +224,9 @@ RSpec.describe Samagotchi::PeerCommand do
     it "names the turns a peer_turns hold counts, as configured" do
       write_receipts(session.id, "claude", taken: 0, receipts: [{ "serial" => 1, "state" => "held", "reason" => "peer_turns", "at" => "x" }])
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("context.peer_turns").and_return(1)
+      allow(Samagotchi::Config).to receive(:get).with("peer.turns").and_return(1)
       said = access.peer_say(session.id, "claude", text: "hi", summary: nil, wake: true, re: nil, wait: 1, sleeper: ->(_) {})
-      expect(said.line("claude")).to eq("#1 received · held: 1 peer turn in a row (context.peer_turns) · waits for the user's next message")
+      expect(said.line("claude")).to eq("#1 received · held: 1 peer turn in a row (peer.turns) · waits for the user's next message")
     end
   end
 

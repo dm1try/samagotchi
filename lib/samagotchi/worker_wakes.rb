@@ -14,18 +14,18 @@ module Samagotchi
   # started for until the turn's first boundary takes them (#hand_over,
   # #take_handed).
   #
-  # A peer agent's answers (PeerSources) have a budget of their own on top:
-  # context.peer_turns wake turns in a row, reset only by input typed in the
-  # web or a TUI (ClientId.interactive?), not by chi send, which a peer can
-  # run (docs/context.md, Waking).
+  # A peer agent's messages (its mailbox: WorkerInbound#absorb_mail) have a
+  # budget of their own on top: peer.turns wake turns in a row,
+  # reset only by input typed in the web or a TUI (ClientId.interactive?),
+  # not by chi send, which a peer can run (docs/peers.md).
   class WorkerWakes
-    PEER_TURNS_KEY = "context.peer_turns"
+    PEER_TURNS_KEY = "peer.turns"
     PEER_TURNS_DEFAULT = 3
 
     # @param grace [Numeric] seconds after the start with no wake turn
     # @param clock [#call] monotonic seconds
     # @param max [#call, nil] the budget; nil reads session.max_wakes
-    # @param peer_max [#call, nil] the peer budget; nil reads context.peer_turns
+    # @param peer_max [#call, nil] the peer budget; nil reads peer.turns
     def initialize(grace:, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, max: nil, peer_max: nil)
       @grace = grace
       @clock = clock
@@ -58,7 +58,7 @@ module Samagotchi
       ChildRing::MAX_WAKES_DEFAULT
     end
 
-    # context.peer_turns: 0 (or less) is 0, the peer policy off.
+    # peer.turns: 0 (or less) is 0, the peer policy off.
     def peer_max
       return @peer_max.call if @peer_max
 
@@ -68,7 +68,7 @@ module Samagotchi
       PEER_TURNS_DEFAULT
     end
 
-    # The peer wake turns that may run in a row: context.peer_turns, or
+    # The peer wake turns that may run in a row: peer.turns, or
     # session.max_wakes when it is lower; 0 when the peer policy is off.
     def peer_turns
       peers = peer_max
@@ -83,7 +83,7 @@ module Samagotchi
     # callers' (a wake may wait it out): :paused (a failed wake turn, until
     # a human's input), :continue (a continue offer waits), :max_wakes
     # (session.max_wakes spent), :peer_turns (a peer's, the peer budget
-    # spent: context.peer_turns, or 0 with the peer policy off); nil when
+    # spent: peer.turns, or 0 with the peer policy off); nil when
     # nothing holds it. The first that applies, in that order. It logs
     # nothing: the callers write the lines.
     # @return [Symbol, nil]
@@ -94,15 +94,6 @@ module Samagotchi
       return :peer_turns if peer && @peer_in_a_row >= peer_turns
 
       nil
-    end
-
-    # Whether a peer's answer may start a wake turn (#context_open? asked
-    # first, so only the peer budget is left to hold it). +name+: the
-    # source, for the log line.
-    def peer_open?(awaiting_continue:, name:)
-      hold = wake_hold(awaiting_continue:, peer: true)
-      Log.info(:worker, "context_wake_held", reason: "peer_turns", names: name) if hold == :peer_turns
-      hold.nil?
     end
 
     # For delegate reports: :due when a wake turn may run now (the block

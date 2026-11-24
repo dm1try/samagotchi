@@ -9,8 +9,7 @@ require "samagotchi/hooks/registry"
 require "samagotchi/tools/registry"
 
 # chi.peer: a plugin declares a peer agent whose mailbox messages become
-# its notes (PeerRegistry), staged like any registration; beside the old
-# chi.peer_source until the bundles switch.
+# its notes (PeerRegistry), staged like any registration.
 RSpec.describe "chi.peer" do
   let(:registry) { Samagotchi::PeerRegistry.new }
   let(:registries) do
@@ -49,7 +48,9 @@ RSpec.describe "chi.peer" do
       .to raise_error(ArgumentError, "this chi has no peer registry (plugins: false)")
   end
 
-  it "says since which chi a bundle may call it" do
-    expect(Samagotchi::Plugin::Api::SINCE).to include("chi.peer" => "0.188.0")
+  it "waits, with ctx.peers, in SINCE's Unreleased comment until the release names its version" do
+    source = File.read(File.expand_path("../../../lib/samagotchi/plugin/api.rb", __dir__))
+    expect(source[/^\s*# Unreleased\b.*$/]).to include('"chi.peer"', '"ctx.peers"')
+    expect(Samagotchi::Plugin::Api::SINCE).not_to have_key("chi.peer")
   end
 end

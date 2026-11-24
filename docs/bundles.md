@@ -1092,11 +1092,11 @@ validate or as context, and Claude's answer comes back into chi. This is
 Claude with the context it has, not a fresh review run. Nothing runs until a
 Claude pairs; without one the bundle costs one tool declaration.
 
-- **Pairing is Claude's.** chi can't see Claude's inbox, so Claude attaches
-  two pushed sources to the chi session: `claude-inbox`, whose hint is its
+- **Pairing is Claude's.** chi can't see Claude's inbox, so Claude pairs:
+  `chi peer pair claude <id> --address <socket>`, the address being its
   per-session inbox socket (`CLAUDE_CODE_MESSAGING_SOCKET`, Claude Code
-  2.1.224 or later), and `claude-outbox`, where its answers come. You never
-  run that yourself:
+  2.1.224 or later); its answers come back as messages in the session's
+  mailbox (`chi peer say`, [peers.md](peers.md)). You never run that yourself:
   1. `/claude install-skill` (once) shows a card with the target,
      `$CLAUDE_CONFIG_DIR/skills/chi-peer/SKILL.md` (else `~/.claude/…`),
      whether one is there and, when it differs, a short diff; its Install (or
@@ -1108,27 +1108,21 @@ Claude pairs; without one the bundle costs one tool declaration.
      (your state folder), so Claude isn't asked before reading a long part's
      file; chi never writes Claude's settings.
   2. In Claude Code you say "pair with chi <id or chi web URL>". The skill runs
-     `sh <bundle>/scripts/pair <id or URL>`, which attaches `claude-inbox` (the
-     socket as its hint, pushed as JSON so a re-pair after a Claude restart
-     refreshes it) and `claude-outbox`, and lists the session's context. A
-     re-pair keeps Claude's last answer.
-  3. Claude answers a validate or a question with a JSON push to
-     `claude-outbox` (`text`, `summary`, `wake: true`, and `re`: the `ref:`
-     line of the message it answers), which wakes chi, the first answer too
-     (on chi 0.62 the first one arrives as a note without waking). The note
-     holds the answer's whole text, up to the tool output cap (10,000
-     characters by default; a longer one the model reads with `context_read
-     claude-outbox`), so each answer stays in the conversation with its text
-     ([Peer sources](context.md#peer-sources-the-peer-loop)). In chi's own
-     records the answer's note names the send (`re`); an older skill's answer
-     has none and reads as a message Claude started. The session's peer
-     exchange log keeps sends and answer summaries, not answer texts; a new
-     pairing starts a new log.
+     `sh <bundle>/scripts/pair <id or URL>`, one `chi peer pair`. A re-pair
+     after a Claude restart only refreshes the socket; Claude's messages stay.
+  3. Claude answers a validate or a question with `chi peer say claude <id>
+     --wake --re <the ref: line> --summary … --wait 8`, which wakes chi, and
+     quotes to you the line it prints (`#12 received · woke chi`, or why chi
+     holds it). Each message is its own note, holding its text up to the tool
+     output cap (10,000 characters by default; a longer one the model reads
+     with `claude_read(serial: N)`). In chi's own records the answer's note
+     names the send (`re`). The session's peer exchange log keeps sends; the
+     answers are the mailbox's messages.
   4. Claude can also tell chi something unasked (it changed something chi's
-     work depends on, you took a decision with it): the same push with no
-     `re`, and `wake` when chi should react now (`nowake` is for background
-     chi picks up at its next turn). It wakes under the same count as
-     answers, and chi takes it into account within your task and tells you
+     work depends on, you took a decision with it): the same say with no
+     `--re`, and `--wake` when chi should react now (`--nowake` is for
+     background chi picks up at its next turn). It wakes under the same count
+     as answers, and chi takes it into account within your task and tells you
      what it brings.
 - **In the web** (the owner's page), a send and its answer link to each
   other. The send's row ("sent to Claude · validate: title") says where the
@@ -1141,28 +1135,30 @@ Claude pairs; without one the bundle costs one tool declaration.
   verdict (`VERDICT OK` with "round closed" when Claude agreed), its summary,
   the answer's text under it (rendered as markdown), and chi's instruction to
   the model folded under "what chi told the agent" (the text isn't repeated
-  there). An answer too long for the note, and one from an older chi, shows
-  its summary only: the newest of those has "Read the full answer", which
-  opens the Claude chip on the outbox's text (the outbox keeps one text). An answer from an older skill (no `re`)
-  links to the last waiting validate or question; one that answers no send
-  has no link back. A `/claude validate …` you type gets no link in the
+  there). A message too long for its note shows its summary only, with "Read
+  the full answer", which opens the Claude chip on that message's text (an
+  older pairing's answer, from its outbox source, has it on the newest
+  only). An answer from an older skill (no `re`) links to the last waiting
+  validate or question; one that answers no send has no link back. A `/claude validate …` you type gets no link in the
   conversation (command bubbles aren't kept), its answer still names it.
 - **The session bar** has one chip for the pairing, `Claude · …`, first among
-  the context chips, in place of `claude-inbox` and `claude-outbox`: `paired`;
+  the context chips, fed by chi web's `GET …/peers` (the mailbox): `paired`;
   `waiting 2m` (a validate or question has no answer yet, its age the send's);
-  `answered 3m` with the unread dot (an answer the agent hasn't read: one
-  whose text was in its note counts as read);
+  `answered 3m` with the unread dot (a message no turn has read yet: held or
+  noted);
   `can't send` (the last send didn't go through: the Claude session ended or
   restarted, pair again from Claude, which ends it; chi web can't probe the
-  socket, so a dead inbox shows only after a send hits it); `answers only`, dashed (no inbox: a
-  pairing through a remote). Its popover (a bottom sheet on a phone) says how
-  chi sends and where it answers, lists the last exchanges (time, kind ·
-  title, `waiting 2m` / `changes · 11m` / `ok · 4m` / `answered · 4m` / `no
-  answer expected` / `not sent`; a tap jumps to that send's row when it is in
-  the conversation), and has View latest answer, Status card (runs `/claude`)
-  and Unpair (detaches both sources after one confirm; if one can't be
-  detached it stops there and says which). codex-peer's is the
-  same, `Codex · …`.
+  socket, so a dead inbox shows only after a send hits it); `answers only`,
+  dashed (a pairing with no address: through a remote). Its popover (a bottom
+  sheet on a phone) says where chi sends and how it answers, lists the last
+  exchanges (time, kind · title or a message's `#N · summary`, `waiting 2m` /
+  `changes · 11m` / `ok · 4m` / `answered · 4m` / `no answer expected` / `not
+  sent`, then what chi did with the answer: `held · peer turns`, `read`,
+  `completed`; a tap jumps to that send's row when it is in the conversation),
+  and has View latest answer, Status card (runs `/claude`) and Unpair (one
+  confirm; the pairing ends, its messages stay, and the chip goes). A source
+  named `claude-outbox` (an older pairing's) is an ordinary chip.
+  codex-peer's is the same, `Codex · …`.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`, and a second line,
@@ -1174,14 +1170,19 @@ Claude pairs; without one the bundle costs one tool declaration.
   `$XDG_STATE_HOME/samagotchi/plugins/claude-peer/sessions/<id>/<HHMMSS>-<slug>.md`
   (removed with the session), and the message names it (`payload: <path>`).
   The tool is declared whether or not a Claude is paired, so pairing doesn't
-  change the prompt. Its errors say what to do: no `claude-inbox` (pair from
-  Claude), the socket gone or refusing (that Claude session ended or
-  restarted: pair again), a text over 200,000 characters.
+  change the prompt. Its errors say what to do: not paired (pair from
+  Claude), paired for answers only, the socket gone or refusing (that Claude
+  session ended or restarted: pair again), a text over 200,000 characters.
+- **The tool `claude_read(serial, offset, limit)`** reads a message from
+  Claude by its number, when its note says it is long: its text in the peer
+  block, paged by lines to the tool output cap.
 - **`/claude`** (an anytime command, so it works mid-turn) sends without
   the model:
   - `/claude` alone shows a card: paired or not, the socket and whether its
     file is there (it goes when that Claude session ends), the last send, and
-    Claude's last message (the `claude-outbox` summary). When Claude's installed
+    Claude's last message (its number and summary). A session paired by an
+    older bundle (its `claude-inbox` source still attached) says "paired the
+    old way: pair again". When Claude's installed
     chi-peer skill differs from what `/claude install-skill` would write (an
     older bundle's, or your edit; a skill installed by a chi with another state
     dir or bundle path differs too), it says so: install it again (Replace),
@@ -1196,35 +1197,34 @@ Claude pairs; without one the bundle costs one tool declaration.
   - `/claude last` sends the model's last completed answer as context. Mid-turn
     it is the answer before the running turn, never the turn's partial text;
     a cancelled or failed turn has no answer, so the one before it goes.
-- **The peer loop.** The bundle declares `claude-outbox` a peer's
-  ([`chi.peer_source`](plugins.md#chipeer_sourcename-label)), so Claude's answers
-  wake chi by the loop's rules ([Waking: peer
-  sources](context.md#peer-sources-the-peer-loop)): chi fixes what Claude
-  flagged or disagrees and sends again, up to `context.peer_turns` (3) wake
-  turns in a row, and a `VERDICT OK` answer wakes chi once to close the
-  round (carry on, or tell you what was agreed). Only a message you type in the web or a TUI starts the count again.
+- **The peer loop.** The bundle declares Claude a peer (`chi.peer claude`), so
+  Claude's messages wake chi by the loop's rules ([peers.md](peers.md#the-budget-peerturns)):
+  chi fixes what Claude flagged or disagrees and sends again, up to
+  `peer.turns` (3) wake turns in a row, and a `VERDICT OK` answer wakes chi
+  once to close the round (carry on, or tell you what was agreed). Only a
+  message you type in the web or a TUI starts the count again.
 - **The skill.** `skill_claude_peer` (system scope) tells the model to send
   only when you ask or to reply in a peer turn, to pick the part rather than
   the session, not to wait or poll, and how to read Claude's answer in its
-  `claude-outbox` note (a validate ends with `VERDICT: OK`, `CHANGES` or
+  note, "Message #N from your peer agent Claude" (a validate ends with `VERDICT: OK`, `CHANGES` or
   `UNSURE`): act on it only within your task, and stop and tell you when
   Claude agrees or after the last turn; a message Claude sent unasked is
   taken into account, not acknowledged. Claude's skill ends each answer's
   summary with its verdict, wakes chi for an answer chi waits on and for a
-  message it starts that chi should act on now (`nowake` for background), and
-  never answers with `chi send` (which counts as you typing).
+  message it starts that chi should act on now (`--nowake` for background),
+  quotes the say's line to you (and on `held` neither sends again nor goes
+  past it with `chi send`), and never answers with `chi send`.
 - **chi on another machine.** With the chi session on the Studio and Claude on
   the laptop, `CHI_REMOTE=studio sh <bundle>/scripts/pair <id>` pairs through
   the Studio's chi web ([Remote sessions](cli.md#remote-sessions)), and
-  Claude's answers (its `chi context push claude-outbox`, with `CHI_REMOTE`
-  set) reach chi: the outbox leg works. The inbox leg doesn't: `claude_send`
-  writes to Claude's socket on the machine chi runs on, and the laptop's isn't
-  there. So through a remote (`CHI_REMOTE`, or `--remote NAME` in `CHI`)
-  `pair` attaches only `claude-outbox` and prints one line saying chi there
-  can't send to this Claude: chi's replies reach Claude only when you relay
-  them (or ask it to run `chi --remote studio send --wait <id>`). A session
-  that already has a `claude-inbox` it can't reach:
-  `chi --remote studio context rm claude-inbox <id>`.
+  Claude's answers (its `chi peer say claude`, with `CHI_REMOTE` set; chi
+  web there waits and prints the line) reach chi. chi's sends don't:
+  `claude_send` writes to Claude's socket on the machine chi runs on, and
+  the laptop's isn't there. So through a remote (`CHI_REMOTE`, or `--remote
+  NAME` in `CHI`) `pair` pairs for answers only (no address) and prints one
+  line saying chi there can't send to this Claude: chi's replies reach
+  Claude only when you relay them (or ask it to run `chi --remote studio
+  send --wait <id>`).
   **Two-way over SSH.** SSH can forward a Unix socket, so the inbox leg
   works too. Claude's skill runs, on the laptop:
 
@@ -1246,7 +1246,7 @@ Claude pairs; without one the bundle costs one tool declaration.
   2FA, can't reach the host, or the server refuses the forward
   (`AllowStreamLocalForwarding no`), it prints the two ssh lines for you to run
   in a terminal and the pair line, and pairs nothing. A re-pair this way
-  replaces an outbox-only pairing's `claude-outbox` and its why. Claude's
+  gives an answers-only pairing its address. Claude's
   socket changes when that Claude session restarts: run `pair-remote` again.
   If the host and the remote name point at different machines the pairing
   succeeds and `/claude` shows the socket missing. A path chi quotes (a
@@ -1255,27 +1255,25 @@ Claude pairs; without one the bundle costs one tool declaration.
   session (sshd makes it the user's, mode 0600 by default): fine on your own
   machine or pod, not a shared host. Codex has no socket: codex-peer has no
   `pair-remote`.
-- **A continue.** The pairing's two sources are pushed, so they stay with
-  the old session when you continue it ([Movable
-  context](context.md#peers-and-a-continue)). The new session's worker posts
-  Claude one message, from a quiet init task, to the socket the old
-  `claude-inbox` last had:
+- **A continue.** The pairing and the mailbox stay with the old session when
+  you continue it ([peers.md](peers.md#continuing-a-session)). The new
+  session's worker posts Claude one message, from a quiet init task, to the
+  socket the old session's pairing names:
 
   ```
   chi <old> · moved · continued as <new id>
-  This chi session was continued as <new id>. Pair with <new id> the way you paired with <old>, then answer there (chi context push claude-outbox <new id>).
+  This chi session was continued as <new id>. Pair with <new id> the way you paired with <old>, then answer there (chi peer say claude <new id> …).
   ```
 
   Claude's skill pairs again with the new id the same way it paired before
-  (the same `CHI_REMOTE`; over SSH, `pair-remote` with the new id). It is posted once (a marker
-  under the bundle's `sessions/<id>/`, so a worker restart doesn't post it
-  again); a post that fails (that Claude session ended) is logged and
-  dropped. An outbox-only pairing has no inbox to post to: Claude's next
-  answer to the old id is refused with the new one (`<old> was continued as
-  <id>`), and the skill pairs again and pushes the answer there. The new
-  session's note says which: `Left with 3f2a9c1e: claude-inbox, claude-outbox
-  (Claude's pairing: chi asks Claude to pair again with this session).`, or
-  `(Claude pairs again when it next answers)`.
+  (the same `CHI_REMOTE`; over SSH, `pair-remote` with the new id). It is
+  posted once (a marker under the bundle's `sessions/<id>/`, so a worker
+  restart doesn't post it again); a post that fails (that Claude session
+  ended) is logged and dropped. An answers-only pairing has no address to
+  post to: Claude's next say to the old id is refused with the new one
+  (`this session was continued as <id>`), and the skill pairs again and says
+  the answer there. What Claude said that the old session hadn't read
+  reaches the new one as one note.
 - **Asking first.** The tool has no `targets:`, so guardrails match it by name
   only: to be asked before each send, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):
@@ -1299,10 +1297,13 @@ Claude pairs; without one the bundle costs one tool declaration.
   bypasses permissions holds it for approval (in `-p` it expires after 5
   minutes). It is local only (a Unix socket), but it does hand session
   content to another agent: only what the model or you picked.
-- **Needs chi 0.67.0** for the loop (`chi update`): the plugin is built on
-  `Samagotchi::Plugin::Peer` (lib/samagotchi/plugin/peer.rb), the base both
-  peer bundles share (the tool, `/claude`, the cards, payloads), and each
-  bundle sets its strings and transport.
+- **Needs the chi that has the mailbox** (`chi.peer`, `ctx.peers`, `chi
+  peer`; `chi update`): the plugin is built on `Samagotchi::Plugin::Peer`
+  (lib/samagotchi/plugin/peer.rb), the base both peer bundles share (the
+  tools, `/claude`, the cards, payloads), and each bundle sets its strings
+  and transport. An older claude-peer (it declared `chi.peer_source`) fails
+  to load on this chi with "upgrade this bundle", and chi starts without it:
+  [peers.md](peers.md#upgrading-from-an-older-peer-bundle).
 
 ## The codex-peer bundle
 
@@ -1322,14 +1323,14 @@ skill install card, the web's linked send and answer: "Codex answered") works th
   `codex queue --thread <uuid> --message <text>` (an argv, no shell), which
   wakes an idle Codex TUI: the message runs there as a new user turn (checked
   on Codex 0.162.1; a message queued mid-turn runs after the turn). The
-  thread is the `codex-inbox` context's hint, Codex's `CODEX_THREAD_ID`, which
+  thread is the pairing's address, Codex's `CODEX_THREAD_ID`, which
   must look like a UUID. `codex` is `$CODEX`, else `codex` on the PATH: a
   worker started by `chi web` or launchd may have another PATH than your
   shell, so set `CODEX=` where chi runs if the error says there's no codex.
   The tool and the anytime `/codex` wait for `codex queue` up to 10 s; a
   queue that takes longer is killed (its process group) and the send fails
-  with a timeout error, never a hang. Other errors say what to do: no
-  `codex-inbox` (pair from Codex), a thread Codex has no record of (that
+  with a timeout error, never a hang. Other errors say what to do: not
+  paired (pair from Codex), a thread Codex has no record of (that
   Codex session is gone: pair again), an ephemeral thread
   (`codex exec --ephemeral` can't take queued messages), or `codex queue`'s
   first error line. A Codex session that was closed (`/quit`) is not gone:
@@ -1338,38 +1339,38 @@ skill install card, the web's linked send and answer: "Codex answered") works th
   pair again from a new one). The status card shows the thread id and says
   so; there is no cheap check that the session is open.
 - **Codex's sandbox.** Pairing and every reply write chi's state
-  (`chi context add`/`push` write the session's context files directly),
+  (`chi peer pair`/`say` write the session's mailbox files directly),
   which Codex's default sandbox (workspace-write) refuses. The user adds, to
   `$CODEX_HOME/config.toml` (else `~/.codex/config.toml`):
 
   ```toml
   [sandbox_workspace_write]
-  writable_roots = ["/Users/you/.local/state/samagotchi/context"]
+  writable_roots = ["/Users/you/.local/state/samagotchi/mailbox"]
   ```
 
-  and restarts Codex. Only chi's `context/` folder: the state folder above it
-  also holds guardrails, session files, plugins and the web token.
+  and restarts Codex. Only chi's `mailbox/` folder: the state folder above it
+  also holds guardrails, session files, plugins and the web token. A config
+  from an older skill names `…/samagotchi/context`: change it.
   `/codex install-skill`'s card shows the line with your state folder
-  (absolute: config.toml doesn't expand `~`), and the pair script names it
-  when a write is refused ("Operation not permitted"). chi never edits
-  Codex's config. Reading a payload file needs nothing: the default sandbox
-  reads anywhere. With chi on this machine no network is needed: a push
-  writes files, and chi wakes on them. Through a remote it is the other way
+  (absolute: config.toml doesn't expand `~`), `--yes` makes the folder so the
+  root exists when Codex restarts, and the pair script names the line when a
+  write is refused ("Operation not permitted"). chi never edits Codex's
+  config. Reading a payload file needs nothing: the default sandbox reads
+  anywhere. With chi on this machine no network is needed: a say writes
+  files, and chi wakes on them (a stopped worker can't be started from inside
+  the sandbox: the say says so, and chi reads the message at its next start). Through a remote it is the other way
   round (HTTP, not files): see **chi on another machine** below.
 - **Pairing** is Codex's, as with Claude: `/codex install-skill` copies the
   bundle's `scripts/chi-peer-SKILL.md` to
   `$CODEX_HOME/skills/chi-peer/SKILL.md` (else `~/.codex/…`), with the
   installed `scripts/pair` path, the payload folder and the writable root
   written in; in Codex you say "pair with chi <id or chi web URL>", and
-  `sh <bundle>/scripts/pair` attaches `codex-inbox` (the thread id as its
-  hint, pushed so a re-pair refreshes it) and `codex-outbox`. Run outside
-  Codex (no `CODEX_THREAD_ID`) it refuses. Codex replies with one JSON push
-  to `codex-outbox` (`text`, `summary`, `wake: true`, `re`: the message's `ref:`
-  line), which wakes chi, the first answer too (that needs chi 0.63.0; the bundle's
-  `requires_chi` is `>= 0.70.0`). The note holds the answer's text as
-  claude-peer's does, and Codex can send a message unasked (no `re`) the same
-  way. The session's peer exchange log keeps sends and answer summaries, not
-  answer texts.
+  `sh <bundle>/scripts/pair` runs `chi peer pair codex <id> --address
+  <thread id>` (a re-pair refreshes it). Run outside Codex (no
+  `CODEX_THREAD_ID`) it refuses. Codex replies with `chi peer say codex <id>
+  --wake --re <the ref: line> --summary … --wait 8` and quotes the line to
+  you. The note holds the message's text as claude-peer's does, and Codex can
+  send a message unasked (no `--re`) the same way.
 - **Peer messages are user turns in Codex.** Claude Code marks an inbox
   message as from another session; `codex queue` lands as a plain user
   message. So Codex's skill starts with the rule: a message whose first line
@@ -1382,11 +1383,11 @@ skill install card, the web's linked send and answer: "Codex answered") works th
   more.
 - **chi on another machine.** As with Claude, `CHI_REMOTE=studio sh
   <bundle>/scripts/pair <id>` (or `--remote NAME` in `CHI`) pairs through
-  the Studio's chi web, and only the outbox leg works: `codex_send` runs
+  the Studio's chi web, and only Codex's answers reach chi: `codex_send` runs
   `codex queue` on the machine chi runs on, where this Codex's thread isn't.
-  Claude's `--inbox-socket` trick doesn't apply here: `codex-inbox`'s hint is a
-  thread id, not a socket, so there is nothing to forward through SSH.
-  So `pair` attaches only `codex-outbox` and prints one line saying chi there
+  Claude's `--inbox-socket` trick doesn't apply here: the address is a thread
+  id, not a socket, so there is nothing to forward through SSH. So `pair`
+  pairs for answers only (no address) and prints one line saying chi there
   can't send to this Codex. Through a remote chi talks HTTP, not files, so
   `writable_roots` doesn't matter; Codex's sandbox may block the network
   instead, which pairing and every reply then need (workspace-write has none
@@ -1399,15 +1400,16 @@ skill install card, the web's linked send and answer: "Codex answered") works th
   Codex's names, and on a missing answer points to Codex being mid-turn or
   its sandbox (the `writable_roots` line). To be asked before each send, a
   guardrails rule with `tool: codex_send` (see the claude-peer section).
-- **The peer loop** works as claude-peer's: `codex-outbox` is declared a
-  peer's, Codex's answers wake chi up to `context.peer_turns` turns in a row,
-  and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0 (the closing
-  wake: the chi released with this bundle).
+- **The peer loop** works as claude-peer's: Codex is declared a peer
+  (`chi.peer codex`), its messages wake chi up to `peer.turns` turns in a
+  row, and `VERDICT OK` wakes chi once to close the round; `codex_read`
+  reads a long message. Needs the chi that has the mailbox; an older
+  codex-peer fails to load there with "upgrade this bundle".
 - **A continue** works as claude-peer's: the new session queues Codex the
-  `moved` message on the thread the old `codex-inbox` named, once, and
+  `moved` message on the thread the old session's pairing names, once, and
   Codex's skill pairs again with the new id (the same `CHI_REMOTE`, if any).
-  A pairing through a remote has no inbox: Codex pairs again when its next
-  push is refused. A closed Codex session still takes the message; it waits
+  An answers-only pairing has no address: Codex pairs again when its next
+  say is refused. A closed Codex session still takes the message; it waits
   for `codex resume` there.
 
 ## The ruby bundle

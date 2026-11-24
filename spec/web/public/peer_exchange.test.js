@@ -54,3 +54,9 @@ test("pillTemplate: an answered send is a button to its answer (↓), its title 
   assert.equal(markupOf(pillTemplate(null, { now })), "");
   assert.equal(markupOf(pillTemplate({ state: "none_expected", at: SENT }, { now })), "");
 });
+
+test("an exchange restored from the log still draws the answer link", () => {
+  const pill = markupOf(pillTemplate(answered("OK"), { now, title: "sent to Claude: validate · old plan" }));
+  assert.match(pill, /data-peer-jump="answer"/);
+  assert.match(pill, /↓/);
+});

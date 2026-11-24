@@ -19,9 +19,11 @@ module Samagotchi
     SIDE_CAR = "sessions/compat-session"
     CONTEXT = "context/sessions/compat-session"
     MAILBOX = "mailbox/compat-session/claude"
-    # Until a continue carries the mailbox (its :peers step), it stays with
-    # the previous link, whose say refuses with the next id.
-    MAILBOX_STAYS = "the mailbox stays with the previous link; a say there is refused with the next id"
+    # A continue leaves the mailbox with the previous link (the peer pairs
+    # again with the next one, owner 2026-11-24); its :peers step only reads
+    # it, for the one note.
+    MAILBOX_STAYS = "the mailbox stays with the previous link (its unread messages reach the next one as one note, " \
+                    "SessionContinue :peers); a say there is refused with the next id"
 
     STORES = [
       Store.new(file: "archived", owner: "ArchiveStore", removal: :session_files, cross_version: true,

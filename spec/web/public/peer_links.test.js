@@ -258,3 +258,22 @@ test("hasSend / showSend (the peer chip's exchange list): the last row of an id,
   assert.equal(document.activeElement, rows.at(-1));
   assert.equal(links.showSend("s-x"), false);
 });
+
+test("a mailbox message (data-peer-box): 'Read the full answer' on each one not inline, opening that message", async () => {
+  const history = document.createElement("div");
+  document.body.replaceChildren(history);
+  const mailboxNote = (serial, inline = false) => elementOf(noteBubbleTemplate({
+    content: inline ? "Message #…\n[PEER MESSAGE from Claude]\nt\n[END PEER MESSAGE]\n" : "Message #…", label: "peer Claude",
+    peer: { peer: "claude", label: "Claude", re: null, summary: `m${serial}`, serial, box: "a1b2c3", ...(inline ? { inline: true } : {}) },
+  }));
+  history.append(mailboxNote(1), mailboxNote(2), mailboxNote(3, true));
+  const opened = [];
+  const peers = createPeers({ sessionId: () => "s1", hasPeer: () => true, list: async () => ({ peers: [] }), win: { addEventListener() {} } });
+  const links = createPeerLinks({ peers, roots: () => [history], showMessage: (name, serial) => opened.push([name, serial]),
+                                  behavior: () => "auto" });
+  await links.drawn();
+  const notes = [...history.querySelectorAll(".peer-answer")];
+  assert.deepEqual(notes.map((n) => !!n.querySelector(".peer-full")), [true, true, false]);
+  notes[0].querySelector(".peer-full").click();
+  assert.deepEqual(opened, [["claude", "1"]]);
+});

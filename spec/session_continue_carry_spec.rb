@@ -6,7 +6,7 @@ require "samagotchi/session_continue"
 # What a continue carries (SessionContinue::CARRY): the one place a new
 # per-session store a continue should carry is added, with its undo.
 RSpec.describe Samagotchi::SessionContinue, "CARRY" do
-  it "carries the delegates, the attached context, the objectives and the notes, in that order, each with its undo" do
+  it "carries the delegates, the attached context, the objectives, the peers' unread messages and the notes, in that order, each with its undo" do
     rows = described_class::CARRY.map { |step| [step.name, step.store, step.carry, step.undo] }
 
     expect(rows).to eq(
@@ -16,6 +16,8 @@ RSpec.describe Samagotchi::SessionContinue, "CARRY" do
         [:context, :context_sources, :carry_context, {}],
         # A note in the link only, never given back; it goes with its delete.
         [:objectives, :session_files, :carry_objectives, {}],
+        # A note in the link only (the peers' messages it hadn't read; the pairing and the mailbox stay).
+        [:peers, :session_files, :carry_peers, {}],
         # Last: the objectives' carry reads a pending /objectives edit from the notes first.
         [:notes, :session_files, :carry_notes, { link_unlinked: :give_back_notes, link_deleted: :give_back_strays }]
       ]

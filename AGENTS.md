@@ -85,7 +85,8 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - LLM context strategies (`llm_context`, the forget layer) → `docs/internals/llm-context-forget.md`
 - LLM context benchmarks (the offline replay, the live runs) → `docs/internals/llm-context-bench.md`, `docs/internals/llm-context-live.md`
 - Context-usage telemetry (`:context_status`, the CONTEXT line) → `docs/internals/context-telemetry.md`
-- Attached context (`chi context`, refreshed outside text) → `docs/context.md`; the mechanism (`ContextSources`, poller, absorber, candidates, judge, `ContextMove`, `PeerNote`, `left.json`) → `docs/internals/attached-context.md`
+- Attached context (`chi context`, refreshed outside text) → `docs/context.md`; the mechanism (`ContextSources`, poller, absorber, candidates, judge, `ContextMove`, `left.json`) → `docs/internals/attached-context.md`
+- Peers (`chi peer`, the mailbox, receipts, `peer.turns`, claude-peer / codex-peer pairing) → `docs/peers.md`; the mechanism (`PeerMailbox`, `PeerReceipts`, `absorb_mail`, `PeerNote`, `PeerRegistry`, `Plugin::Peer`, `PeerContinue`, the `…/peers` routes) → `docs/internals/peers.md`
 - The web's working set (stamps, `WorkingSet`, `:working_set_updated`, the overlay) → `docs/internals/working-set.md`
 - Session lifecycle markers, writers, and open windows → `docs/internals/session-lifecycle.md`
 - The web frontend (where page state lives, write → redraw, render idioms, stale-answer guards, storage, streams) → `docs/internals/web-frontend.md`

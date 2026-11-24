@@ -532,7 +532,10 @@ the closing line reads `stopped` as `unreachable`, the words it always had.
   "could not send", yet ran: sending it again runs it twice (no idempotency key yet).
 
 - Through a remote the pair scripts (`bundles/{claude,codex}-peer/scripts/pair`) detect `CHI_REMOTE` or `--remote` in
-  `CHI` the way Dispatch does, and attach only `*-outbox`: chi there can't reach this machine's Claude socket or Codex
-  thread, so chi's replies reach Claude only when relayed.
-- The peer skills (`skill_claude_peer`, `skill_codex_peer`) have no remote recipe. The `/claude` card says "not paired" for
-  an outbox-only (remote) pair, because it reads `claude-inbox`.
+  `CHI` the way Dispatch does, and pair with no address (answers only): chi there can't reach this machine's Claude
+  socket or Codex thread, so chi's replies reach Claude only when relayed (claude-peer's `pair-remote` forwards the
+  socket over SSH instead). `chi peer say` through a remote posts `…/peers/NAME/say` with its `wait`: chi web waits
+  for the receipt and returns the line (`RemotePeers`, a read timeout of the wait plus 30 s); an older chi web's 404
+  is "chi web on <remote> is older: it has no chi peer".
+- The peer skills (`skill_claude_peer`, `skill_codex_peer`) have no remote recipe. The `/claude` card says "paired for
+  answers only" for an answers-only pairing.

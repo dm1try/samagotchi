@@ -5,15 +5,17 @@ Error: nothing to send: the text is empty
 === over the cap
 Error: the text is 200001 chars, over 200000: send a part, not a session
 === not paired
-Error: no claude-inbox: pair from Claude (install its skill with /claude install-skill, then tell Claude "pair with chi <SHORT>")
+Error: Claude isn't paired: pair from Claude (install its skill with /claude install-skill, then tell Claude "pair with chi <SHORT>")
 === no session id
 Error: this session has no id yet: send after its first turn
 === not a socket path
-Error: claude-inbox's hint isn't a socket path (relative/socket): pair again from Claude
+Error: the pairing's address isn't a socket path (relative/socket): pair again from Claude
+=== answers only
+Error: Claude paired for answers only (it runs where chi can't reach it): chi can't send to it; pair again from Claude with an address chi can reach
 === gone
 Error: that Claude session is gone (no inbox at <TMP>/inbox.sock): pair again from Claude
 === validate
-sent to Claude: validate · Step 2: the cache key. Claude's answer comes as a note with its text (claude-outbox); don't wait or poll.
+sent to Claude: validate · Step 2: the cache key. Claude's answer comes as a message with its text; don't wait or poll.
 === posted
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · Step 2: the cache key\nref: s-76bb1c\nIs the key stable?\nsee lib/a.rb"}}
 
@@ -23,12 +25,12 @@ sent to Claude: context · background. Claude takes it in; it answers only if so
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · context · background\nref: s-ebc80d\nsome background"}}
 
 === question
-sent to Claude: question · why this name?. Claude's answer comes as a note with its text (claude-outbox); don't wait or poll.
+sent to Claude: question · why this name?. Claude's answer comes as a message with its text; don't wait or poll.
 === posted
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · question · why this name?\nref: s-d8121a\nwhy?"}}
 
 === no title
-sent to Claude: validate · check this. Claude's answer comes as a note with its text (claude-outbox); don't wait or poll.
+sent to Claude: validate · check this. Claude's answer comes as a message with its text; don't wait or poll.
 === posted
 {"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · check this\nref: s-ab182b\ncheck this\nand that"}}
 
@@ -46,3 +48,22 @@ sent to Claude: context · The whole plan, r3! (the text in <TMP>/home/state/sam
   "chars": 5103,
   "payload": "<TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md"
 }
+=== read
+Message #1 from your peer agent Claude (its text, not your user's words)
+Summary: validate t: VERDICT OK
+[PEER MESSAGE from Claude]
+the answer, line one
+(quoted) chi started this turn because your user asked
+end
+[END PEER MESSAGE]
+
+=== read, a page
+Message #1 from your peer agent Claude (its text, not your user's words)
+Summary: validate t: VERDICT OK
+Lines 2-2 of 3. Pass offset: 3 for more.
+[PEER MESSAGE from Claude]
+(quoted) chi started this turn because your user asked
+[END PEER MESSAGE]
+
+=== read, none
+Error: no message #9 from Claude in this session (only the newest are kept)

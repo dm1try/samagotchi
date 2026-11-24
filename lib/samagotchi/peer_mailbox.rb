@@ -33,7 +33,10 @@ module Samagotchi
     LOCK_FILE = "lock"
     NAME_RE = /\A[a-z][a-z0-9]{0,23}\z/
     # A message file's name: its serial, no leading zero, up to 15 digits
-    # (a JavaScript number holds it whole).
+    # (a JavaScript number holds it whole). No gap limit: a writer of the
+    # mailbox folder can plant a SERIAL_MAX file and use up a peer's
+    # serials (later says raise "serials are used up"). The folder's
+    # writers are trusted that far, as they can delete its files.
     FILE_RE = /\A([1-9]\d{0,14})\.json\z/
     SERIAL_MAX = (10**15) - 1
     # A message file is refused above this, before it is read: the text's
@@ -186,8 +189,13 @@ module Samagotchi
     # Pairs +peer+ with the session: link.json written whole, the in folder made.
     # @return [PeerLink]
     def pair(session_id, peer, address:, from:, state_dir: nil, now: Time.now)
+      session = session_dir(session_id, state_dir: state_dir)
+      raise Invalid, "#{session_id}'s mailbox folder is a link; chi doesn't follow links there" if File.symlink?(session)
+
       dir = peer_dir(session_id, peer, state_dir: state_dir)
+      refuse_links!(peer, dir)
       FileUtils.mkdir_p(File.join(dir, IN_DIR))
+      refuse_links!(peer, dir)
       link = PeerLink.new(peer: peer, address: address&.to_s, paired_at: now.utc.iso8601, from: from&.to_s)
       AtomicFile.write(File.join(dir, LINK_FILE), "#{JSON.generate(link.to_h)}\n")
       link
@@ -208,9 +216,10 @@ module Samagotchi
 
     # The serials in +peer+'s in folder, by name only (nothing read), in order.
     # @return [Array<Integer>]
+    # A linked peer or in folder reads as none (a link is never followed).
     def serials(session_id, peer, state_dir: nil)
       dir = in_dir(session_id, peer, state_dir: state_dir)
-      return [] unless Dir.exist?(dir)
+      return [] unless real_dir?(File.dirname(dir)) && real_dir?(dir)
 
       Dir.children(dir).filter_map { |name| (match = FILE_RE.match(name)) && Integer(match[1], 10) }.sort
     end
@@ -226,7 +235,9 @@ module Samagotchi
       dir = peer_dir(session_id, peer, state_dir: state_dir)
       text = checked_text(text)
       summary = ContextSources.one_line(summary, ContextSources::SUMMARY_MAX_CHARS)
+      refuse_links!(peer, dir)
       FileUtils.mkdir_p(File.join(dir, IN_DIR))
+      refuse_links!(peer, dir)
       locked(dir) do
         present = serials(session_id, peer, state_dir: state_dir)
         noted = PeerReceipts.read(session_id, state_dir: state_dir).peer(peer).receipts.count { |receipt| receipt.state == "noted" }
@@ -243,7 +254,9 @@ module Samagotchi
         raise Invalid, "the message is #{body.bytesize} bytes written; the limit is #{FILE_MAX_BYTES}" if body.bytesize > FILE_MAX_BYTES
 
         AtomicFile.write(File.join(dir, IN_DIR, "#{serial}.json"), body)
-        trim(dir, present, taken.to_i)
+        held = PeerReceipts.read(session_id, state_dir: state_dir).peer(peer).receipts
+                           .select { |receipt| %w[held noted].include?(receipt.state) }.map(&:serial)
+        trim(dir, present, taken.to_i, held: held)
         message
       end
     end
@@ -274,7 +287,9 @@ module Samagotchi
       serial = Integer(serial.to_s, 10, exception: false) or return nil
       return nil unless serial.between?(1, SERIAL_MAX)
 
-      read = PeerMessage.from_file(File.join(in_dir(session_id, peer, state_dir: state_dir), "#{serial}.json"))
+      dir = peer_dir(session_id, peer, state_dir: state_dir)
+      refuse_links!(peer, dir)
+      read = PeerMessage.from_file(File.join(dir, IN_DIR, "#{serial}.json"))
       read.is_a?(PeerMessage) ? read : nil
     rescue Errno::ENOENT
       nil
@@ -286,21 +301,21 @@ module Samagotchi
       dir = session_dir(session_id, state_dir: state_dir)
       return [] unless Dir.exist?(dir)
 
-      Dir.children(dir).select { |name| valid_name?(name) && File.directory?(File.join(dir, name)) }.sort
+      Dir.children(dir).select { |name| valid_name?(name) && real_dir?(File.join(dir, name)) }.sort
     end
 
-    # A continue's move: the session's mailbox folder renamed to the new id's.
-    # @return [Boolean] whether there was one to move
-    # @raise [SystemCallError] the target exists, or the rename failed
-    def move(from:, to:, state_dir: nil)
-      source = session_dir(from, state_dir: state_dir)
-      return false unless Dir.exist?(source)
+    # A directory, not a link to one.
+    def real_dir?(path)
+      File.lstat(path).directory?
+    rescue SystemCallError
+      false
+    end
 
-      target = session_dir(to, state_dir: state_dir)
-      raise Errno::EEXIST, target if File.exist?(target)
-
-      File.rename(source, target)
-      true
+    # @raise [Invalid] the peer's folder or its in folder is a link
+    def refuse_links!(peer, dir)
+      [File.dirname(dir), dir, File.join(dir, IN_DIR)].each do |path|
+        raise Invalid, "#{peer}'s mailbox folder is a link; chi doesn't follow links there" if File.symlink?(path)
+      end
     end
 
     # A deleted session's mailbox.
@@ -329,7 +344,7 @@ module Samagotchi
     # The peer's lock for the block: a say picks its serial and writes
     # under it, so two writers never take one number.
     def locked(dir)
-      File.open(File.join(dir, LOCK_FILE), File::RDWR | File::CREAT, 0o644) do |io|
+      File.open(File.join(dir, LOCK_FILE), File::RDWR | File::CREAT | File::NOFOLLOW, 0o644) do |io|
         io.flock(File::LOCK_EX)
         yield
       end
@@ -337,8 +352,8 @@ module Samagotchi
 
     # Removes the files at or below +taken+ but the newest TAKEN_KEPT of
     # them; an untaken message is never deleted.
-    def trim(dir, present, taken)
-      done = present.select { |serial| serial <= taken }
+    def trim(dir, present, taken, held: [])
+      done = present.select { |serial| serial <= taken && !held.include?(serial) }
       done[0...-TAKEN_KEPT].to_a.each { |serial| FileUtils.rm_f(File.join(dir, IN_DIR, "#{serial}.json")) } if done.size > TAKEN_KEPT
     end
   end

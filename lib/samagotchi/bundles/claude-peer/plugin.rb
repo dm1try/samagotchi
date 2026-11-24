@@ -7,10 +7,11 @@ require "samagotchi/plugin/peer"
 
 # claude-peer (docs/bundles.md, The claude-peer bundle): a live link between
 # this chi session and a Claude Code session the user works with. Claude
-# pairs (its chi-peer skill, scripts/pair): it attaches the `claude-inbox`
-# context, whose hint is its per-session inbox socket
-# (CLAUDE_CODE_MESSAGING_SOCKET), and `claude-outbox`, where its answers
-# come back as pushes that wake chi.
+# pairs (its chi-peer skill, scripts/pair: `chi peer pair claude <id>
+# --address <socket>`), the pairing's address being its per-session inbox
+# socket (CLAUDE_CODE_MESSAGING_SOCKET); its answers come back as messages
+# in the session's mailbox (`chi peer say claude <id>`), each a note that may
+# wake chi (docs/peers.md).
 #
 # The claude_send tool sends a part of the work (a plan step, a diff, a
 # finding) to that socket as one JSON line, the format Claude Code's inbox
@@ -30,7 +31,7 @@ require "samagotchi/plugin/peer"
 # /claude (anytime: it only reads files, writes one and posts to a socket)
 # lets the user send without the model: `/claude` alone is a status card
 # (paired or not, the socket and whether it is there, the last send, the
-# last claude-outbox answer); `/claude validate|context <text>` sends the
+# last message from Claude); `/claude validate|context <text>` sends the
 # text as it is, titled by its first line; `/claude last` sends the model's
 # last completed answer as context (mid-turn, a worker's ctx.messages holds
 # the running turn's partial text, so the before_turn and after_turn hooks
@@ -50,13 +51,18 @@ require "samagotchi/plugin/peer"
 # is Samagotchi::Plugin::Peer; this class has Claude's strings and the
 # socket transport.
 class Plugin < Samagotchi::Plugin::Peer
-  INBOX = "claude-inbox"
-  OUTBOX = "claude-outbox"
+  PEER = "claude"
+  # The context sources an older claude-peer paired through: only the
+  # status card's "paired the old way" line reads them. Remove after the
+  # next release.
+  LEGACY_INBOX = "claude-inbox"
+  LEGACY_OUTBOX = "claude-outbox"
   BUNDLE = "claude-peer"
   NAME = "Claude"
   APP = "Claude Code"
   COMMAND = "/claude"
   TOOL = "claude_send"
+  READ_TOOL = "claude_read"
   # The socket must take the line within this long.
   WRITE_SECONDS = 5
   # The Claude Code version the wire format was checked on.
@@ -71,13 +77,13 @@ class Plugin < Samagotchi::Plugin::Peer
   SCRIPTS_DIRS = [File.join(__dir__, "scripts"), File.expand_path("../scripts", __dir__)].freeze
 
   TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your " \
-                     "last answer) to the Claude Code session paired with it (the claude-inbox " \
-                     "context), for Claude to validate, to take as context, or to answer a " \
-                     "question about. Only when the user asks for it, or to reply to its answer " \
-                     "in a peer turn. Needs a paired Claude Code session: without one it fails, " \
-                     "and the user pairs from Claude. Claude's answer comes back later as a " \
-                     "claude-outbox note with its text (a validate's wakes you): don't wait or " \
-                     "poll. Never send secrets or the whole conversation."
+                     "last answer) to the Claude Code session paired with it, for Claude to " \
+                     "validate, to take as context, or to answer a question about. Only when the " \
+                     "user asks for it, or to reply to its answer in a peer turn. Needs a paired " \
+                     "Claude Code session: without one it fails, and the user pairs from Claude. " \
+                     "Claude's answer comes back later as a message from your peer agent Claude, " \
+                     "with its text (a validate's wakes you): don't wait or poll. Never send " \
+                     "secrets or the whole conversation."
   TOOL_PARAMS = {
     kind: { type: "string", enum: KINDS, required: true,
             description: "validate: check this part and answer with a verdict; context: for Claude to know, no " \
@@ -94,9 +100,9 @@ class Plugin < Samagotchi::Plugin::Peer
 
   private
 
-  # The paired Claude's inbox socket: the claude-inbox context's hint.
+  # The paired Claude's inbox socket: the pairing's address.
   def check_hint!(hint)
-    raise SendError, "claude-inbox's hint isn't a socket path (#{hint}): pair again from Claude" unless hint.start_with?("/")
+    raise SendError, "the pairing's address isn't a socket path (#{hint}): pair again from Claude" unless hint.start_with?("/")
   end
 
   def paired_lines(socket)

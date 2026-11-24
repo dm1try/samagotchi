@@ -4,24 +4,24 @@ require "spec_helper"
 require "tmpdir"
 require "open3"
 require "rbconfig"
-require "samagotchi/context_sources"
+require "samagotchi/peer_mailbox"
 require_relative "../../support/fake_executables"
-require_relative "../../support/fake_chi_context"
+require_relative "../../support/fake_chi_peer"
 
-# The claude-peer bundle's scripts/pair, as Claude runs it, attaching
-# claude-inbox and claude-outbox to a chi session. No socket is opened:
-# pairing only records its path.
+# The claude-peer bundle's scripts/pair, as Claude runs it: one `chi peer
+# pair claude <id> --address <socket>`. No socket is opened: pairing only
+# records its path.
 #
 # The mechanism runs this checkout's chi (isolated state): "with real chi".
 # The variants (shells, refusals, remote routing, odd cwds) run on a fake chi
-# (spec/support/fake_chi_context.rb) and check what the script asked chi to
-# do; chi's context commands have their own specs.
+# (spec/support/fake_chi_peer.rb) and check what the script asked chi to do;
+# chi peer has its own specs.
 RSpec.describe "The claude-peer pair script" do
   let(:pair) { File.expand_path("../../../lib/samagotchi/bundles/claude-peer/scripts/pair", __dir__) }
   let(:tmpdir) { File.realpath(Dir.mktmpdir("claude-peer-pair")) }
   let(:bin) { File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) } }
   let(:id) { "0f1e2d3c-4b5a-4968-8776-655443322110" }
-  let(:fake) { FakeChiContext.new(bin) }
+  let(:fake) { FakeChiPeer.new(bin) }
   let(:env) { { "CHI" => fake.path, "CHI_REMOTE" => nil } }
   let(:usage) { "usage: pair [--inbox-socket PATH] <chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>\n" }
 
@@ -39,35 +39,30 @@ RSpec.describe "The claude-peer pair script" do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
                          .tap { |s| s.save(state_dir: state_dir) }
     end
-    let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir) }
     let(:env) do
       { "XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => File.join(tmpdir, "config"), "CHI_REMOTE" => nil,
         "CHI" => FakeExecutables.fake_executable(bin, "chi", "exec #{RbConfig.ruby} #{chi_bin} \"$@\"") }
     end
 
-    it "pairs from a chi web URL, and a re-pair by id prefix refreshes the socket and keeps Claude's last answer" do
+    def link = Samagotchi::PeerMailbox.link(session.id, "claude", state_dir: state_dir)
+
+    it "pairs from a chi web URL, and a re-pair by id prefix refreshes the socket and keeps Claude's messages" do
       out, err, status = run_pair("http://127.0.0.1:4567/#/s/#{session.id}", socket: "/tmp/claude-a.sock")
 
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(out).to include("paired with chi #{session.id} (socket /tmp/claude-a.sock)", "claude-inbox", "claude-outbox")
-      expect(own.source("claude-inbox")).to have_attributes(hint: "/tmp/claude-a.sock", cmd: nil)
-      inbox = own.snapshot("claude-inbox")
-      expect(inbox).to have_attributes(hint: "/tmp/claude-a.sock", summary: "Claude Code paired from #{tmpdir}")
-      expect(inbox.text).to include("socket: /tmp/claude-a.sock", "claude cwd: #{tmpdir}", "claude_send")
-      # No placeholder: Claude's first answer (wake: true) wakes chi (chi 0.63.0).
-      expect(own.source("claude-outbox")).to have_attributes(hint: "latest Claude reply", cmd: nil)
-      expect(own.snapshot("claude-outbox").text).to be_nil
+      expect(out).to eq("paired with chi #{session.id} (socket /tmp/claude-a.sock)\n")
+      expect(link).to have_attributes(peer: "claude", address: "/tmp/claude-a.sock", from: "Claude Code in #{tmpdir}")
 
-      own.record_text("claude-outbox", Samagotchi::ContextSources::Fetched.new(text: "VERDICT: OK", summary: "ok",
-                                                                               wake: true, hint: nil))
+      Samagotchi::PeerMailbox.post(session.id, "claude", text: "VERDICT: OK", summary: "ok", wake: true, re: nil,
+                                                         state_dir: state_dir)
       _, err, status = run_pair(session.id[0, 8], socket: "/tmp/claude-b.sock")
 
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(own.snapshot("claude-inbox").hint).to eq("/tmp/claude-b.sock")
-      expect(own.snapshot("claude-outbox").text).to eq("VERDICT: OK")
+      expect(link.address).to eq("/tmp/claude-b.sock")
+      expect(Samagotchi::PeerMailbox.message(session.id, "claude", 1, state_dir: state_dir).text).to eq("VERDICT: OK")
     end
 
-    it "says why when chi can't attach (no such session)" do
+    it "says why when chi can't pair (no such session)" do
       _, err, status = run_pair("ffffffff", socket: "/tmp/x.sock")
 
       expect(status.exitstatus).to eq(1)
@@ -84,23 +79,21 @@ RSpec.describe "The claude-peer pair script" do
       socket = { "CLAUDE_CODE_MESSAGING_SOCKET" => "/tmp/claude-a.sock" }
       _, err, status = Open3.capture3(env.merge(socket), shell, pair, id, chdir: tmpdir)
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(fake.source("claude-inbox")).to include(hint: "/tmp/claude-a.sock")
+      expect(fake.pairing("claude")).to include(address: "/tmp/claude-a.sock")
 
       _, err, status = Open3.capture3(env.merge(socket), shell, pair, "--inbox-socket=/tmp/pod.sock", id, chdir: tmpdir)
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(fake.pushed("claude-inbox")).to include("hint" => "/tmp/pod.sock")
+      expect(fake.pairing("claude")).to include(address: "/tmp/pod.sock")
     end
   end
 
-  it "pushes a cwd with a carriage return or another control character as valid JSON" do
+  it "pairs in one chi peer pair, the socket as the address and its cwd as who paired" do
     odd = File.join(tmpdir, "odd\r\u0001dir").tap { |d| FileUtils.mkdir_p(d) }
     _, err, status = run_pair(id, socket: "/tmp/claude-a.sock", chdir: odd)
 
     expect([status.exitstatus, err]).to eq([0, ""])
-    # Parsed strictly: a raw CR or \x01 in a JSON string is refused.
-    pushed = fake.pushed("claude-inbox")
-    expect(pushed["text"]).to include("claude cwd: #{odd}\n")
-    expect(pushed["summary"]).to eq("Claude Code paired from #{odd}")
+    expect(fake.calls.map(&:last)).to eq([["peer", "pair", "claude", id, "--address", "/tmp/claude-a.sock", "--from",
+                                           "Claude Code in #{odd}"]])
   end
 
   it "refuses outside Claude Code, a URL without a session and a missing argument, never running chi" do
@@ -130,18 +123,14 @@ RSpec.describe "The claude-peer pair script" do
   end
 
   context "through a remote" do
-    let(:remote_why) { "Claude's answers to what you sent it (claude-peer); Claude runs on another machine: claude_send can't reach it" }
-    let(:local_why) { "Claude's answers to what you sent it (claude-peer)" }
-
     def run_remote(chi: fake.path, remote: nil, args: [id], extra: {})
       run_pair(*args, socket: "/tmp/claude-a.sock", extra: { "CHI" => chi, "CHI_REMOTE" => remote }.merge(extra))
     end
 
     def says(remote, ask)
       "pair: chi is on #{remote}, so chi can't send to this Claude session (claude_send needs its socket on chi's " \
-        "machine): paired with chi #{id}, claude-outbox only. Answer chi with #{ask} context push claude-outbox " \
-        "#{id}; chi's replies reach you only when the user relays them (or asks you to run #{ask} send --wait " \
-        "#{id})\n"
+        "machine): paired with chi #{id} for answers only. Answer chi with #{ask} peer say claude #{id}; chi's " \
+        "replies reach you only when the user relays them (or asks you to run #{ask} send --wait #{id})\n"
     end
 
     def forward_hint(remote)
@@ -149,17 +138,13 @@ RSpec.describe "The claude-peer pair script" do
         "--inbox-socket (the chi-peer skill's \"chi on another machine over SSH\")\n"
     end
 
-    it "with CHI_REMOTE set, attaches only claude-outbox and says chi there can't send to this Claude" do
+    it "with CHI_REMOTE set, pairs for answers only (no address) and says chi there can't send to this Claude" do
       out, err, status = run_remote(remote: " studio ")
 
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(out).to start_with(says("studio", "CHI_REMOTE=studio #{fake.path}"))
-      expect(out).to include(forward_hint("studio"))
-      expect(out).not_to include("claude-inbox", "(socket")
-      expect(fake.source("claude-outbox")).to eq(why: remote_why, hint: "latest Claude reply")
-      expect(fake.source("claude-inbox")).to be_nil
+      expect(out).to eq(says("studio", "CHI_REMOTE=studio #{fake.path}") + forward_hint("studio"))
+      expect(fake.pairing("claude")).to eq(id: id, address: nil, from: "Claude Code in #{tmpdir} (on another machine)")
       expect(fake.calls.map(&:first)).to all(eq(" studio ")) # chi trims it itself
-      expect(fake.calls.flat_map(&:last)).not_to include("claude-inbox")
     end
 
     it "takes the remote a --remote NAME or --remote=NAME in CHI names over CHI_REMOTE, the last one" do
@@ -172,51 +157,33 @@ RSpec.describe "The claude-peer pair script" do
 
       expect([status.exitstatus, err]).to eq([0, ""])
       expect(out).to start_with(says("studio", "#{fake.path} --remote=laptop --remote=studio"))
-      expect(fake.source("claude-inbox")).to be_nil
+      expect(fake.pairing("claude")[:address]).to be_nil
     end
 
-    it "pairs here, both sources, with a blank CHI_REMOTE" do
+    it "pairs here, with the socket, with a blank CHI_REMOTE" do
       out, err, status = run_remote(remote: "  ")
 
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(out).to include("paired with chi #{id} (socket /tmp/claude-a.sock)")
-      expect(out).not_to include("pair: chi is on")
-      expect(fake.source("claude-inbox")).to include(hint: "/tmp/claude-a.sock")
+      expect(out).to eq("paired with chi #{id} (socket /tmp/claude-a.sock)\n")
+      expect(fake.pairing("claude")).to include(address: "/tmp/claude-a.sock")
     end
 
-    it "through a remote, --inbox-socket attaches both sources with that path as the hint" do
+    it "through a remote, --inbox-socket pairs with that path as the address, saying whose socket it forwards" do
       out, err, status = run_remote(remote: "studio", args: ["--inbox-socket", "/tmp/pod-claude.sock", id])
 
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(out).to include("paired with chi #{id} (socket /tmp/pod-claude.sock on chi's machine, " \
-                             "forwarded to this Claude's /tmp/claude-a.sock)")
-      expect(out).not_to include("pair: chi is on")
-      expect(fake.source("claude-inbox")).to include(hint: "/tmp/pod-claude.sock")
-      inbox = fake.pushed("claude-inbox")
-      expect(inbox).to include("hint" => "/tmp/pod-claude.sock", "summary" => "Claude Code paired from #{tmpdir} over ssh")
-      expect(inbox["text"]).to include("socket: /tmp/pod-claude.sock (on this machine: an ssh -R forward of Claude's " \
-                                       "socket /tmp/claude-a.sock", "claude cwd: #{tmpdir}", "the ssh tunnel may be down")
-      expect(fake.source("claude-outbox")).to eq(why: local_why, hint: "latest Claude reply")
+      expect(out).to eq("paired with chi #{id} (socket /tmp/pod-claude.sock on chi's machine, " \
+                        "forwarded to this Claude's /tmp/claude-a.sock)\n")
+      expect(fake.pairing("claude")).to eq(id: id, address: "/tmp/pod-claude.sock",
+                                           from: "Claude Code in #{tmpdir}, over ssh (its socket /tmp/claude-a.sock)")
 
       # The --inbox-socket=PATH form does the same.
       _, err, status = run_remote(remote: "studio", args: ["--inbox-socket=/tmp/pod-claude.sock", id])
       expect([status.exitstatus, err]).to eq([0, ""])
-      expect(fake.pushed("claude-inbox")).to include("hint" => "/tmp/pod-claude.sock")
+      expect(fake.pairing("claude")).to include(address: "/tmp/pod-claude.sock")
     end
 
-    it "re-pairing with --inbox-socket replaces an outbox-only pairing's claude-outbox and its why" do
-      _, err, status = run_remote(remote: "studio")
-      expect([status.exitstatus, err]).to eq([0, ""])
-      expect(fake.source("claude-outbox")).to include(why: remote_why)
-
-      _, err, status = run_remote(remote: "studio", args: ["--inbox-socket", "/tmp/pod-claude.sock", id])
-      expect([status.exitstatus, err]).to eq([0, ""])
-      expect(fake.calls.map(&:last)).to include(["context", "rm", "claude-outbox", id])
-      expect(fake.source("claude-outbox")).to eq(why: local_why, hint: "latest Claude reply")
-      expect(fake.source("claude-inbox")).to include(hint: "/tmp/pod-claude.sock")
-    end
-
-    it "says only chi's refusal when the outbox can't be attached there" do
+    it "says only chi's refusal when the pairing can't be made there" do
       out, err, status = run_remote(remote: "studio", extra: { "FAKE_CHI_FAIL" => "Error: no remote studio (chi remote ls)" })
 
       expect(status.exitstatus).to eq(1)

@@ -13,6 +13,7 @@ require_relative "child_move"
 require_relative "starting_marker"
 require_relative "context_move"
 require_relative "note_move"
+require_relative "peer_continue"
 require_relative "archive_store"
 require_relative "continue_intent"
 require_relative "continued_from"
@@ -116,6 +117,12 @@ module Samagotchi
       # written into the link only (NoteMove::CONTINUE_SOURCES: never given
       # back), which goes with its delete.
       CarryStep.new(name: :objectives, store: :session_files, carry: :carry_objectives, undo: {}, files: []),
+      # The peers' messages it hadn't read, as one note (PeerContinue): the
+      # pairing and the mailbox stay with the previous link (its store rows
+      # say so), the peer pairs again. No undo: a note written into the link
+      # only, which is excluded from NoteMove's give-back and goes with its
+      # delete; the previous link's mailbox and receipts are only read.
+      CarryStep.new(name: :peers, store: :session_files, carry: :carry_peers, undo: {}, files: []),
       # Its waiting notes last: the carry above read a pending /objectives
       # edit from them first. They keep their names, so they still sort
       # ahead of the link's own notes. A note sent to the previous link
@@ -343,6 +350,11 @@ module Samagotchi
 
     private_class_method def self.carry_objectives(ctx)
       Objectives.carry(ctx.previous, to: ctx.to, state_dir: ctx.state_dir)
+    end
+
+    # @return [Integer] how many peer messages the link's note holds
+    private_class_method def self.carry_peers(ctx)
+      PeerContinue.carry(from: ctx.previous.id, to: ctx.to, state_dir: ctx.state_dir)
     end
 
     # @return [Array<String>] the names of the notes moved to the link

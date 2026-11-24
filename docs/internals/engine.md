@@ -607,7 +607,7 @@ edit must keep:
 - **Building an Engine makes no network call**: the profile is resolved on first need (`ModelBinding`).
 - `MemoryBundle::SystemBundle.ensure!` runs at build; a failure is logged, not raised.
 - The turn stages are built before the plugins load (`build_tools_and_plugins`: `ExtensionLoad`, the built-in
-  `Tools::Builtins.registry`, `ToolkitBinding`, `Tools::ToolIndex`, `PeerSources`, then the plugins; each plugin's
+  `Tools::Builtins.registry`, `ToolkitBinding`, `Tools::ToolIndex`, `PeerRegistry`, then the plugins; each plugin's
   `ctx` is a `Plugin::Context` over `plugin_host`). After the plugins (or none), `@tool_index.declare(@tools)`
   registers `find_tools` + `call_tool` (source "index", not core), declared per toolkit by `Registry#declared?`
   (`Toolkit::Resolved#declares?` treats built-ins and plugin tools alike).
@@ -836,6 +836,6 @@ are in [architecture.md](../architecture.md)'s file table.
 | `system_prompt.rb`, `prompt_files.rb`, `model_notes.rb` | The system prompt; AGENTS.md and appended files; model notes |
 | `hooks/registry.rb`, `hook_routes.rb`, `hook_question.rb`, `extension_load.rb` | Hook registry and `Hooks::Runtime`; the hook routes; `HookQuestion`; what an Engine loads at start |
 | `question_desk.rb`, `pending_question.rb`, `question_answer.rb`, `question_asked.rb` | The one open question and its values; `:question_asked` |
-| `engine_peers.rb`, `peer_sources.rb` | `Engine::PeerView`, `Engine::RelayPeer`; `PeerSources` |
+| `engine_peers.rb`, `peer_registry.rb` | `Engine::PeerView`, `Engine::RelayPeer`; `PeerRegistry` (`chi.peer`) |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context, checks and approvals; the verdict per call |
 | `cancellation_controller.rb`, `context_status.rb`, `side_usage.rb`, `degrade.rb` | A turn's cancel signal; context tracking ([context-telemetry.md](context-telemetry.md)); a side request's usage; `Degrade` |
