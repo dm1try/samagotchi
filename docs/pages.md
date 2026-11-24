@@ -124,7 +124,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
   text too, so the `pages` pill is the way in. A fenced block inside a text block (a `chi-ui` or a mermaid one) stays
   source on a page.
 - **What is live**: the list (and with it the pill) is read when chi web opens, when the Pages list, All sessions or a
-  page opens, after a Delete, and when a page script is made or removed. A page itself is read when it opens and
+  page opens, after a Delete, and when a page script is made or removed (a script that writes a file into the pages
+  folder, which is its working folder, counts too: each of its runs refreshes the open lists). A page itself is read when it opens and
   after its own Refresh; a run from a terminal shows after the next open or a reload (a first run's "ran" time on the
   list too).
 - Pages are the owner's: a participant ([chi share](cli.md)) sees no `pages` pill, no Pages list, no page, and no page

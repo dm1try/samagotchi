@@ -149,7 +149,9 @@ none is made and no page call goes out (`viewer_boot.test.js`).
 **The page's modules** (`lib/samagotchi/web/public/`): `page_route.js` (`pageHash`, `pageNameFromHash`, the open rule:
 never a participant's, never without `pages`), `views.js` (reads the page hash and the list's `#/pages` before the
 session intent: `body.page-view` / `body.pages-list`, `openPage` / `closePage` / `leavePage`, `openPagesList` /
-`closePagesList`, the pill's `aria-pressed`, the session hash not written while either is open, a session picked
+`closePagesList`, where a page or the list was opened from kept in its history entry (`history.pushState({from})`:
+`pages`, `sessions`, `back`, `pill`; Back and its label read `history.state.from`, so Back and Forward keep them;
+an entry with no state was typed or replaced and leaves for the list, or the session), the pill's `aria-pressed`, the session hash not written while either is open, a session picked
 leaving it; a page with nowhere to go back to, or gone, lands on the list), `pages_model.js` (the page's one list of
 pages: `load` shares a read that is out, `reload` asks again, a failed read keeps the last list; DOM-free),
 `pages_wiring.js` (the model, the pill, the list, the view and the links; when the list is read),
@@ -165,8 +167,9 @@ page as text or attributes, never as markup, except the server's sanitised `html
 and sends a `pages` event (no data) on `GET /api/events` when its mtime moved: a script made, renamed in or removed
 (an editor's temp file or a data file beside the scripts counts too: one extra `GET /api/pages` per open tab). Never on
 the first look; a folder that appears or goes is a change. A run changes nothing there (its output is under the state
-dir). The page reads the list again on that event and on every snapshot after the first (a reconnect: the hub has no
-replay); with no hub stream (no `EventSource`, the list's fetch fallback) the list is read only when a view opens. A
+dir), unless the script writes a file beside itself (it runs with the pages folder as its working folder): then each
+run refreshes every open tab's list. The page reads the list again on that event and on every snapshot (the first one
+shares the boot read while that is out; a later one is a reconnect: the hub has no replay); with no hub stream (no `EventSource`, the list's fetch fallback) the list is read only when a view opens. A
 page's own result has no stream event and no polling: a run from a terminal shows on the next open; two tabs are not
 kept in step.
 
