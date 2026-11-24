@@ -103,12 +103,14 @@ test("no + URL chip: the row shows the sources only, and is hidden without one e
 // The chips on the shim's document: +el+ in the body, a stub api and
 // window (no timers: the minute's tick is a spec's own call).
 function chipsControl({ list, show = async () => ({ text: "the text" }), size = {}, detach = async () => {}, peers = () => null,
-                        peerActions = {}, confirm = () => true }) {
+                        peerActions = {}, confirm = () => true, message = async () => ({ text: "the message" }),
+                        unpair = async () => ({ unpaired: true }) }) {
   const el = document.createElement("div");
   document.body.append(el);
   const toasts = [];
   const win = { innerWidth: 1000, innerHeight: 800, ...size, addEventListener() {}, setInterval() {}, confirm };
-  const ctl = createContextChips({ el, api: { list, show, detach }, toast: (t) => toasts.push(t), peers, peerActions, win });
+  const ctl = createContextChips({ el, api: { list, show, detach, message, unpair }, toast: (t) => toasts.push(t), peers,
+                                   peerActions, win });
   const pop = document.getElementById("contextPopover");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   return { ctl, el, pop, toasts, settle, done: () => { el.remove(); pop.remove(); } };
@@ -159,20 +161,28 @@ test("view text shows the row's text in the popover; a refresh keeps it", async 
   c.done();
 });
 
-test("showText: a peer answer's 'Read the full answer' opens its peer chip's popover on the outbox's text, after the click", async () => {
-  const shows = [];
-  const c = chipsControl({ list: async () => ({ sources: [row(), row({ name: "claude-outbox", peer: "claude", leg: "outbox", label: "Claude" })] }),
-                           show: async (_id, name) => { shows.push(name); return { text: "the text" }; } });
+test("showMessage: a mailbox note's 'Read the full answer' opens its peer chip's popover on that message's text, after the click", async () => {
+  const reads = [];
+  const p = stubPeers([], [msg(3), msg(2)]);
+  const c = chipsControl({ list: async () => ({ sources: [row(), row({ name: "claude-outbox", kind: "push" })] }), peers: () => p.model,
+                           message: async (_id, name, serial) => { reads.push([name, serial]); return { text: `message ${serial}` }; } });
   await c.ctl.load("s1");
-  c.ctl.showText("claude-outbox");
+  c.ctl.showMessage("claude", "2");
   // Not in the asking click's task: the document's outside-click close would take it.
   assert.equal(c.pop.hidden, true);
   await c.settle();
   await c.settle();
   assert.equal(c.pop.hidden, false);
   assert.equal(c.el.querySelector(".ctx-chip.open").dataset.name, "peer:claude");
-  assert.deepEqual(shows, ["claude-outbox"]);
-  assert.equal(c.pop.querySelector(".ctx-pop-text").textContent, "the text");
+  assert.deepEqual(reads, [["claude", "2"]]);
+  assert.equal(c.pop.querySelector(".ctx-pop-text").textContent, "message 2");
+  // A source named like an older bundle's outbox is an ordinary chip: an older answer's text opens it.
+  c.ctl.close();
+  c.ctl.showText("claude-outbox");
+  await c.settle();
+  await c.settle();
+  assert.equal(c.el.querySelector(".ctx-chip.open").dataset.name, "claude-outbox");
+  c.ctl.close();
   // An ordinary source's text opens its own chip.
   c.ctl.close();
   c.ctl.showText("pr-1");
@@ -304,13 +314,17 @@ test("the popover behaves as every popover: a modal dialog named for its chip, t
   c.done();
 });
 
-// A paired peer (peer_chip.js): its two sources one chip, first.
+// A paired peer (peer_chip.js): one chip, first, fed by the peers model alone.
 const NOW_MS = Date.now();
-const leg = (which, over = {}) => row({ name: `claude-${which}`, kind: "push", peer: "claude", leg: which, label: "Claude",
-  hint: null, summary: "", has_text: which === "outbox", fetched_at: new Date(NOW_MS - 60_000).toISOString(), ...over });
-const stubPeers = (exchanges = []) => {
+const msg = (serial, over = {}) => ({ serial, summary: `answer ${serial}`, at: new Date(NOW_MS - 60_000).toISOString(),
+  receipt: { state: "read" }, words: "read", ...over });
+const peerRow = (exchanges = [], messages = [], over = {}) => ({ name: "claude", label: "Claude",
+  paired_at: new Date(NOW_MS - 600_000).toISOString(), address: "/tmp/c.sock", can_send: true, messages, exchanges, ...over });
+const stubPeers = (exchanges = [], messages = [], over = {}) => {
   const calls = { refresh: 0 };
-  return { calls, model: { refresh: () => { calls.refresh += 1; }, peer: (name) => (name === "claude" ? { name, exchanges } : null) } };
+  const state = { rows: [peerRow(exchanges, messages, over)] };
+  return { calls, state, model: { refresh: async () => { calls.refresh += 1; }, peers: () => state.rows,
+                                  peer: (name) => state.rows.find((r) => r.name === name) || null } };
 };
 
 test("chips load reuses the conversation's in-flight peers read", async () => {
@@ -320,12 +334,12 @@ test("chips load reuses the conversation's in-flight peers read", async () => {
   const model = createPeers({ sessionId: () => "s1", hasPeer: () => true, win: { addEventListener() {} },
                               list: () => { fetches += 1; return response; } });
   const conversationRead = model.refresh();
-  const c = chipsControl({ list: async () => ({ sources: [leg("inbox"), leg("outbox")] }), peers: () => model });
+  const c = chipsControl({ list: async () => ({ sources: [row()] }), peers: () => model });
 
   try {
     await c.ctl.load("s1");
     assert.equal(fetches, 1);
-    finish({ peers: [{ name: "claude", exchanges: [] }] });
+    finish({ peers: [peerRow()] });
     await conversationRead;
     await model.refresh({ reuse: true });
     assert.equal(model.loaded(), true);
@@ -335,36 +349,33 @@ test("chips load reuses the conversation's in-flight peers read", async () => {
   }
 });
 
-test("a peer's two sources draw one chip, before the ordinary ones; those stay as they were", async () => {
+test("a paired peer draws one chip, before the ordinary ones, which stay as they were (claude-outbox among them)", async () => {
   const p = stubPeers([{ id: "s1", kind: "validate", title: "plan", at: new Date(NOW_MS - 120_000).toISOString(), state: "waiting" }]);
-  const c = chipsControl({ list: async () => ({ sources: [row(), leg("inbox"), leg("outbox")] }), peers: () => p.model });
+  const c = chipsControl({ list: async () => ({ sources: [row(), row({ name: "claude-outbox", kind: "push" })] }), peers: () => p.model });
   await c.ctl.load("s1");
   const chips = [...c.el.querySelectorAll(".ctx-chip")];
   assert.deepEqual(chips.map((chip) => [chip.dataset.name, chip.className, chip.textContent.split(" · ")[0]]),
-                   [["peer:claude", "ctx-chip peer waiting", "Claude"], ["pr-1", "ctx-chip ok", "pr-1"]]);
+                   [["peer:claude", "ctx-chip peer waiting", "Claude"], ["pr-1", "ctx-chip ok", "pr-1"],
+                    ["claude-outbox", "ctx-chip ok", "claude-outbox"]]);
   assert.equal(chips[0].textContent, "Claude · waiting 2m");
-  // The chips' load reads the peers model (the conversation's read may have found no peer yet).
+  // The chips' load reads the peers model; a focus refresh doesn't (its own focus listener does).
   assert.equal(p.calls.refresh, 1);
-  // A focus refresh with the same peers doesn't read it again (its own focus listener does).
   await c.ctl.refresh();
   assert.equal(p.calls.refresh, 1);
   c.done();
 });
 
-test("a session without a peer never reads the peers model", async () => {
-  const p = stubPeers();
+test("an unpaired peer (its messages kept) has no chip", async () => {
+  const p = stubPeers([], [msg(1)], { paired_at: null });
   const c = chipsControl({ list: async () => ({ sources: [row()] }), peers: () => p.model });
   await c.ctl.load("s1");
-  await c.ctl.refresh();
-  assert.equal(p.calls.refresh, 0);
+  assert.deepEqual([...c.el.querySelectorAll(".ctx-chip")].map((chip) => chip.dataset.name), ["pr-1"]);
   c.done();
 });
 
 test("a peer chip's popover stays open across a refresh and follows the peers model; it opens as a sheet on a phone", async () => {
-  let exchanges = [];
-  const model = { refresh() {}, peer: (name) => (name === "claude" ? { name, exchanges } : null) };
-  const c = chipsControl({ list: async () => ({ sources: [leg("inbox"), leg("outbox")] }), peers: () => model,
-                           size: { innerWidth: 390, innerHeight: 800 } });
+  const p = stubPeers();
+  const c = chipsControl({ list: async () => ({ sources: [] }), peers: () => p.model, size: { innerWidth: 390, innerHeight: 800 } });
   await c.ctl.load("s1");
   c.el.querySelector('[data-name="peer:claude"]').click();
   assert.equal(c.pop.hidden, false);
@@ -373,7 +384,7 @@ test("a peer chip's popover stays open across a refresh and follows the peers mo
   assert.ok(c.pop.querySelector(".peer-pop-list") === null);
   await c.ctl.refresh();
   assert.equal(c.pop.hidden, false);
-  exchanges = [{ id: "s1", kind: "validate", title: "plan", at: new Date(NOW_MS - 60_000).toISOString(), state: "failed" }];
+  p.state.rows = [peerRow([{ id: "s1", kind: "validate", title: "plan", at: new Date(NOW_MS - 60_000).toISOString(), state: "failed" }])];
   c.ctl.peersChanged();
   assert.equal(c.el.querySelector(".ctx-chip").textContent, "Claude · can't send");
   assert.equal(c.pop.querySelector(".pp-x-state").textContent, "not sent");
@@ -382,53 +393,63 @@ test("a peer chip's popover stays open across a refresh and follows the peers mo
   c.done();
 });
 
-test("Unpair: one confirm, then both legs detached, the outbox first; the composer gets the focus once the strip is empty", async () => {
-  const detached = [];
+test("View latest answer reads the peer's newest message", async () => {
+  const reads = [];
+  const p = stubPeers([], [msg(3), msg(2)]);
+  const c = chipsControl({ list: async () => ({ sources: [] }), peers: () => p.model,
+                           message: async (_id, name, serial) => { reads.push([name, serial]); return { text: "newest" }; } });
+  await c.ctl.load("s1");
+  c.el.querySelector('[data-name="peer:claude"]').click();
+  c.pop.querySelector('[data-act="view"]').click();
+  await c.settle();
+  assert.deepEqual(reads, [["claude", 3]]);
+  assert.equal(c.pop.querySelector(".ctx-pop-text").textContent, "newest");
+  c.done();
+});
+
+test("Unpair: one confirm, then the pairing ends (its messages stay) and the chip goes; the composer gets the focus", async () => {
+  const unpaired = [];
   const asks = [];
-  let sources = [leg("inbox"), leg("outbox")];
+  const p = stubPeers();
   const prompt = document.createElement("textarea");
   prompt.id = "prompt";
   document.body.append(prompt);
-  const c = chipsControl({ list: async () => ({ sources }), confirm: (q) => { asks.push(q); return true; },
-                           detach: async (_id, name) => { detached.push(name); } });
+  const c = chipsControl({ list: async () => ({ sources: [] }), peers: () => p.model, confirm: (q) => { asks.push(q); return true; },
+                           unpair: async (id, name) => { unpaired.push([id, name]); p.state.rows = [peerRow([], [], { paired_at: null })]; } });
   await c.ctl.load("s1");
   const chip = c.el.querySelector('[data-name="peer:claude"]');
   chip.focus();
   chip.click();
-  sources = [];
   c.pop.querySelector('[data-act="unpair"]').focus();
   c.pop.querySelector('[data-act="unpair"]').click();
   await c.settle();
   await c.settle();
-  assert.deepEqual(asks, ["Unpair Claude? This detaches claude-outbox and claude-inbox from this session."]);
-  assert.deepEqual(detached, ["claude-outbox", "claude-inbox"]);
+  assert.deepEqual(asks, ["Unpair Claude? chi stops sending to it; its messages stay."]);
+  assert.deepEqual(unpaired, [["s1", "claude"]]);
   assert.deepEqual(c.toasts, []);
   assert.equal(c.pop.hidden, true);
   assert.equal(c.el.hidden, true);
-  // The chip went with the last source: the composer (#prompt) has the focus, not the body.
   assert.ok(document.activeElement === prompt, "focus on the composer");
   prompt.remove();
   c.done();
 });
 
-test("Unpair: a leg that fails stops it, named in a toast; the other leg stays and the chip with it", async () => {
-  const detached = [];
-  const sources = [row(), leg("inbox"), leg("outbox")];
-  const c = chipsControl({ list: async () => ({ sources }),
-                           detach: async (_id, name) => { detached.push(name); throw new Error("gone"); } });
+test("Unpair that fails says so in a toast; the chip stays", async () => {
+  const p = stubPeers();
+  const c = chipsControl({ list: async () => ({ sources: [row()] }), peers: () => p.model,
+                           unpair: async () => { throw new Error("gone"); } });
   await c.ctl.load("s1");
   c.el.querySelector('[data-name="peer:claude"]').click();
   c.pop.querySelector('[data-act="unpair"]').click();
   await c.settle();
   await c.settle();
-  assert.deepEqual(detached, ["claude-outbox"]);
-  assert.deepEqual(c.toasts, ["Can't detach claude-outbox: gone"]);
+  assert.deepEqual(c.toasts, ["Can't unpair Claude: gone"]);
   assert.equal(c.el.querySelector(".ctx-chip").textContent, "Claude · paired");
   c.done();
 });
 
 test("a detach that takes the focused chip gives the focus to the strip's next chip, or to focusAway when none is left", async () => {
-  let sources = [leg("inbox"), leg("outbox"), row()];
+  let sources = [row({ name: "ci" }), row()];
   const away = [];
   const el = document.createElement("div");
   document.body.append(el);
@@ -438,9 +459,9 @@ test("a detach that takes the focused chip gives the focus to the strip's next c
   const pop = document.getElementById("contextPopover");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   await ctl.load("s1");
-  el.querySelector('[data-name="peer:claude"]').click();
+  el.querySelector('[data-name="ci"]').click();
   sources = [row()];
-  pop.querySelector('[data-act="unpair"]').click();
+  pop.querySelector('[data-act="detach"]').click();
   await settle();
   await settle();
   assert.equal(document.activeElement?.dataset?.name, "pr-1");
@@ -457,7 +478,7 @@ test("a detach that takes the focused chip gives the focus to the strip's next c
 test("a peer popover's exchange row jumps to its send and Status card runs the peer's command, each closing it first", async () => {
   const done = [];
   const p = stubPeers([{ id: "s1", kind: "validate", title: "plan", at: new Date(NOW_MS - 60_000).toISOString(), state: "waiting" }]);
-  const c = chipsControl({ list: async () => ({ sources: [leg("inbox"), leg("outbox")] }), peers: () => p.model,
+  const c = chipsControl({ list: async () => ({ sources: [] }), peers: () => p.model,
                            peerActions: { status: () => "/claude", run: (line) => done.push(["run", line]), drawn: () => true,
                                           jump: (id) => done.push(["jump", id]) } });
   await c.ctl.load("s1");

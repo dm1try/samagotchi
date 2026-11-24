@@ -71,9 +71,11 @@ RSpec.describe Samagotchi::Web::App, "peers" do
       status, body = call(base)
       expect(status).to eq(200)
       peer = body["peers"].find { |row| row["name"] == "claude" }
-      expect(peer).to include("label" => "Claude", "from" => "claude-code", "can_send" => true, "inbox" => false, "outbox" => false)
+      expect(peer).to include("label" => "Claude", "from" => "claude-code", "address" => "/tmp/c.sock", "can_send" => true)
+      expect(peer.keys).not_to include("inbox", "outbox")
       expect(peer["paired_at"]).to match(/\A\d{4}-/)
-      expect(peer["messages"].map { |m| [m["serial"], m.dig("receipt", "state")] }).to eq([[2, "held"], [1, "ended"]])
+      expect(peer["messages"].map { |m| [m["serial"], m.dig("receipt", "state"), m["words"]] })
+        .to eq([[2, "held", "held · peer turns"], [1, "ended", "completed"]])
       expect(peer["exchanges"].find { |row| row["id"] == "s-a" }).to include("state" => "answered",
                                                                              "answer" => include("serial" => 1, "verdict" => "OK"))
       expect(JSON.generate(body)).not_to include("private answer")

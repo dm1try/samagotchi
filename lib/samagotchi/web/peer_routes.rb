@@ -24,21 +24,23 @@ module Samagotchi
 
       private
 
-      # GET /api/sessions/:id/peers → {peers: [{name, label, inbox, outbox,
-      # exchanges, paired_at, from, can_send, messages}]}: a row per peer
-      # with a mailbox folder. +exchanges+ joins chi's sends
-      # (peer_exchanges.jsonl) with the answers: the log's (an older
+      # GET /api/sessions/:id/peers → {peers: [{name, label, paired_at, from,
+      # address, can_send, messages, exchanges}]}: a row per peer with a
+      # mailbox folder (the peer chip's only feed). +exchanges+ joins chi's
+      # sends (peer_exchanges.jsonl) with the answers: the log's (an older
       # pairing's) and the mailbox's messages (PeerExchanges.joined,
-      # unchanged). +messages+: the newest (PeerRoster), with their
-      # receipts; no text anywhere.
+      # unchanged). +messages+: the newest (PeerRoster), with their receipts
+      # and the receipt in chi's words (+words+: PeerRoster.state_words,
+      # "held · peer turns"); no text anywhere.
       def handle_peers(_req, id)
         @session_class.load(id, state_dir: default_state_dir)
         entries = PeerExchanges.read(id, state_dir: default_state_dir).group_by { |entry| entry["peer"] }
         rows = {}
         PeerRoster.build(id, state_dir: default_state_dir).each do |peer|
           row = (rows[peer.name] ||= peer_row(peer.name))
-          row.merge!(paired_at: peer.paired_at, from: peer.from, can_send: peer.paired? && !peer.address.nil?,
-                     messages: peer.messages.map(&:to_h))
+          row.merge!(paired_at: peer.paired_at, from: peer.from, address: peer.address,
+                     can_send: peer.paired? && !peer.address.nil?,
+                     messages: peer.messages.map { |message| message.to_h.merge("words" => PeerRoster.state_words(message.receipt)) })
           (entries[peer.name] ||= []).concat(answer_entries(peer))
         end
         rows.each_value { |row| row[:exchanges] = PeerExchanges.joined(entries.fetch(row[:name], [])) }
@@ -46,8 +48,7 @@ module Samagotchi
       end
 
       def peer_row(peer)
-        { name: peer, label: PeerMailbox.label(peer), inbox: false, outbox: false, paired_at: nil, from: nil,
-          can_send: false, messages: [] }
+        { name: peer, label: PeerMailbox.label(peer), paired_at: nil, from: nil, address: nil, can_send: false, messages: [] }
       end
 
       # A peer's mailbox messages as the exchange log's answer lines.

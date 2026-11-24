@@ -2389,45 +2389,44 @@ test("a finished task's wake opens a turn: after a reload an earlier card keeps 
   await expect.poll(order).toEqual(["Read the flagged file", "card", "Start a task", "note"]);
 });
 
-// A paired peer's answer (claude-peer, attached as its pair script does)
-// wakes a turn with its text in the note: the bubble shows the text under
-// the summary (rendered markdown), the fold holds chi's lines without it,
-// no "Read the full answer", and the peer chip keeps no unread dot (the
-// inlined answer counts as read); live and after a reload.
-test("a peer's answer shows its text in the bubble, not in the fold; no 'Read the full answer', no unread dot; live and after a reload", async ({ page, script, chi }) => {
+// A peer through its mailbox (claude-peer, docs/peers.md): paired by chi
+// web's route, a message said with chi peer say that peer.turns 0 holds,
+// the bubble with its text, the chip's list saying what chi did with it
+// ("held · off"), then Unpair from the chip: one tap and a confirm, the
+// chip goes. One scene for the mechanism; the variants are unit tests.
+test("a peer's message through the mailbox: paired by the route, its bubble, the chip's list says held, Unpair", async ({ page, script, chi, configExtra }) => {
   chiCli(chi, ["bundle", "install", "claude-peer"]);
   try {
+    configExtra("peer:\n  turns: 0\n");
     script("plain");
     await send(page, "Say pong");
     await turnEnded(page, 1);
     const id = decodeURIComponent(new URL(page.url()).hash.replace(/^#\/s\//, ""));
-    chiCli(chi, ["context", "add", "claude-inbox", "--push", "--why", "the Claude Code session paired with you", "--hint", "/tmp/e2e-peer.sock", id]);
-    chiCli(chi, ["context", "push", "claude-inbox", "-m", JSON.stringify({ text: "Claude Code peer inbox", hint: "/tmp/e2e-peer.sock", summary: "paired" }), id]);
-    chiCli(chi, ["context", "add", "claude-outbox", "--push", "--why", "Claude's answers to what you sent it (claude-peer)", "--hint", "latest Claude reply", id]);
+    const pair = await page.request.post(new URL(`/api/sessions/${id}/peers/claude/pair`, page.url()).href,
+                                         { data: { address: "/tmp/e2e-peer.sock", from: "e2e" } });
+    expect(pair.status()).toBe(200);
+    await page.reload();
+    const chip = page.locator('.ctx-chip.peer[data-name="peer:claude"]');
+    await expect(chip).toHaveText("Claude · paired");
+
     const text = "1. **The route** misses a 404.\n2. `item_id` isn't checked.";
-    chiCli(chi, ["context", "push", "claude-outbox", "-m", JSON.stringify({ text, summary: "validate phase A: VERDICT CHANGES, 2 issues", wake: true, re: "s-ab12cd" }), id]);
+    const line = chiCli(chi, ["peer", "say", "claude", id, "--wake", "--summary", "validate phase A: VERDICT CHANGES, 2 issues",
+                              "-m", text, "--wait", "8"]);
+    expect(line.trim()).toBe("#1 received · held: peer.turns is 0 · waits for the user's next message");
     const bubble = page.locator("#history .bubble.note.peer-answer");
     await expect(bubble).toHaveCount(1);
-    await turnEnded(page, 2);
-    const check = async () => {
-      await expect(bubble).toHaveAttribute("data-peer-inline", "1");
-      await expect(bubble.locator(".note-text")).toHaveText("validate phase A: VERDICT CHANGES, 2 issues");
-      await expect(bubble.locator(".peer-text strong")).toHaveText("The route");
-      await expect(bubble.locator(".peer-text")).toContainText("isn't checked.");
-      await expect(bubble.locator(".peer-full")).toHaveCount(0);
-      const told = await bubble.locator(".peer-told-text").textContent();
-      expect(told).toContain("Its answer is above;");
-      expect(told).not.toContain("PEER MESSAGE");
-      expect(told).not.toContain("The route");
-      const chip = page.locator('.ctx-chip.peer[data-name="peer:claude"]');
-      await expect(chip).toHaveCount(1);
-      await expect(chip.locator(".ctx-dot")).toHaveCount(0);
-    };
-    await check();
-    await test.step("the turns read the same after a reload", async () => {
-      await expectSameAfterReload(page, ended(2));
-    });
-    await check();
+    await expect(bubble.locator(".note-text")).toHaveText("validate phase A: VERDICT CHANGES, 2 issues");
+    await expect(bubble.locator(".peer-text strong")).toHaveText("The route");
+    await expect(chip).toHaveText(/^Claude · answered/);
+    await chip.click();
+    const pop = page.locator("#contextPopover");
+    await expect(pop.locator(".pp-x-state")).toHaveText("changes · held · off");
+    await expect(pop.locator(".pp-x-what")).toHaveText("#1 · validate phase A: VERDICT CHANGES, 2 issues");
+    page.once("dialog", (dialog) => dialog.accept());
+    await pop.locator('[data-act="unpair"]').click();
+    await expect(chip).toHaveCount(0);
+    const peers = await (await page.request.get(new URL(`/api/sessions/${id}/peers`, page.url()).href)).json();
+    expect(peers.peers).toEqual([expect.objectContaining({ name: "claude", paired_at: null, messages: [expect.objectContaining({ serial: 1 })] })]);
   } finally {
     chiCli(chi, ["bundle", "uninstall", "claude-peer"]);
   }
