@@ -66,10 +66,11 @@ module Samagotchi
         return nil if signature == @mail_signature
 
         items = mail_items
-        recover_crashed_wake(items)
+        replayed = recover_crashed_wake(items)
         taken = items.select(&:taken?)
         asking = taken.select(&:asked).last
-        reason = hold || (mail_hold(asking) if asking)
+        @wakes.pause! if replayed && asking
+        reason = (replayed && asking ? :paused : hold) || (mail_hold(asking) if asking)
         if asking && reason.nil? && @wakes.in_grace?
           @mail_wake_waiting = true
           return nil
@@ -172,15 +173,15 @@ module Samagotchi
 
       # A note of this batch already in the conversation: written and saved
       # before a crash, its receipt not. A turn start among them goes back
-      # plain (#unmark_wake's way) and wakes pause, so its receipt is
-      # held: paused and no second wake turn starts for it.
+      # plain (#unmark_wake's way). Return whether any note was present so
+      # the batch cannot wake again even when its saved notes were plain.
       def recover_crashed_wake(items)
         ids = items.filter_map(&:note_id)
         present = Array(@session.messages).select { |m| ids.include?(m[:note_id]) }
-        return if present.empty?
+        return false if present.empty?
 
         marked_notes = present.select { |m| m[:turn_start] }
-        return if marked_notes.empty?
+        return true if marked_notes.empty?
 
         messages = @engine.messages_checkpoint
         marked_notes.each do |marked|
@@ -191,6 +192,7 @@ module Samagotchi
         @engine.rollback_to(messages)
         @wakes.pause!
         Log.warn(:peer, "mail_wake_recovered", notes: marked_notes.size)
+        true
       end
 
       def receipt_item(item) = PeerReceipts::Absorbed.new(peer: item.peer, serial: item.serial, asked: item.asked,

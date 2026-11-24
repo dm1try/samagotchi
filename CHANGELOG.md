@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Peer mail: a batch replayed after its notes were saved no longer starts a wake without a wake note.
 - Peer mail: label a wake turn with the peer that requested it, even when another peer's note arrives last.
 - Peer mail: refuse forged message files with multiline or otherwise unnormalized summaries.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not

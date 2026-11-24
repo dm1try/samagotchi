@@ -236,6 +236,22 @@ RSpec.describe "the worker's peer mail" do
       expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:paused)
     end
 
+    it "does not wake a replayed batch whose plain note was saved before its receipt" do
+      say("held")
+      inbound.absorb_mail(hold: :queued)
+      box = book.peer("claude").box
+      empty = Samagotchi::PeerReceipts::Peer.new(box: box, taken: 0, receipts: [])
+      Samagotchi::PeerReceipts.write(session.id, Samagotchi::PeerReceipts::Book.new(peers: { "claude" => empty }),
+                                     state_dir: state_dir)
+      say("new")
+      fresh = build_inbound(receipts: Samagotchi::PeerReceipts.new(session_id: session.id, state_dir: state_dir))
+
+      expect(fresh.absorb_mail).to be_nil
+      expect(saved_notes.map { |note| note[:turn_start] }).to eq([nil, nil])
+      expect(states).to eq(1 => %w[held paused], 2 => %w[held paused])
+      expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:paused)
+    end
+
     it "takes nothing before the conversation started, unless a turn is about to run" do
       session.messages = []
       say("early")
