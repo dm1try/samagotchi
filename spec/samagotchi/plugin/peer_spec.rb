@@ -286,13 +286,16 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
     it "says a pairing the old way (its context sources) must pair again, first; not paired otherwise" do
       expect(card[:body]).to start_with("**not paired.**")
-      own.add(Samagotchi::ContextSources::Source.new(name: "echo-outbox", cmd: nil, every_seconds: nil, why: "Echo",
-                                                     hint: nil, scope: "session", added_by: "cli",
-                                                     created_at: Time.now.utc.iso8601))
+      %w[echo-inbox echo-outbox].each do |name|
+        own.add(Samagotchi::ContextSources::Source.new(name: name, cmd: nil, every_seconds: nil, why: "Echo",
+                                                       hint: nil, scope: "session", added_by: "cli",
+                                                       created_at: Time.now.utc.iso8601))
+      end
       expect(card[:title]).to eq("echo-peer: not paired")
       expect(card[:body]).to start_with("**paired the old way: pair again** (install the skill first")
       pair
       expect(card[:body]).not_to include("the old way")
+      expect(own.sources.map(&:name)).not_to include("echo-inbox", "echo-outbox")
     end
   end
 

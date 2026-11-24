@@ -383,6 +383,14 @@ module Samagotchi
         sources(ctx).any? { |source| old.include?(source[:name]) }
       end
 
+      def remove_old_sources(ctx)
+        link = ctx.session_id && ctx.peers.link(self.class::PEER)
+        return unless link
+
+        location = ctx.context.send(:location)
+        [self.class::LEGACY_INBOX, self.class::LEGACY_OUTBOX].each { |name| location.remove(name) }
+      end
+
       def positive(value)
         number = Integer(value.to_s, 10, exception: false)
         number if number&.positive?
@@ -442,6 +450,7 @@ module Samagotchi
       def status(ctx)
         peer = self.class
         id = ctx.session_id
+        remove_old_sources(ctx)
         link = id && ctx.peers.link(peer::PEER)
         address = link&.address.to_s.strip
         lines = if link && !address.empty?
