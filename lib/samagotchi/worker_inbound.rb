@@ -352,11 +352,14 @@ module Samagotchi
     # the peer budget (WorkerWakes#peer_open?). The others stay plain notes.
     # Within the start grace a change is a note: it came while the session
     # was away. A peer's answer held by either budget is announced once.
+    # Both gates read WorkerWakes#wake_hold, and so does
+    # #context_wake_waiting_for?.
     def context_wake_for(batch, now: Time.now)
       candidates = batch.deliveries.select(&:wake_note)
       return nil if candidates.empty? || !context_wakes_on?
 
-      unless @wakes.context_open?(awaiting_continue: @awaiting_continue.call, names: candidates.map(&:name))
+      awaiting = @awaiting_continue.call
+      unless @wakes.context_open?(awaiting_continue: awaiting, names: candidates.map(&:name))
         peer_held(candidates.find(&:peer), ChildRing::MAX_WAKES_KEY) if @wakes.spent?
         return nil
       end
@@ -365,7 +368,7 @@ module Samagotchi
       waking = candidates.select do |delivery|
         next !woke_lately?(delivery.subscription, now) unless delivery.peer
 
-        next true if @wakes.peer_open?(name: delivery.name)
+        next true if @wakes.peer_open?(awaiting_continue: awaiting, name: delivery.name)
 
         held << delivery
         false
@@ -374,15 +377,23 @@ module Samagotchi
       waking.first
     end
 
+    # Whether a wake in +batch+ would run but for the start grace: the
+    # context gate open apart from it (WorkerWakes#context_ready?), and a
+    # candidate the peer budget (a peer's: WorkerWakes#wake_hold, unlogged)
+    # or the 10-minute window (another's) lets through.
     def context_wake_waiting_for?(batch)
       return false unless @wakes.in_grace?
 
       candidates = batch.deliveries.select(&:wake_note)
       return false if candidates.empty? || !context_wakes_on?
-      return false unless @wakes.context_ready?(awaiting_continue: @awaiting_continue.call, names: candidates.map(&:name))
+
+      awaiting = @awaiting_continue.call
+      return false unless @wakes.context_ready?(awaiting_continue: awaiting, names: candidates.map(&:name))
 
       candidates.any? do |delivery|
-        delivery.peer ? @wakes.peer_in_a_row < @wakes.peer_turns : !woke_lately?(delivery.subscription, Time.now)
+        next !woke_lately?(delivery.subscription, Time.now) unless delivery.peer
+
+        @wakes.wake_hold(awaiting_continue: awaiting, peer: true).nil?
       end
     end
 

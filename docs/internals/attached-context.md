@@ -114,7 +114,10 @@ session's own pushed source (`first_text_wakes?`). Whether it *runs* is the work
 `WorkerInbound#context_wake_for` applies `context.wake`, `WorkerWakes#context_open?` (no continue offer, not paused,
 under `session.max_wakes`, past the start grace), and the per-source `CONTEXT_WAKE_WINDOW` (600 s, from
 `Subscription#wakes_at`); `Worker#pass` calls it only with nothing queued and no exit requested. A failed or
-stopped wake turn is rolled back (`unmark_wake`) to a plain note.
+stopped wake turn is rolled back (`unmark_wake`) to a plain note. The budget gates (`context_open?`, `context_ready?`,
+`peer_open?`, and `WorkerInbound#context_wake_waiting_for?`'s peer check) read one answer,
+`WorkerWakes#wake_hold(awaiting_continue:, peer:)`: nil or the first hold of `:paused`, `:continue`, `:max_wakes`,
+`:peer_turns`, apart from the start grace (the callers'). It logs nothing; `context_wake_held` is the callers' line.
 
 **Peers.** `PeerSources` (the peer bundles' in-process declaration, `chi.peer_source`) marks a pushed session source
 as a peer's answers; `peer_label` then needs `context.peer_turns` > 0. A peer delivery has no 10-minute window; its
