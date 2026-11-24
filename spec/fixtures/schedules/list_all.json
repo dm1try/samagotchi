@@ -37,7 +37,10 @@
       }
     ],
     "recurrence_words": "2026-11-20 08:00",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Dentist",
+    "state": "off",
+    "off_reason": "missed"
   },
   {
     "id": "b8c9d0e1",
@@ -83,7 +86,10 @@
       }
     ],
     "recurrence_words": "2026-11-18 09:00",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Quarterly",
+    "state": "off",
+    "off_reason": "done"
   },
   {
     "id": "c9d0e1f2",
@@ -116,7 +122,10 @@
     "disabled_notice": null,
     "history": [],
     "recurrence_words": "2026-11-25 11:50",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Standup",
+    "state": "firing",
+    "off_reason": null
   },
   {
     "id": "e5f6a7b8",
@@ -156,7 +165,10 @@
       }
     ],
     "recurrence_words": "2026-11-23 15:00",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Release notes",
+    "state": "off",
+    "off_reason": "done"
   },
   {
     "id": "f6a7b8c9",
@@ -196,7 +208,10 @@
       }
     ],
     "recurrence_words": "2026-11-22 10:00",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Demo prep",
+    "state": "off",
+    "off_reason": "failures"
   },
   {
     "id": "d4e5f6a7",
@@ -236,7 +251,10 @@
       }
     ],
     "recurrence_words": "every 1d",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Nightly build",
+    "state": "off",
+    "off_reason": "failures"
   },
   {
     "id": "c3d4e5f6",
@@ -287,7 +305,10 @@
       }
     ],
     "recurrence_words": "every 30m",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Pod logs",
+    "state": "off",
+    "off_reason": "skips"
   },
   {
     "future_key": {
@@ -336,7 +357,10 @@
       }
     ],
     "recurrence_words": "every 1h",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Heartbeat",
+    "state": "on",
+    "off_reason": null
   },
   {
     "id": "d0e1f2a3",
@@ -376,7 +400,10 @@
       }
     ],
     "recurrence_words": "every 2h",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "Inbox",
+    "state": "firing",
+    "off_reason": null
   },
   {
     "id": "b2c3d4e5",
@@ -423,6 +450,9 @@
       }
     ],
     "recurrence_words": "Mon 09:00",
-    "skip_window": "≈1 h at a 5 min tick"
+    "skip_window": "≈1 h at a 5 min tick",
+    "name": "\"Write the weekly recap of the …\"",
+    "state": "off",
+    "off_reason": "owner"
   }
 ]

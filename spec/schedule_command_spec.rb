@@ -263,7 +263,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(error).to eq("#{tick_warning}\n")
     end
 
-    it "--format json carries the title, and never the quoted prompt stand-in" do
+    it "--format json carries the title as given, the quoted prompt stand-in only as the name" do
       id = session
       titled = schedules.add(target: id, title: "Audit", prompt: "Audit the open PRs", recurrence: every)
       untitled = schedules.add(target: id, prompt: "Check the pod logs, then write a recap", recurrence: every)
@@ -275,7 +275,9 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(rows.find { |row| row["id"] == titled.id }["title"]).to eq("Audit")
       expect(rows.find { |row| row["id"] == untitled.id }["title"]).to be_nil
       expect(rows.find { |row| row["id"] == untitled.id }["prompt"]).to eq("Check the pod logs, then write a recap")
-      expect(rows.flat_map(&:values)).not_to include("\"Check the pod logs, then write…\"")
+      expect(rows.find { |row| row["id"] == untitled.id }["name"]).to eq("\"Check the pod logs, then write…\"")
+      expect(rows.find { |row| row["id"] == titled.id }["name"]).to eq("Audit")
+      expect(rows.flat_map { |row| row.except("name").values }).not_to include("\"Check the pod logs, then write…\"")
     end
   end
 
