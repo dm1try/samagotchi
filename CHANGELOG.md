@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi schedule show ID` lists the schedule's last 20 outcomes, newest first (fired, skipped, failed, missed, your
+  enable and disable), each with its reason and session; `list --format json` has them as `history`.
+
 ### Changed
 
 - A schedule turned off by its skip or failure budget notifies the phone whatever ran the tick: a cron

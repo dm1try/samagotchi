@@ -301,6 +301,36 @@ RSpec.describe Samagotchi::ScheduleCommand do
                                  "  prompt: Audit the queue")
     end
 
+    it "prints the run history newest first, one line each in local time; list's JSON carries it" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every)
+      status, printed, = run("show", entry.id)
+      expect(status).to eq(0)
+      expect(printed).to end_with("  history: -\n")
+
+      first = Time.utc(2026, 11, 24, 9, 0)
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].first["history"] = [
+        { "at" => first.iso8601, "status" => "skipped", "detail" => "a turn is running in it", "session_id" => id },
+        { "at" => (first + 300).iso8601, "status" => "fired", "detail" => "turn completed", "session_id" => id },
+        { "at" => (first + 600).iso8601, "status" => "disabled", "detail" => nil, "session_id" => nil }
+      ]
+      File.write(schedules.path, JSON.generate(data))
+
+      status, printed, error = run("show", entry.id)
+      expect(status).to eq(0), error
+      local = ->(time) { time.localtime.strftime("%Y-%m-%d %H:%M") }
+      expect(printed).to end_with(
+        "  history (newest first):\n    " \
+        "#{local.call(first + 600)}  disabled\n    " \
+        "#{local.call(first + 300)}  fired  turn completed  #{id[0, 8]}\n    " \
+        "#{local.call(first)}  skipped  a turn is running in it  #{id[0, 8]}\n"
+      )
+
+      _, printed, = run("list", "--format", "json")
+      expect(JSON.parse(printed).first["history"].map { |row| row["status"] }).to eq(%w[skipped fired disabled])
+    end
+
     it "shows the last turn failure reason in list and show" do
       id = session
       entry = schedules.add(target: id, prompt: "Audit", recurrence: every)

@@ -313,6 +313,9 @@ RSpec.describe Samagotchi::Schedules do
       data["version"] = 2
       data["future_field"] = { "kept" => true }
       data["schedules"].first["future_field"] = ["whatever a later chi adds"]
+      seeded = { "at" => "2026-11-24T10:00:00Z", "status" => "skipped", "detail" => "busy", "session_id" => id,
+                 "by" => "a later chi's field" }
+      data["schedules"].first["history"] = [seeded]
       File.write(schedules.path, JSON.generate(data))
 
       schedules.disable(entry.id)
@@ -323,6 +326,8 @@ RSpec.describe Samagotchi::Schedules do
       expect(rewritten["version"]).to eq(2)
       expect(rewritten["future_field"]).to eq("kept" => true)
       expect(rewritten["schedules"].first["future_field"]).to eq(["whatever a later chi adds"])
+      expect(rewritten["schedules"].first["history"].first).to eq(seeded)
+      expect(rewritten["schedules"].first["history"].map { |row| row["status"] }).to eq(%w[skipped disabled enabled])
     end
   end
 
@@ -333,10 +338,12 @@ RSpec.describe Samagotchi::Schedules do
       dir = File.join(root, "sessions")
       schedules = store(dir)
       entry = schedules.add(target: session(dir).id, prompt: "Audit", recurrence: every("1m"))
-      added = %i[disabled_notice]
+      added = %i[disabled_notice history]
       notice = { "kind" => "skipped", "count" => 12, "reason" => "busy", "at" => "2026-11-24T10:00:00Z" }
+      history = [{ "at" => "2026-11-24T10:00:00Z", "status" => "skipped", "detail" => "busy", "session_id" => nil }]
       data = JSON.parse(File.read(schedules.path))
       data["schedules"].first["disabled_notice"] = notice
+      data["schedules"].first["history"] = history
       File.write(schedules.path, JSON.generate(data))
 
       older = Samagotchi::StateFormat.new(
@@ -347,12 +354,13 @@ RSpec.describe Samagotchi::Schedules do
       read = older.read(JSON.parse(File.read(schedules.path)), collection: "schedules")
       record = read.entries.first
       expect(record).to be_readable
-      expect(record.extra).to include("disabled_notice" => notice)
+      expect(record.extra).to include("disabled_notice" => notice, "history" => history)
 
       changed = record.with(attributes: record.attributes.merge(enabled: false))
       body = older.write(read.with(entries: [changed]), collection: "schedules", updated_at: nil)
       File.write(schedules.path, JSON.generate(body))
-      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, disabled_notice: notice.transform_keys(&:to_sym))
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, disabled_notice: notice.transform_keys(&:to_sym),
+                                                            history: history.map { |row| row.transform_keys(&:to_sym) })
     end
   end
 
@@ -1230,6 +1238,131 @@ RSpec.describe Samagotchi::Schedules do
         original.call(&block)
       end
       expect([schedules.cancel(entry.id), schedules.enable(entry.id), schedules.disable(entry.id)]).to eq([nil, nil, nil])
+    end
+  end
+
+  describe "the run history (`history`, chi schedule show)" do
+    def gone(dir, id)
+      FileUtils.rm_f(Samagotchi::Session.session_file(id, state_dir: dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(id, state_dir: dir))
+    end
+
+    def busy(dir, id)
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(id, state_dir: dir), prompt: "wait for me")
+    end
+
+    def rows(schedules, id) = schedules.lookup(id).history.map { |row| row.slice(:status, :detail, :session_id) }
+
+    it "writes one skipped row per skip, its detail saying when the budget turned it off" do
+      Dir.mktmpdir("schedules-history-skip") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 2)
+        expect(entry.history).to eq([])
+        busy(dir, anchor)
+        at = Time.now + 120
+        schedules.tick(now: at)
+        expect(schedules.lookup(entry.id).history).to eq([
+          { at: at.utc.iso8601, status: "skipped", detail: "a prompt is queued for it", session_id: anchor }
+        ])
+
+        schedules.tick(now: at + 60)
+        expect(rows(schedules, entry.id).last).to eq(status: "skipped", detail: "disabled: a prompt is queued for it",
+                                                     session_id: anchor)
+        expect(schedules.lookup(entry.id).history.size).to eq(2)
+      end
+    end
+
+    it "writes one fired row when a firing settles, none while it is pending" do
+      Dir.mktmpdir("schedules-history-fired") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Check", recurrence: every("1d"), mode: "same")
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+          Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: { "enqueued_id" => "turn" })
+        )
+        started_at = Time.iso8601(entry.next_due) + 1
+        expect(schedules.tick(now: started_at).outcomes.first.status).to eq("pending")
+        expect(schedules.lookup(entry.id).history).to eq([])
+
+        saved = Samagotchi::Session.load(anchor, state_dir: dir)
+        saved.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: (started_at + 1).iso8601, enqueued_id: "turn")
+        saved.save(state_dir: dir)
+        schedules.tick(now: started_at + 2)
+        schedules.tick(now: started_at + 3)
+
+        expect(rows(schedules, entry.id)).to eq([{ status: "fired", detail: "turn completed", session_id: anchor }])
+      end
+    end
+
+    it "writes one failed row per failure" do
+      Dir.mktmpdir("schedules-history-failed") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 2)
+        gone(dir, anchor)
+        2.times { schedules.tick(now: Time.now + 120) }
+
+        expect(rows(schedules, entry.id).map { |row| row.slice(:status, :detail) }).to eq([
+          { status: "failed", detail: "the chain is gone" },
+          { status: "failed", detail: "disabled: the chain is gone" }
+        ])
+      end
+    end
+
+    it "writes one missed row for an occurrence catch_up: none passes over" do
+      Dir.mktmpdir("schedules-history-missed") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), catch_up: "none")
+        schedules.tick(now: Time.iso8601(entry.next_due) + 180)
+
+        expect(rows(schedules, entry.id)).to eq([{ status: "missed", detail: "past its time", session_id: anchor }])
+      end
+    end
+
+    it "writes the owner's disable and enable, and a run-now refusal of a disabled entry without moving its counters" do
+      Dir.mktmpdir("schedules-history-owner") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1h"))
+        schedules.disable(entry.id)
+        busy(dir, anchor)
+        expect(schedules.run_now(entry.id).status).to eq("skipped")
+        schedules.enable(entry.id)
+
+        expect(rows(schedules, entry.id)).to eq([
+          { status: "disabled", detail: nil, session_id: nil },
+          { status: "skipped", detail: "a prompt is queued for it", session_id: anchor },
+          { status: "enabled", detail: nil, session_id: nil }
+        ])
+        expect(schedules.lookup(entry.id).skips).to eq(0)
+      end
+    end
+
+    it "keeps the last 20 rows, newest last, each detail clipped, read back with symbol keys" do
+      Dir.mktmpdir("schedules-history-cap") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_skips: 100)
+        busy(dir, anchor)
+        long = "x" * 500
+        allow(schedules).to receive(:check).and_return([:skip, long])
+        25.times { |step| schedules.tick(now: Time.now + 120 + step) }
+
+        history = schedules.lookup(entry.id).history
+        expect(history.size).to eq(described_class::HISTORY_MAX)
+        expect(history.map { |row| row[:at] }).to eq(history.map { |row| row[:at] }.sort)
+        expect(history.first[:detail].length).to eq(described_class::DETAIL_MAX)
+        stored = JSON.parse(File.read(schedules.path))["schedules"].first["history"]
+        expect(stored.first.keys).to eq(%w[at status detail session_id])
+      end
     end
   end
 

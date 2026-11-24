@@ -24,6 +24,7 @@ require_relative "session_row"
 require_relative "state_format"
 require_relative "turn_checkpoint"
 require_relative "worker_link"
+require_relative "schedules/history_part"
 require_relative "schedules/notices_part"
 require_relative "schedules/recurrence"
 
@@ -52,6 +53,7 @@ module Samagotchi
   # read-modify-write, never across the action: SessionContinue.run waits up to
   # 30 s for a recap and 5 s for an archive, and an `add` must not wait on it.
   class Schedules
+    include HistoryPart
     include NoticesPart
 
     FILE = "schedules.json"
@@ -100,7 +102,7 @@ module Samagotchi
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
                         :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
                         :firing_since, :firing_token, :pending_session_id, :pending_turn_id, :failures, :skips, :enabled,
-                        :created_at, :disabled_notice, :extra) do
+                        :created_at, :disabled_notice, :history, :extra) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once
       # (the disabled notice too, whose fields the claim hands on as is).
@@ -110,6 +112,7 @@ module Samagotchi
         fields[:recurrence] = recurrence.transform_keys(&:to_sym) if recurrence.is_a?(Hash)
         notice = fields[:disabled_notice]
         fields[:disabled_notice] = notice.is_a?(Hash) ? notice.transform_keys(&:to_sym) : nil
+        fields[:history] = HistoryPart.rows(fields[:history])
         new(**fields, extra: record.extra)
       end
 
@@ -171,6 +174,8 @@ module Samagotchi
         # turned it off and no chi web has pushed that yet
         # (#claim_disabled_notices). Set by whichever ticker disabled it.
         StateFormat.added(:disabled_notice, in_version: VERSION, default: nil),
+        # The last outcomes, newest last (HistoryPart).
+        StateFormat.added(:history, in_version: VERSION, default: []),
         StateFormat.extra(:extra, in_version: VERSION)
       ],
       document_members: [StateFormat.added(:last_tick_at, in_version: VERSION, default: nil)]
@@ -312,7 +317,7 @@ module Samagotchi
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
         last_fired: nil, last_result: nil, firing_since: nil, firing_token: nil, pending_session_id: nil,
         pending_turn_id: nil, failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601,
-        disabled_notice: nil, extra: {}
+        disabled_notice: nil, history: [], extra: {}
       )
       write_under_lock { |file| file.entries << entry }
       entry
@@ -524,7 +529,7 @@ module Samagotchi
           kind, reason = verdict
           status = kind == :skip ? "skipped" : "failed"
           updated = status == "skipped" ? skipped(current, reason, now: now) : failed(current, reason, now: now) if current.enabled
-          updated ||= current.with(last_result: reason)
+          updated ||= with_history(current.with(last_result: reason), status, reason, at: now, session_id: current.head)
           file.entries[position] = updated
           outcome = Outcome.new(id: current.id, title: current.title, status: status, detail: reason, entry: updated)
           next
@@ -629,7 +634,8 @@ module Samagotchi
           file.entries[position] = nil
           file.entries.compact!
         else
-          changed = file.entries[position].with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
+          word = enabled ? "enabled" : "disabled"
+          changed = with_history(file.entries[position].with(enabled: enabled, last_result: word), word, nil, at: @clock.call)
           # Enabled again with a fresh budget: its next skip must not end it at
           # once, and the turn-off it was disabled by is no news any more.
           result = file.entries[position] = enabled ? changed.with(skips: 0, failures: 0, disabled_notice: nil) : changed
@@ -706,11 +712,12 @@ module Samagotchi
     # is disabled — `late?` never sends a one-off here, but a spent `date` entry
     # arriving from an older file is still spent.
     def reschedule(entry, now)
+      missed = with_history(entry, "missed", "past its time", at: now, session_id: entry.head)
       if entry.recurrence[:kind] == "date"
-        entry.with(next_due: nil, last_result: "missed", firing_since: nil, firing_token: nil, enabled: false)
+        missed.with(next_due: nil, last_result: "missed", firing_since: nil, firing_token: nil, enabled: false)
       else
-        entry.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601, last_result: "missed",
-                   firing_since: nil, firing_token: nil)
+        missed.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601, last_result: "missed",
+                    firing_since: nil, firing_token: nil)
       end
     end
 
@@ -735,7 +742,7 @@ module Samagotchi
       updated = entry.with(skips: skips, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
                            last_result: within_budget ? "skipped" : "disabled: #{reason}",
                            enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
-      with_disabled_notice(entry, updated, "skipped", reason, now)
+      recorded(entry, updated, "skipped", reason, now)
     end
 
     def failed(entry, reason, now: @clock.call)
@@ -744,7 +751,7 @@ module Samagotchi
       updated = entry.with(failures: failures, firing_since: nil, firing_token: nil, pending_session_id: nil,
                            pending_turn_id: nil, last_result: reason,
                            enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
-      with_disabled_notice(entry, updated, "failed", reason, now)
+      recorded(entry, updated, "failed", reason, now)
     end
 
     def pending_detail(entry)
@@ -837,8 +844,9 @@ module Samagotchi
 
     def finish_pending(entry, outcome, now: @clock.call)
       if outcome.status == "fired"
-        entry.with(firing_since: nil, firing_token: nil, due_was: nil, pending_session_id: nil, pending_turn_id: nil,
-                   last_result: outcome.detail, failures: 0, skips: 0)
+        settled = entry.with(firing_since: nil, firing_token: nil, due_was: nil, pending_session_id: nil, pending_turn_id: nil,
+                             last_result: outcome.detail, failures: 0, skips: 0)
+        with_history(settled, "fired", outcome.detail, at: now, session_id: entry.pending_session_id)
       else
         updated = failed(entry, outcome.detail, now: now).with(due_was: nil)
         entry.recurrence[:kind] == "date" ? updated.with(enabled: false) : updated
@@ -1127,9 +1135,10 @@ module Samagotchi
                     # skips spread over months do not kill a healthy schedule.
                     # A `date` schedule is a one-off: `advance` already left it
                     # with no next_due and disabled, and a firing keeps it so.
-                    stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil, firing_token: nil,
-                                pending_session_id: nil, pending_turn_id: nil,
-                                failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
+                    fired = stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil,
+                                        firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
+                                        failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
+                    with_history(fired, "fired", outcome.detail, at: now, session_id: outcome.entry.head)
                   when "skipped"
                     skipped(stored, outcome.detail, now: now).with(firing_since: nil)
                   else

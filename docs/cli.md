@@ -457,7 +457,7 @@ chi schedule add --continues 3f9a1c2e --every 30m --mode same -m "Check the buil
 
 chi schedule list                # id  name  mode  recurrence  next due  target  [skips 3 of 12 (≈1 h at a 5 min tick)]
 chi schedule list --all --format json     # the disabled ones and the fired one-offs too
-chi schedule show 4b7e9a         # the entry in full: anchor, head, prompt, counters
+chi schedule show 4b7e9a         # the entry in full: anchor, head, prompt, counters, its last 20 outcomes
 chi schedule tick                # fire everything due; quiet when nothing is
 chi schedule tick --dry-run      # print what would fire, change nothing
 chi schedule run-now 4b7e9a      # fire it now, whatever its next_due says

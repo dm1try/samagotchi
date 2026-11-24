@@ -177,9 +177,22 @@ module Samagotchi
       @stdout.puts("  skips: #{entry.skips} of #{entry.max_skips}  failures: #{entry.failures} of #{entry.max_failures}")
       @stdout.puts("  keep_links: #{entry.keep_links}  enabled: #{entry.enabled}")
       @stdout.puts("  prompt: #{entry.prompt}")
+      print_history(entry)
       CLI::Exit::OK
     rescue Schedules::Usage => e
       usage_error(e.message)
+    end
+
+    # The last outcomes (Schedules::HistoryPart), newest first: when, what,
+    # why, and the session it acted on.
+    def print_history(entry)
+      return @stdout.puts("  history: -") if entry.history.empty?
+
+      @stdout.puts("  history (newest first):")
+      entry.history.reverse_each do |row|
+        line = [clock(row[:at]), row[:status], row[:detail], row[:session_id]&.slice(0, 8)].compact.reject { |part| part.to_s.empty? }
+        @stdout.puts("    #{line.join("  ")}")
+      end
     end
 
     def tick

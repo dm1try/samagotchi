@@ -197,6 +197,12 @@ tick is about an hour of patience, which is what the count really measures.
 `chi schedule enable` resets both counters too: a schedule turned back on gets its
 whole budget again, not one skip.
 
+`chi schedule show ID` ends with the entry's last 20 outcomes, newest first, one
+line each in local time: `fired`, `skipped`, `failed`, `missed`, your `enabled` and
+`disabled`, with the reason and the session it acted on (a skip or
+failure that used up the budget says `disabled: <reason>`). `list --format json` has
+them as each entry's `history` (and an unpushed turn-off as `disabled_notice`).
+
 A recurring schedule the owner has disabled stays off when an in-flight skip or
 failure is recorded. A `date` one-off is the exception: a skip or failure puts its
 moment back and re-enables it. `run-now` still tries a disabled schedule, but a
