@@ -120,8 +120,8 @@ module Samagotchi
       # The peers' messages it hadn't read, as one note (PeerContinue): the
       # pairing and the mailbox stay with the previous link (its store rows
       # say so), the peer pairs again. No undo: a note written into the link
-      # only, which goes with its delete; the previous link's mailbox and
-      # receipts are only read.
+      # only, which is excluded from NoteMove's give-back and goes with its
+      # delete; the previous link's mailbox and receipts are only read.
       CarryStep.new(name: :peers, store: :session_files, carry: :carry_peers, undo: {}, files: []),
       # Its waiting notes last: the carry above read a pending /objectives
       # edit from them first. They keep their names, so they still sort

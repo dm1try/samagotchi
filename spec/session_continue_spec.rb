@@ -716,6 +716,16 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(said).to have_attributes(status: :continued, next_id: link.id)
       expect(said.line("claude")).to eq("this session was continued as #{link.id}: say it there")
     end
+
+    it "does not give the peer-messages note back when the new worker fails to spawn" do
+      mailbox.pair(previous.id, "claude", address: "/tmp/c.sock", from: "spec", state_dir: tmpdir)
+      say("held one")
+      allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+
+      expect(notes_of(previous.id).map { |note| note[:source] }).not_to include(Samagotchi::PeerContinue::NOTE_SOURCE)
+    end
   end
 
   describe "moving the attached context to the new link" do
