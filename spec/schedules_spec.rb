@@ -96,6 +96,53 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  describe "#listing" do
+    around do |example|
+      Dir.mktmpdir("schedules-listing") do |root|
+        @root = root
+        @store = described_class.new(state_dir: File.join(root, "sessions"), clock: -> { Time.utc(2026, 11, 25, 12) })
+        example.run
+      end
+    end
+
+    before do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("schedule.auto_tick").and_return(false)
+      allow(Samagotchi::Config).to receive(:get).with("schedule.tick_interval_minutes").and_return(5)
+    end
+
+    def fixture_store
+      FileUtils.cp(File.expand_path("fixtures/schedules/listing_store.json", __dir__), @store.path)
+    end
+
+    it "lists every readable entry, the earliest due first, the unreadable ones' ids, and the tick warning" do
+      fixture_store
+      listing = @store.listing
+      expect(listing.entries.map(&:id)).to eq(@store.entries(include_disabled: true).map(&:id))
+      expect(listing.entries.size).to eq(10)
+      expect(listing.unreadable_ids).to eq(["e1f2a3b4", nil])
+      expect(listing.warning).to eq(@store.tick_warning)
+      expect(listing.warning).to include("no schedule tick in the last 10 minutes")
+    end
+
+    it "reads the file and nothing else: no lock, no write, no notice claimed" do
+      fixture_store
+      before = [File.binread(@store.path), File.stat(@store.path).ino]
+      @store.listing
+      expect([File.binread(@store.path), File.stat(@store.path).ino]).to eq(before)
+      expect(File.exist?(@store.lock_path)).to be(false)
+      expect(JSON.parse(File.read(@store.path))["schedules"].find { |entry| entry.is_a?(Hash) && entry["disabled_notice"] })
+        .not_to be_nil
+    end
+
+    it "is empty with no file, and raises Corrupt with its own words for one that isn't JSON" do
+      expect(@store.listing.to_h.slice(:entries, :unreadable_ids)).to eq(entries: [], unreadable_ids: [])
+      File.write(@store.path, "{not json")
+      expect { @store.listing }.to raise_error(described_class::Corrupt, /schedules\.json is not readable JSON .*: fix or remove it/)
+      expect(@store.entries).to eq([])
+    end
+  end
+
   it "writes every entry under the lock, so two writers in flight lose nothing" do
     Dir.mktmpdir("schedules-lock") do |root|
       dir = File.join(root, "sessions")

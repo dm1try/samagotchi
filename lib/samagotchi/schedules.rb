@@ -27,6 +27,7 @@ require_relative "worker_link"
 require_relative "schedules/busy_part"
 require_relative "schedules/edit_part"
 require_relative "schedules/history_part"
+require_relative "schedules/listing_part"
 require_relative "schedules/notices_part"
 require_relative "schedules/protection_part"
 require_relative "schedules/recurrence"
@@ -59,6 +60,7 @@ module Samagotchi
     include BusyPart
     include EditPart
     include HistoryPart
+    include ListingPart
     include NoticesPart
     include ProtectionPart
 
@@ -512,20 +514,6 @@ module Samagotchi
       value.positive? ? value : 5
     end
 
-    def tick_warning(now: @clock.call)
-      return if Config.get("schedule.auto_tick")
-
-      last_tick_at = read.attributes[:last_tick_at]
-      stale_after = self.class.tick_interval_minutes * 120
-      return if last_tick_at && now - Time.iso8601(last_tick_at.to_s) <= stale_after
-
-      "Warning: no schedule tick in the last #{stale_after / 60} minutes; set schedule.auto_tick: true or " \
-        "run `chi schedule tick` from cron."
-    rescue ArgumentError
-      "Warning: no schedule tick in the last #{self.class.tick_interval_minutes * 2} minutes; " \
-        "set schedule.auto_tick: true or run `chi schedule tick` from cron."
-    end
-
     private
 
     # The chains as they are now, over one session listing (SessionChain::Links):
@@ -535,7 +523,7 @@ module Samagotchi
 
     # @param strict [Boolean] a file that is not readable JSON raises rather
     #   than reading as empty: a write starting from an empty list would rewrite
-    #   the file and lose every schedule on it. Listing stays lenient.
+    #   the file and lose every schedule on it. #entries stays lenient.
     def read(strict: false)
       return FORMAT.read({}, collection: "schedules") unless File.exist?(path)
 

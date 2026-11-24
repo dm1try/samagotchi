@@ -49,7 +49,7 @@
 - rule: 1
   file: lib/samagotchi/schedules/*.rb
   constant: Samagotchi::Schedules::[A-Z][A-Z_]*
-  reason: schedules.rb requires its parts (Schedules::<Concern>Part, the busy, edit, history, notices and protection parts; recurrence.rb).
+  reason: schedules.rb requires its parts (Schedules::<Concern>Part, the busy, edit, history, listing, notices and protection parts; recurrence.rb).
 - rule: 1
   file: lib/samagotchi/schedules/*.rb
   constant: Samagotchi::Schedules::Usage
