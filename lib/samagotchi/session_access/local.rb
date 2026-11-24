@@ -553,7 +553,15 @@ module Samagotchi
         end
         return PeerPaired.new(status: :old_worker) if old_peer_worker?(id)
 
-        PeerPaired.new(status: :paired, link: PeerMailbox.pair(id, peer, address: address, from: from, state_dir: state_dir!))
+        link = PeerMailbox.pair(id, peer, address: address, from: from, state_dir: state_dir!)
+        location = ContextSources.session_location(id, state_dir: state_dir!)
+        # These are exactly the bundles' LEGACY_INBOX and LEGACY_OUTBOX names.
+        ["#{peer}-inbox", "#{peer}-outbox"].each do |name|
+          location.remove(name)
+        rescue SystemCallError
+          nil
+        end
+        PeerPaired.new(status: :paired, link: link)
       end
 
       # Ends the pairing (link.json); the messages stay.

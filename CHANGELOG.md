@@ -46,7 +46,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- Pairing claude-peer or codex-peer through the mailbox removes that peer's old inbox/outbox context sources.
+- Pairing claude-peer or codex-peer again removes that peer's old inbox/outbox context sources (their chips).
 - The system prompt names the real system memories folder when the config lives outside ~/.config.
 - chi web: a message an agent or visitor sent keeps its "agent NAME" label after a reload.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not

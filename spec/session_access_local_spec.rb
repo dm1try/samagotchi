@@ -43,6 +43,42 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: wake, hint: nil)
   end
 
+  describe "#peer_pair" do
+    it "removes only the paired peer's legacy context sources after pairing" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      %w[claude-inbox claude-outbox unrelated].each { |name| push_source(own, name) }
+
+      expect(access.peer_pair(session.id, "claude", address: nil, from: "spec").status).to eq(:paired)
+      expect(own.sources.map(&:name)).to eq(["unrelated"])
+    end
+
+    it "leaves every legacy and unrelated source after a continued or old-worker refusal" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      names = %w[claude-inbox claude-outbox unrelated]
+      names.each { |name| push_source(own, name) }
+
+      allow(access).to receive(:continued_as).with(session.id).and_return("continued-id")
+      expect(access.peer_pair(session.id, "claude", address: nil, from: "spec").status).to eq(:continued)
+      expect(own.sources.map(&:name)).to eq(names)
+
+      allow(access).to receive(:continued_as).with(session.id).and_return(nil)
+      allow(access).to receive(:old_peer_worker?).with(session.id).and_return(true)
+      expect(access.peer_pair(session.id, "claude", address: nil, from: "spec").status).to eq(:old_worker)
+      expect(own.sources.map(&:name)).to eq(names)
+    end
+
+    it "does not remove another peer's legacy context sources" do
+      session = saved_session
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      %w[claude-inbox claude-outbox unrelated].each { |name| push_source(own, name) }
+
+      expect(access.peer_pair(session.id, "codex", address: nil, from: "spec").status).to eq(:paired)
+      expect(own.sources.map(&:name)).to eq(%w[claude-inbox claude-outbox unrelated])
+    end
+  end
+
   describe "#deliver_turn" do
     let(:result) { Samagotchi::SessionManager::DeliverResult.new(status: :accepted, ack: {}) }
 
