@@ -17,16 +17,24 @@ module Samagotchi
   class PageCommand
     include CLI::Command
 
-    USAGE = <<~TEXT
-      Usage: chi page <run|list|rm> [options]
-        run NAME [--format text|json]   run ~/.config/samagotchi/pages/NAME.rb in a process of its own (in the
-             pages folder, cut at #{Pages::TIMEOUT_SECONDS} s with what it started), store what it built and print a summary of
-             each block (json: the stored page). A failed run keeps the last good result. Exit 1 when the
-             script raised, was stopped or broke a limit, when there is no such page or it is already running.
+    # The help, with the folder chi page reads its scripts from as the user
+    # sees it (~ for the home folder). Read when printed, so a config home set
+    # after load (XDG_CONFIG_HOME) names its own pages folder.
+    def self.usage(pages_dir: Paths.tilde(Pages.scripts_dir))
+      <<~TEXT
+        Usage: chi page <run|list|rm> [options]
+          run NAME [--format text|json]   run #{pages_dir}/NAME.rb in a process of its own (in the
+               pages folder, cut at #{Pages::TIMEOUT_SECONDS} s with what it started), store what it built and print a summary of
+               each block (json: the stored page). A failed run keeps the last good result. Exit 1 when the
+               script raised, was stopped or broke a limit, when there is no such page or it is already running.
         list [--format text|json]   every page: its title, when it last ran or failed (and on which line),
-             (never ran), and "changed" when the script changed since the result was made
+               (never ran), and "changed" when the script changed since the result was made
         rm NAME   remove a page: its script and its stored result
-    TEXT
+      TEXT
+    end
+
+    # The help as chi loaded, for callers that want the text itself.
+    USAGE = usage
 
     SUBCOMMANDS = %w[run list rm].freeze
 
@@ -53,7 +61,7 @@ module Samagotchi
     def run
       @sub = @argv[0]
       if @sub.nil? || HELP_WORDS.include?(@sub)
-        @stdout.puts(USAGE)
+        @stdout.puts(usage_text)
         return CLI::Exit::OK
       end
       return usage_error("unknown subcommand #{@sub}") unless SUBCOMMANDS.include?(@sub)
@@ -96,6 +104,7 @@ module Samagotchi
 
     def command_name = @sub && SUBCOMMANDS.include?(@sub) ? "chi page #{@sub}" : "chi page"
     def usage_on_error = nil
+    def usage_text = self.class.usage
 
     def one_name(args)
       return usage_error("give the page's NAME") if args.empty?

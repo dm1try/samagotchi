@@ -53,6 +53,16 @@ RSpec.describe Samagotchi::PageCommand do
     expect(File.exist?(pages.state_dir)).to be(false)
   end
 
+  it "names the pages folder the help's run line points at" do
+    run("run", "--help")
+    expect(out.string).to include("#{File.join(tmp, "config", "samagotchi", "pages")}/NAME.rb")
+
+    with_env("XDG_CONFIG_HOME" => nil) do
+      expect(run("run", "--help")).to eq(0)
+      expect(out.string).to include("~/.config/samagotchi/pages/NAME.rb")
+    end
+  end
+
   describe "run" do
     it "prints the usage page's own numbers and total" do
       usage_page
