@@ -144,9 +144,15 @@ module Samagotchi
         age = Time.now - File.mtime(marker)
         return if age < interval
       end
-      result = prune(state_dir: sd)
+      result = begin
+        prune(state_dir: sd)
+      rescue SessionProtection::Unreadable => e
+        skipped_round(sd, e)
+      end
       sweep_runs(sd)
       FileUtils.touch(marker)
+      return nil if result.nil?
+
       if result[:deleted].any?
         stops = result[:tasks_stopped].to_i
         suffix = stops.positive? ? "; stopped #{stops} background tasks" : ""
@@ -155,6 +161,16 @@ module Samagotchi
       result
     rescue StandardError => e
       Log.warn(:worker, "retention_failed", echo: "[retention] sweep failed: #{e.class}: #{e.message}", error: e.class.name)
+      nil
+    end
+
+    # A protector's store doesn't read: no session is deleted this round,
+    # logged once (the next try is at the next interval, the marker touched
+    # as for a sweep that ran); the parts that ask no protector still run
+    # (the skeleton-only dirs here, the saved runs after).
+    private_class_method def self.skipped_round(state_dir, error)
+      Log.warn(:worker, "retention_skipped", msg: error.message)
+      prune_orphan_dirs(state_dir, dry_run: false) if SessionManager.discard_empty?
       nil
     end
 

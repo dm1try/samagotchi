@@ -18,7 +18,8 @@ module Samagotchi
   #
   # Fail-closed: a protector that raises is logged and the error re-raised,
   # never read as "unprotected". The sweep (SessionRetention.sweep_if_due)
-  # logs retention_failed and deletes nothing; a delete raises to its
+  # logs retention_failed and deletes nothing (an Unreadable store:
+  # retention_skipped, once per sweep interval); a delete raises to its
   # caller, and a store that is there but doesn't read (Unreadable) is its
   # refusal (DeleteRefused :protection_unreadable,
   # SessionManager.refuse_protected!). A missing store protects nothing.
@@ -29,13 +30,21 @@ module Samagotchi
     Hold = Data.define(:session_id, :reason, :ref)
 
     # A protector's store is there but doesn't read (schedules.json not
-    # JSON, not a schedules document, an entry that doesn't read): who it
-    # protects is unknown, so no session is deleted until it is fixed.
+    # JSON, not a schedules document, a file chi can't open, or one schedule
+    # in it that doesn't read): who it protects is unknown, so no session is
+    # deleted until it is fixed. Its words, one per condition: the whole
+    # file, or one entry (+entry+, its id) and the way to drop that entry.
     class Unreadable < StandardError
       # @param file [String] the store's name, for the words
       # @param error [String] why it doesn't read
-      def initialize(file, error)
-        super("#{file} is unreadable (#{error}): fix or remove it before deleting sessions")
+      # @param entry [String, nil] the id of the one entry that doesn't read
+      def initialize(file, error, entry: nil)
+        if entry
+          super("schedule entry #{entry} in #{file} is unreadable (#{error}): chi schedule cancel #{entry}, " \
+                "or fix the file, before deleting sessions")
+        else
+          super("#{file} is unreadable (#{error}): fix or remove it before deleting sessions")
+        end
       end
     end
 
@@ -75,8 +84,12 @@ module Samagotchi
     end
     private_class_method :first_hold
 
+    # An Unreadable store is logged once, by the caller (retention_skipped,
+    # or the delete's refusal), not here.
     def ask(name, build, state_dir, sid: nil)
       yield build.call(state_dir)
+    rescue Unreadable
+      raise
     rescue StandardError => e
       Log.warn(:worker, "protector_failed", protector: name, sid: sid, error: e.class.name, msg: e.message)
       raise

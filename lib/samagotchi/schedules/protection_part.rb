@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "../session_protection"
+require_relative "../state_format"
 
 module Samagotchi
   class Schedules
@@ -9,7 +11,8 @@ module Samagotchi
     # one holds nothing. The file is read strict (#protection_entries): one
     # that is there but doesn't read, or holds an entry that doesn't, raises
     # SessionProtection::Unreadable (the tick and the other readers keep
-    # their own rules). A missing file holds nothing.
+    # their own rules; chi schedule cancel ID drops such an entry,
+    # #cancel_unreadable). A missing file holds nothing.
     module ProtectionPart
       # @return [Array<String>] the ids retention keeps
       def protected_ids
@@ -47,22 +50,53 @@ module Samagotchi
       end
 
       # The enabled entries, the earliest due first (as #entries), from a
-      # strict read.
+      # strict read of its own: no log line (the caller logs the refusal
+      # once), a `schedules` member that isn't a list, a file chi can't open
+      # (permissions, a directory) and one entry that doesn't read are all
+      # Unreadable. A missing file holds nothing.
       # @raise [SessionProtection::Unreadable]
       def protection_entries
-        file = read(strict: true)
-        bad = file.entries.find { |record| !record.is_a?(Entry) }
-        raise SessionProtection::Unreadable.new(FILE, unreadable_entry_words(bad)) if bad
+        return [] unless File.exist?(path)
 
-        file.entries.select(&:enabled).sort_by { |entry| [entry.next_due.to_s, entry.id] }
-      rescue Corrupt => e
-        # Corrupt's own words are for changing schedules; the cause is why.
-        raise SessionProtection::Unreadable.new(FILE, (e.cause || e).message)
+        raw = JSON.parse(File.read(path))
+        if raw.is_a?(Hash) && raw.key?("schedules") && !raw["schedules"].is_a?(Array)
+          raise StateFormat::InvalidDocument, "schedules must be a list"
+        end
+
+        records = FORMAT.read(raw, collection: "schedules").entries
+        bad = records.find { |record| !record.readable? }
+        raise unreadable_entry(bad) if bad
+
+        records.map { |record| Entry.from_record(record) }.select(&:enabled).sort_by { |entry| [entry.next_due.to_s, entry.id] }
+      rescue JSON::ParserError, StateFormat::InvalidDocument, SystemCallError => e
+        raise SessionProtection::Unreadable.new(FILE, e.message)
       end
 
-      def unreadable_entry_words(record)
+      # One entry that doesn't read: named by its id when it has one, so
+      # chi schedule cancel can drop it (#cancel_unreadable).
+      def unreadable_entry(record)
         id = record.raw.is_a?(Hash) ? record.raw["id"] : nil
-        "schedule #{id || "without an id"} lacks #{record.missing.join(", ")}"
+        lacks = "lacks #{record.missing.join(", ")}"
+        return SessionProtection::Unreadable.new(FILE, lacks, entry: id) if id.is_a?(String) && !id.empty?
+
+        SessionProtection::Unreadable.new(FILE, "a schedule without an id #{lacks}")
+      end
+
+      # chi schedule cancel ID of a record #read keeps but can't read (#entries
+      # and #lookup never see it): removed by its exact id, under the lock,
+      # the way out of an Unreadable hold. nil when there is none.
+      def cancel_unreadable(id)
+        unreadable = ->(record) { !record.is_a?(Entry) && record.raw.is_a?(Hash) && record.raw["id"] == id }
+        # The lenient read first: a store that isn't JSON has no such record
+        # and stays as it is (no strict read, no rewrite).
+        return nil unless read.entries.any?(&unreadable)
+
+        removed = nil
+        write_under_lock do |file|
+          removed = file.entries.find(&unreadable)
+          file.entries.delete(removed) if removed
+        end
+        removed
       end
     end
   end

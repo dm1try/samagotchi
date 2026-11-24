@@ -166,6 +166,17 @@ RSpec.describe "chi sessions (CLI)" do
     expect(exists?(old)).to be(true)
   end
 
+  it "prune says the same, no backtrace, when chi can't open schedules.json (a directory in its place)" do
+    old = make("old", days_old: 30)
+    FileUtils.mkdir_p(File.join(File.dirname(state_dir), "schedules.json"))
+
+    out, err, code = run_chi("prune", "--days", "1")
+
+    expect([out, code]).to eq(["", 1])
+    expect(err).to match(/\Aschedules\.json is unreadable \(.+\): fix or remove it before deleting sessions\n\z/)
+    expect(exists?(old)).to be(true)
+  end
+
   it "prune --keep N deletes past the newest N" do
     oldest = make("oldest")
     middle = make("middle")

@@ -134,19 +134,27 @@ RSpec.describe Samagotchi::SessionProtection do
     def on_disk?(session) = File.exist?(Samagotchi::Session.session_file(session.id, state_dir: sessions_dir))
 
     shared_examples "fails closed" do
-      it "makes every question raise, naming the file" do
+      it "makes every question raise in its words, logging nothing itself (the caller logs it)" do
         expect { described_class.protected_ids(state_dir: sessions_dir) }.to raise_error(described_class::Unreadable, words)
         expect { described_class.hold(plain.id, state_dir: sessions_dir) }.to raise_error(described_class::Unreadable, words)
         expect { described_class.chain_hold(plain.id, state_dir: sessions_dir) }
           .to raise_error(described_class::Unreadable, words)
+        expect(Samagotchi::Log).not_to have_received(:warn)
       end
 
-      it "stops the retention sweep for that round: nothing deleted, retention_failed logged" do
+      it "skips the retention sweep's deletes once per interval, one log record, the saved runs still swept" do
         expect { Samagotchi::SessionRetention.apply(state_dir: sessions_dir, days: 0, max_count: 0, any_age: true) }
           .to raise_error(described_class::Unreadable, words)
+        allow(Samagotchi::SessionRetention).to receive(:sweep_runs).and_call_original
+        marker = File.join(sessions_dir, Samagotchi::SessionRetention::MARKER)
 
         expect(Samagotchi::SessionRetention.sweep_if_due(state_dir: sessions_dir)).to be_nil
-        expect(Samagotchi::Log).to have_received(:warn).with(:worker, "retention_failed", hash_including(error: "#{described_class}::Unreadable"))
+        expect(Samagotchi::SessionRetention.sweep_if_due(state_dir: sessions_dir)).to be_nil
+
+        expect(Samagotchi::Log).to have_received(:warn).once
+        expect(Samagotchi::Log).to have_received(:warn).with(:worker, "retention_skipped", hash_including(msg: match(words)))
+        expect(Samagotchi::SessionRetention).to have_received(:sweep_runs).once
+        expect(File).to exist(marker)
         expect([plain, delegate].map { |session| on_disk?(session) }).to eq([true, true])
       end
 
@@ -187,16 +195,46 @@ RSpec.describe Samagotchi::SessionProtection do
       it_behaves_like "fails closed"
     end
 
+    context "when its schedules member is not a list" do
+      before { File.write(schedules.path, JSON.generate({ "version" => 1, "schedules" => {} })) }
+
+      it_behaves_like "fails closed"
+    end
+
+    context "when chi can't open it (a directory in its place)" do
+      before { FileUtils.mkdir_p(schedules.path) }
+
+      it_behaves_like "fails closed"
+    end
+
     context "when one entry can't be read" do
-      before do
-        schedules.add(target: plain.id, prompt: "Audit", recurrence: every_hour)
-        edit_file { |list| list.first.delete("anchor") }
+      let!(:good) { schedules.add(target: delegate.id, prompt: "Other", recurrence: every_hour) }
+      let!(:bad) do
+        schedules.add(target: other_session.id, prompt: "Audit", recurrence: every_hour).tap do |entry|
+          edit_file { |list| list.find { |row| row["id"] == entry.id }.delete("prompt") }
+        end
+      end
+      let(:other_session) { saved_session }
+      let(:words) do
+        /\Aschedule entry #{bad.id} in schedules\.json is unreadable \(lacks prompt\): chi schedule cancel #{bad.id}, or fix the file, before deleting sessions\z/
       end
 
       it_behaves_like "fails closed"
 
       it "leaves the tick reading the rest as it does today" do
         expect(schedules.tick.outcomes).to be_empty
+      end
+
+      it "is dropped by chi schedule cancel <id>, after which deletes work again" do
+        expect { Samagotchi::SessionManager.delete_session(plain.id, state_dir: sessions_dir) }
+          .to raise_error(Samagotchi::SessionManager::DeleteRefused, words)
+
+        expect(schedules.cancel(bad.id)).not_to be_nil
+        expect(schedules.cancel(bad.id)).to be_nil
+
+        expect(described_class.protected_ids(state_dir: sessions_dir)).to include(delegate.id)
+        expect(Samagotchi::SessionManager.delete_session(plain.id, state_dir: sessions_dir, stop: true)[:id]).to eq(plain.id)
+        expect(schedules.lookup(good.id)).not_to be_nil
       end
     end
 

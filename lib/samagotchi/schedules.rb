@@ -299,7 +299,7 @@ module Samagotchi
     end
 
     # @return [Entry, nil] nil when no schedule matches
-    def cancel(id_or_name) = change(id_or_name, delete: true)
+    def cancel(id_or_name) = change(id_or_name, delete: true) || cancel_unreadable(id_or_name)
     def enable(id_or_name) = change(id_or_name, enabled: true)
     def disable(id_or_name) = change(id_or_name, enabled: false)
 
