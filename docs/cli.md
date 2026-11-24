@@ -454,7 +454,7 @@ chi schedule add --session 3f9a1c2e --weekday 1 --time 09:00 -m "Audit the open 
 # every 30 minutes, as a turn in the session itself
 chi schedule add --continues 3f9a1c2e --every 30m --mode same -m "Check the build"
 
-chi schedule list                # id  mode  recurrence  next due  target  [skips 3 of 12 (≈1 h at a 5 min tick)]
+chi schedule list                # id  name  mode  recurrence  next due  target  [skips 3 of 12 (≈1 h at a 5 min tick)]
 chi schedule list --all --format json     # the disabled ones and the fired one-offs too
 chi schedule show 4b7e9a         # the entry in full: anchor, head, prompt, counters
 chi schedule tick                # fire everything due; quiet when nothing is
@@ -464,6 +464,13 @@ chi schedule disable 4b7e9a      # stop it, keep it in the file
 chi schedule enable 4b7e9a
 chi schedule cancel 4b7e9a       # delete it (by id, a unique prefix, or its title)
 ```
+
+Every `list` row names its schedule: the `--title` it was given, or, when it has
+none, the first 30 characters of its prompt in quotes with `…` where it is cut
+(newlines and runs of spaces become one space). The name column is padded to the
+widest name among the rows printed, so the columns after it line up. `--format json`
+carries `title` as it is stored (`null` with no title) and the whole `prompt`, never
+the quoted stand-in; the `list_schedules` tool names a schedule the same way.
 
 `add` needs a target (`--session ID`, or `--continues ID` for the same session)
 and exactly one recurrence kind — `--every 45m|2h|1d`, `--weekday 1..7` with
@@ -480,7 +487,8 @@ prompt, two recurrence kinds, a `scratch` target and a `--weekday` without
 `no schedules due`, and a tick that finds the lock held by another prints `no
 schedules due (another tick holds the lock)` — both exit 0, so a crontab line
 that runs every five minutes is quiet. `run-now`, `enable`, `disable` and `cancel`
-take the id, a unique prefix of it, or the title; a missing one exits 1, an ambiguous one 2 naming the matches.
+take the id, a unique prefix of it, or the title (`chi schedule enable coordinator-heartbeat`);
+a missing one exits 1, an ambiguous one 2 naming the matches.
 
 Point cron at it (see [Scheduling](scheduling.md#running-the-tick) for systemd
 and launchd), or turn on `schedule.auto_tick` and let chi web's hub tick every
