@@ -43,6 +43,10 @@
       "required": true,
       "description": "The message's number (#N in its note)"
     },
+    "box": {
+      "type": "string",
+      "description": "The mailbox box named in the note (for a continued or forked session)"
+    },
     "offset": {
       "type": "integer",
       "description": "The first line to read (1-based); default 1"

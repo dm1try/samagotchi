@@ -223,7 +223,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
     it "adds a Confirm with Claude pill (a fill, the quote), declares its peer claude and the claude_read tool" do
       expect(bundle.annotations.map { |pill| [pill.label, { command: pill.line }] }).to eq([["Confirm with Claude", { command: "/claude validate" }]])
       expect(bundle.peer_registry.names).to eq(["claude"])
-      expect(bundle.tools["claude_read"].schema[:parameters][:properties].keys).to eq(%i[serial offset limit])
+      expect(bundle.tools["claude_read"].schema[:parameters][:properties].keys).to eq(%i[serial box offset limit])
     end
 
     it "claude_read reads a message from Claude by its number, in the peer block" do

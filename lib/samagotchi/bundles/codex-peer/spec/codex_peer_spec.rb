@@ -294,7 +294,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
     it "adds a Confirm with Codex pill (a fill, the quote), declares its peer codex and the codex_read tool" do
       expect(bundle.annotations.map { |pill| [pill.label, { command: pill.line }] }).to eq([["Confirm with Codex", { command: "/codex validate" }]])
       expect(bundle.peer_registry.names).to eq(["codex"])
-      expect(bundle.tools["codex_read"].schema[:parameters][:properties].keys).to eq(%i[serial offset limit])
+      expect(bundle.tools["codex_read"].schema[:parameters][:properties].keys).to eq(%i[serial box offset limit])
     end
 
     it "titles a pill's quote by its first quoted line, not the From …: label" do
