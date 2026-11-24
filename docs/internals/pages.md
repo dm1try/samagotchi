@@ -142,21 +142,33 @@ from the one that failed (so the page needs no sha); `script_changed_at` is the 
 `html`, the `MarkdownRenderer`'s sanitised render, when rendering is available (`web.markdown`), else `text` only.
 The error codes' `detail` is the exception's own message.
 
-**The capability** `pages` (`Web::Viewer::CAPABILITIES`, never a participant's) makes the view, the group and the link
-handler; without it none is made and no page call goes out (`viewer_boot.test.js`).
+**The capability** `pages` (`Web::Viewer::CAPABILITIES`, never a participant's) makes the pill, the list, the view and
+the link handler (`pages_wiring.js`, one call in app.js; the pill is `viewer.control(#pagesBtn, "pages")`); without it
+none is made and no page call goes out (`viewer_boot.test.js`).
 
 **The page's modules** (`lib/samagotchi/web/public/`): `page_route.js` (`pageHash`, `pageNameFromHash`, the open rule:
-never a participant's, never without `pages`), `views.js` (reads the page hash before the session intent:
-`body.page-view`, `openPage` / `closePage` / `leavePage`, the session hash not written while a page is open, a session
-picked leaving the page), `page_view.js` (the header, the states, the calls; an answer for a page no longer open is
+never a participant's, never without `pages`), `views.js` (reads the page hash and the list's `#/pages` before the
+session intent: `body.page-view` / `body.pages-list`, `openPage` / `closePage` / `leavePage`, `openPagesList` /
+`closePagesList`, the pill's `aria-pressed`, the session hash not written while either is open, a session picked
+leaving it; a page with nowhere to go back to, or gone, lands on the list), `pages_model.js` (the page's one list of
+pages: `load` shares a read that is out, `reload` asks again, a failed read keeps the last list; DOM-free),
+`pages_wiring.js` (the model, the pill, the list, the view and the links; when the list is read),
+`pages_list.js` (the Pages list, `#/pages`: its hash, its cards in `/api/pages`'s order), `page_view.js` (the header, the states, the calls; an answer for a page no longer open is
 dropped, `latest.js`), `page_model.js` (the words: meta, the failed and changed lines, Copy the error), `page_blocks.js`
 (text, walk in a widget host with `drawWalk`, an unknown type as one muted line), `page_table.js` and
-`page_table_model.js` (cells, sort, the phone's rows), `pages_group.js` (All sessions' group), `page_links.js` (the
+`page_table_model.js` (cells, sort, the phone's rows), `pages_group.js` (All sessions' former group, kept for an
+older cached app.js until after 0.189.0; nothing new imports it), `page_links.js` (the
 delegated click on the turn roots and the page view for `#/p/` anchors), `pages.css`. What a script wrote reaches the
 page as text or attributes, never as markup, except the server's sanitised `html`.
 
-**Not live**: no stream event and no polling. A run from a terminal shows on the next open; two tabs are not kept in
-step.
+**The list is live, a page isn't.** chi web's session hub stats the scripts folder (`Pages.scripts_dir`) once a tick
+and sends a `pages` event (no data) on `GET /api/events` when its mtime moved: a script made, renamed in or removed
+(an editor's temp file or a data file beside the scripts counts too: one extra `GET /api/pages` per open tab). Never on
+the first look; a folder that appears or goes is a change. A run changes nothing there (its output is under the state
+dir). The page reads the list again on that event and on every snapshot after the first (a reconnect: the hub has no
+replay); with no hub stream (no `EventSource`, the list's fetch fallback) the list is read only when a view opens. A
+page's own result has no stream event and no polling: a run from a terminal shows on the next open; two tabs are not
+kept in step.
 
 ## chi's side: the skill
 

@@ -14,7 +14,7 @@ Say what you want to see and that you want it kept: "make me a page of …", "I'
 "keep this as a page". chi follows its shipped pages skill (`skill_pages`, [docs/memory.md](memory.md#skills)): it
 finds the pages folder with `chi self`, writes `NAME.rb` there, runs `chi page run NAME`, compares the stored rows
 with where they came from, fixes what failed, and answers in a line or two with the link `[Title](#/p/NAME)` (with
-Markdown off, the link is plain text: the page is in All sessions, under Pages). "Change the page …" edits the script
+Markdown off, the link is plain text: the page is under the `pages` pill in chi web's top bar). "Change the page …" edits the script
 and runs it again; "remove the page …" is `chi page rm NAME`.
 
 - It uses `chi page list`, the read tool, `chi page run` and `chi page rm`, never a shell command that names the pages
@@ -98,14 +98,16 @@ that breaks the rule). See [the CLI](cli.md#commands).
 
 ## In chi web
 
-- **Finding a page.** All sessions has a **Pages** group at its top, in every project scope (pages are global): one row
-  of cards that scrolls sideways, each with the page's title and `ran 2 min ago`, `failed 1 h ago` or `never ran`. The
-  search field filters it too, by name and title. With no page (or none the search matches) there is no group. A
-  `#/p/usage` link in chi's answer opens the page in the same tab; a reload or a copied `…/#/p/usage` link opens it
-  too.
-- **The page** shows in place of the session area: Back (to where it was opened from, else All sessions), the title,
+- **Finding a page.** The top bar has a **`pages`** pill as soon as there is a page, in every view and project scope
+  (pages are global), on a desktop and a phone alike; with no page it isn't there. It opens the **Pages list**
+  (`#/pages`), in place of the session area: a card per page, each with the page's title and `ran 2 min ago`,
+  `failed 1 h ago` or `never ran`; a tap opens the page. The pill appears without a reload when chi makes the first
+  page (chi web watches the pages folder), and goes when the last one is removed. A `#/p/usage` link in chi's answer
+  opens the page in the same tab; a reload or a copied `…/#/p/usage` link opens it too.
+- **The page** shows in place of the session area: Back (to where it was opened from: "Pages" from the list, "Back"
+  from an answer's link; with nowhere to go back to, the Pages list), the title,
   when it ran and how long it took, **Refresh** and `⋯` with Delete (it asks once, then removes the script and its
-  result). Opening it shows the stored result at once and runs nothing.
+  result, then shows the Pages list). Opening it shows the stored result at once and runs nothing.
 - **Refresh** runs the script as `chi page run` does and redraws when the run ends; the button reads "Running…" and
   can't be pressed twice. A run already going (from a terminal, another tab) says "already running". Stopping chi web
   stops a Refresh. A Refresh holds its request until the run ends, up to about 32 s (the 30 s cut and its grace): behind
@@ -119,12 +121,14 @@ that breaks the rule). See [the CLI](cli.md#commands).
   a tap opens the rest as label and value lines; rows keep the script's order there.
 - **A walk** is drawn by the same widget as in an answer; its lanes scroll sideways inside it.
 - **Markdown off** (`web.markdown`, the default): a text block shows as plain text, and a link in chi's answer is plain
-  text too, so the Pages group is the way in. A fenced block inside a text block (a `chi-ui` or a mermaid one) stays
+  text too, so the `pages` pill is the way in. A fenced block inside a text block (a `chi-ui` or a mermaid one) stays
   source on a page.
-- **Not live**: the group is read when All sessions opens, a page when it opens and after its own Refresh or Delete.
-  A run from a terminal shows after the next open or a reload.
-- Pages are the owner's: a participant ([chi share](cli.md)) sees no Pages group, no page, and no page route answers
-  their link.
+- **What is live**: the list (and with it the pill) is read when chi web opens, when the Pages list, All sessions or a
+  page opens, after a Delete, and when a page script is made or removed. A page itself is read when it opens and
+  after its own Refresh; a run from a terminal shows after the next open or a reload (a first run's "ran" time on the
+  list too).
+- Pages are the owner's: a participant ([chi share](cli.md)) sees no `pages` pill, no Pages list, no page, and no page
+  route answers their link.
 
 ## Where a run happens
 
