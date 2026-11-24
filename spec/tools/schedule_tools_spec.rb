@@ -311,6 +311,22 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
     end
   end
 
+  it "says no schedule named when the entry is gone by the time the lock is held" do
+    Dir.mktmpdir("schedule-cancel") do |root|
+      dir = File.join(root, "sessions")
+      schedules = Samagotchi::Schedules.new(state_dir: dir)
+      entry = schedules.add(target: session_here(dir).id, prompt: "Audit",
+                            recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      allow(Samagotchi::Schedules).to receive(:new).and_return(schedules)
+      allow(schedules).to receive(:write_under_lock).and_wrap_original do |original, &block|
+        File.write(schedules.path, JSON.generate(JSON.parse(File.read(schedules.path)).merge("schedules" => [])))
+        original.call(&block)
+      end
+
+      expect(described_class.call(entry.id, peers: peers(dir))).to eq("No schedule named #{entry.id}.")
+    end
+  end
+
   it "names what it needs and says when nothing matches" do
     Dir.mktmpdir("schedule-cancel") do |root|
       dir = File.join(root, "sessions")

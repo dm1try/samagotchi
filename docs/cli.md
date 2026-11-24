@@ -26,7 +26,7 @@
 - `chi context report [--days N]` — the candidate judge's counts from `context_candidates.jsonl`: candidates proposed, mentioned, attached or declined by you; the judge's asks; what it would attach per threshold, and how that agrees with what you did (this machine only; see [The log and the report](context.md#the-log-and-the-report))
 - `chi send [-m TEXT] [--image PATH]... [--cut | --queue] [--as NAME] (ID|PREFIX)...` — send a message to sessions as if typed there (from an agent, as that agent: `--as NAME` or its marker, see [An agent's messages](sub-agent.md#an-agents-messages-driver-and-visitor); `--new --driver NAME` names a new session's driver): a turn starts (or a running one takes it at its next step; `--cut` asks it to cut long thinking for it; `--queue` runs it as a turn of its own after the running one, and `--queue --wait` waits for that turn's own answer); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); to a session that was continued it goes to its chain's newest link (`3f9a1c2e → 7b2d41aa (continued)  sent`; the old link stays archived; one being continued right now waits up to 10 s for its new link, then `refused: being continued as 7b2d41aa; send again in a moment`), so a chain's first id is a stable address; `--new` starts a session with it instead (`--new --continues ID|last:ID` the next link of that session's chain, see [Session chains](sessions.md#session-chains)), and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending — to an idle session whose last turn already ended, that ended turn's reply or end comes back; `--wait --turn T ID` with no message waits for exactly turn T, whether running, queued or last ended; `--format json` includes its `turn_id` when known, for waiting again after exit 3 or 4; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). What a parent may pick follows `guardrails.parent_answers`, or the session's own `parent_answers` when stricter (`soft`, the default: a deny, a plain answer, Continue and "Allow once"; `standard`: no allow; `hard`: no Continue either), never a wider scope or an allow on chi's own config; a refused pick exits 1 with what to answer instead (a convention, not a security boundary; see [Guardrails](guardrails.md#answers-from-a-parent-agent))
-- `chi schedule <add|list|show|tick|run-now|enable|disable|cancel>` — durable schedules on this machine: a prompt with a clock that fires out of no worker (cron, systemd, or chi web's hub with `schedule.auto_tick`), as the next link of a session's chain or as a turn in the session itself (see [Scheduling](scheduling.md) and [Durable schedules](#durable-schedules-chi-schedule)). A usage error exits 2, an unknown session or schedule 1; `chi --remote X schedule list` exits 2
+- `chi schedule <add|edit|list|show|tick|run-now|enable|disable|cancel>` — durable schedules on this machine: a prompt with a clock that fires out of no worker (cron, systemd, or chi web's hub with `schedule.auto_tick`), as the next link of a session's chain or as a turn in the session itself (see [Scheduling](scheduling.md) and [Durable schedules](#durable-schedules-chi-schedule)). A usage error exits 2, an unknown session or schedule 1; `chi --remote X schedule list` exits 2
 - `chi remote add NAME URL [--token-file F | --token-stdin]`, `chi remote ls`, `chi remote rm NAME` — the other machines whose chi web the session commands reach with `--remote NAME` (see [Remote sessions](#remote-sessions))
 - `chi share ID --name NAME [--identity EMAIL] [--expires 3d] [--cap 2]`, `chi share ls [ID]`, `chi share cap ID P DOLLARS`, `chi share revoke ID [P] | --all` — invite a participant into a session through chi web on the LAN, whose turns act under your guardrails (a link of their own, 7 days, a $2 spending cap), list them, change one's cap, revoke them (see [Participants](#participants))
 - `chi mcp serve` — chi as an MCP server on stdio: an MCP host (Claude Code, Codex) drives the sessions with four tools (`chi_sessions`, `chi_ask`, `chi_wait`, `chi_answer`); `claude mcp add chi -- chi mcp serve`. chi web serves the same at `POST /api/mcp` (see [chi as an MCP server](mcp-server.md))
@@ -457,13 +457,15 @@ chi schedule add --continues 3f9a1c2e --every 30m --mode same -m "Check the buil
 
 chi schedule list                # id  name  mode  recurrence  next due  target  [skips 3 of 12 (≈1 h at a 5 min tick)]
 chi schedule list --all --format json     # the disabled ones and the fired one-offs too
-chi schedule show 4b7e9a         # the entry in full: anchor, head, prompt, counters
+chi schedule show 4b7e9a         # the entry in full: anchor, head, prompt, counters, its last 20 outcomes
 chi schedule tick                # fire everything due; quiet when nothing is
 chi schedule tick --dry-run      # print what would fire, change nothing
 chi schedule run-now 4b7e9a      # fire it now, whatever its next_due says
 chi schedule disable 4b7e9a      # stop it, keep it in the file
 chi schedule enable 4b7e9a
 chi schedule cancel 4b7e9a       # delete it (by id, a unique prefix, or its title)
+chi schedule edit 4b7e9a --weekday 2 --time 08:30   # change it in place: only the flags given
+chi schedule edit "Monday audit" -m "Audit the open PRs and the queue" --max-skips 24
 ```
 
 Every `list` row names its schedule: the `--title` it was given, or, when it has
@@ -482,6 +484,20 @@ links stay behind the head (`0` keeps all), and `--max-failures` / `--max-skips`
 how many consecutive failures or busy targets disable it. A blank or over-16-KiB
 prompt, two recurrence kinds, a `scratch` target and a `--weekday` without
 `--time` are all refused with exit 2.
+
+`edit ID` changes a schedule in place and prints its updated `list` row: `--title`,
+`-m|--prompt`, one whole recurrence (as `add`'s: `--time` alone is refused),
+`--catch-up` and the three budgets, checked as `add` checks them; only the flags given
+change, and the skip and failure counters, `enabled` and the history stay (it adds one
+`edited` row naming the fields). The session and the mode don't change: `--session`,
+`--continues` and `--mode` are refused ("cancel it and add a new one"). A new
+recurrence starts its clock now, as `add`'s does, and is refused while a firing is in
+flight ("a run is in progress; edit the time after it settles", exit 1); a prompt,
+title or budget edit then applies to the next firing. A spent `--date` one-off stays
+disabled after an edit: `chi schedule enable` it. No flag to change, or only values the
+schedule already has, exits 2 ("nothing to change"), as does an edit that would make it
+say what another schedule of the chain says (its new title, or its new prompt and
+recurrence); a missing id exits 1.
 
 `tick` prints one line per entry it touched (`fired`, `skipped`, `missed`,
 `failed`, or `would fire` under `--dry-run`), with the reason; nothing due prints

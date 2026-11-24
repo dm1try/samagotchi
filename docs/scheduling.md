@@ -197,6 +197,19 @@ tick is about an hour of patience, which is what the count really measures.
 `chi schedule enable` resets both counters too: a schedule turned back on gets its
 whole budget again, not one skip.
 
+`chi schedule show ID` ends with the entry's last 20 outcomes, newest first, one
+line each in local time: `fired`, `skipped`, `failed`, `missed`, your `enabled` and
+`disabled`, a `chi schedule edit`'s `edited` (naming the fields), with the reason and
+the session it acted on (a skip or
+failure that used up the budget says `disabled: <reason>`). `list --format json` has
+them as each entry's `history` (and an unpushed turn-off as `disabled_notice`).
+
+`chi schedule edit ID` changes a schedule in place (its title, prompt, recurrence,
+catch-up or budgets; [CLI](cli.md#durable-schedules-chi-schedule)) and keeps its id,
+session, mode, counters and history. A new recurrence starts its clock at the edit, as
+an `add`'s does, and waits for a firing in flight to settle; a spent `date` one-off
+stays disabled after an edit until you `enable` it.
+
 A recurring schedule the owner has disabled stays off when an in-flight skip or
 failure is recorded. A `date` one-off is the exception: a skip or failure puts its
 moment back and re-enables it. `run-now` still tries a disabled schedule, but a
@@ -204,13 +217,19 @@ refusal records its result without moving the skip or failure counters.
 
 The tick line that disabled an entry ends `(disabled)` (`chi schedule tick`,
 `run-now`), and `tick --format json` gives that outcome `"disabled": true`
-(`Schedules::Outcome#disabled`). When **chi web's** tick (`schedule.auto_tick`)
-disables a recurring schedule, the phone gets one notification
+(`Schedules::Outcome#disabled`). When any tick — chi web's own (`schedule.auto_tick`),
+a cron `chi schedule tick` or a `chi schedule run-now` — disables a recurring schedule
+by its budget, the phone gets one notification
 ([Phone notifications](configuration.md#phone-notifications-web-push)): "Schedule
 disabled: Heartbeat", "skipped 12 times: <the last reason>" and the `chi schedule
-enable <id>` that turns it back on; a tap opens its session. It shows even with a chi
-web page in front and waits a day for a phone that is offline. Nothing notifies for a
-cron tick or `chi schedule run-now` (only chi web pushes), a `--dry-run`, your own
+enable <id>` that turns it back on; a tap opens its session. The tick leaves a notice
+on the entry in `schedules.json` (`disabled_notice`) and a running chi web pushes it:
+right after its own tick, and within `schedule.tick_interval_minutes` for another
+ticker's, with `schedule.auto_tick` off too. Only chi web pushes, so with no chi web
+running the notice waits for one; a notice more than a day old, or one whose schedule
+you enabled again, is dropped unpushed, and `chi schedule enable` clears it. It shows
+even with a chi web page in front and waits a day for a phone that is offline. Two chi
+webs on one state dir push it once. Nothing notifies for a `--dry-run`, your own
 `chi schedule disable`, or a `date` one-off (spent when it fires; one that then fails
 stays disabled with the failure in `chi schedule list`).
 

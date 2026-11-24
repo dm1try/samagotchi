@@ -8,8 +8,23 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi schedule show ID` lists the schedule's last 20 outcomes, newest first (fired, skipped, failed, missed, your
+  enable and disable), each with its reason and session; `list --format json` has them as `history`.
+- `chi schedule edit ID` changes a schedule in place: its title, prompt, recurrence, catch-up or budgets (only the
+  flags given), keeping its id, session, mode and counters ([docs/cli.md](docs/cli.md#durable-schedules-chi-schedule)).
+
+### Changed
+
+- A schedule turned off by its skip or failure budget notifies the phone whatever ran the tick: a cron
+  `chi schedule tick` or a `run-now` too, not only chi web's own tick (chi web pushes it, with `schedule.auto_tick`
+  off as well).
+
 ### Fixed
 
+- `chi schedule cancel|enable|disable` (and the `cancel_schedule` tool) say "no schedule" instead of ok when another
+  cancel removed the schedule in between.
 - Pairing claude-peer or codex-peer again removes that peer's old inbox/outbox context sources (their chips).
 
 ## [0.188.0] - 2026-11-24

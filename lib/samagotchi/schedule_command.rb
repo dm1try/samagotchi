@@ -20,11 +20,15 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi schedule <add|list|show|tick|run-now|enable|disable|cancel> [flags]
+      Usage: chi schedule <add|edit|list|show|tick|run-now|enable|disable|cancel> [flags]
 
         add --session ID (--continues ID) (-m|--message|--prompt TEXT) [--title TEXT]
             one of: --every 30m | --weekday 1 --time 09:00 | --date 2026-11-20T09:00
             [--mode chain|same] [--catch-up once|none] [--keep-links N] [--max-failures N] [--max-skips N]
+        edit ID [--title TEXT] [-m|--prompt TEXT] [one recurrence, whole, as add's]
+            [--catch-up once|none] [--keep-links N] [--max-failures N] [--max-skips N]
+            only the flags given change; the session and mode stay (cancel and add for those);
+            a spent --date one-off stays disabled (enable it)
         list [--all] [--format text|json]
         show ID
         tick [--dry-run] [--format text|json]
@@ -41,26 +45,35 @@ module Samagotchi
       (default 12) or max_failures failures (default 3) the schedule is disabled.
     TEXT
 
-    SUBCOMMANDS = %w[add list show tick run-now enable disable cancel].freeze
+    SUBCOMMANDS = %w[add edit list show tick run-now enable disable cancel].freeze
 
     # A usage error names the subcommand it was given (CLI::Command's
     # usage_error builds its line from this).
     def command_name = SUBCOMMANDS.include?(@argv.first.to_s) ? "chi schedule #{@argv.first}" : "chi schedule"
 
+    # The flags that set a schedule's fields (add's, and the ones edit changes).
+    FIELD_FLAGS = lambda do |f|
+      f.value "-m", "--message", "--prompt", key: :prompt
+      f.value "--title"
+      f.value "--every"
+      f.value "--weekday"
+      f.value "--time"
+      f.value "--date"
+      f.value "--catch-up"
+      f.value "--keep-links"
+      f.value "--max-failures"
+      f.value "--max-skips"
+    end
+
     FLAGS = {
       "add" => CLI::Flags.new(args: true) do |f|
         f.value "--session", "--continues", key: :target
-        f.value "-m", "--message", "--prompt", key: :prompt
-        f.value "--title"
-        f.value "--every"
-        f.value "--weekday"
-        f.value "--time"
-        f.value "--date"
         f.value "--mode"
-        f.value "--catch-up"
-        f.value "--keep-links"
-        f.value "--max-failures"
-        f.value "--max-skips"
+        FIELD_FLAGS.call(f)
+      end,
+      "edit" => CLI::Flags.new(args: true) do |f|
+        FIELD_FLAGS.call(f)
+        f.refuse "--session", "--continues", "--mode", "edit can't change the session or mode: cancel it and add a new one"
       end,
       "list" => CLI::Flags.new(args: false) do |f|
         f.switch "--all", key: :include_disabled
@@ -104,6 +117,7 @@ module Samagotchi
 
       case sub
       when "add" then add
+      when "edit" then edit
       when "list" then list
       when "show" then show
       when "tick" then tick
@@ -142,6 +156,28 @@ module Samagotchi
       CLI::Exit::OK
     end
 
+    # Only the flags given change; a recurrence is given whole (--time alone
+    # is refused as add refuses it).
+    def edit
+      id = @args.first
+      return usage_error("edit needs a schedule id") if id.to_s.strip.empty?
+
+      recurrence = if %i[every weekday time date].any? { |key| @opts.key?(key) }
+                     Schedules.recurrence(every: @opts[:every], weekday: @opts[:weekday], time: @opts[:time], date: @opts[:date])
+                   end
+      entry = @schedules.edit(id, title: @opts[:title], prompt: @opts[:prompt], recurrence: recurrence,
+                                  catch_up: @opts[:catch_up], keep_links: @opts[:keep_links],
+                                  max_failures: @opts[:max_failures], max_skips: @opts[:max_skips])
+      return failed("no schedule #{id}") if entry.nil?
+
+      @stdout.puts(entry_line(entry))
+      CLI::Exit::OK
+    rescue Schedules::EditPart::InFlight => e
+      failed(e.message)
+    rescue Schedules::Usage => e
+      usage_error(e.message)
+    end
+
     def list
       refused = format_refusal(@opts[:format])
       return refused if refused
@@ -177,9 +213,22 @@ module Samagotchi
       @stdout.puts("  skips: #{entry.skips} of #{entry.max_skips}  failures: #{entry.failures} of #{entry.max_failures}")
       @stdout.puts("  keep_links: #{entry.keep_links}  enabled: #{entry.enabled}")
       @stdout.puts("  prompt: #{entry.prompt}")
+      print_history(entry)
       CLI::Exit::OK
     rescue Schedules::Usage => e
       usage_error(e.message)
+    end
+
+    # The last outcomes (Schedules::HistoryPart), newest first: when, what,
+    # why, and the session it acted on.
+    def print_history(entry)
+      return @stdout.puts("  history: -") if entry.history.empty?
+
+      @stdout.puts("  history (newest first):")
+      entry.history.reverse_each do |row|
+        line = [clock(row[:at]), row[:status], row[:detail], row[:session_id]&.slice(0, 8)].compact.reject { |part| part.to_s.empty? }
+        @stdout.puts("    #{line.join("  ")}")
+      end
     end
 
     def tick

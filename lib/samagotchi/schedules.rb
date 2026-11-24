@@ -24,6 +24,10 @@ require_relative "session_row"
 require_relative "state_format"
 require_relative "turn_checkpoint"
 require_relative "worker_link"
+require_relative "schedules/edit_part"
+require_relative "schedules/history_part"
+require_relative "schedules/notices_part"
+require_relative "schedules/recurrence"
 
 module Samagotchi
   # Durable schedules: `chi schedule` and the schedule tools. A schedule lives
@@ -50,6 +54,10 @@ module Samagotchi
   # read-modify-write, never across the action: SessionContinue.run waits up to
   # 30 s for a recap and 5 s for an archive, and an `add` must not wait on it.
   class Schedules
+    include EditPart
+    include HistoryPart
+    include NoticesPart
+
     FILE = "schedules.json"
     LOCK = "schedules.lock"
     VERSION = 1
@@ -69,6 +77,9 @@ module Samagotchi
     FIRING_TIMEOUT = 40
     PENDING_MIN_SECONDS = 10 * 60
     PENDING_MAX_SECONDS = 6 * 60 * 60
+    # A disabled notice older than this is dropped, not pushed: a chi web that
+    # comes up a week later does not send a batch of stale notifications.
+    NOTICE_MAX_AGE = 24 * 60 * 60
     # Refusals that mean "not now" rather than "this schedule is broken".
     # (starting: the link's worker holds no lock yet, e.g. another ticker's
     # firing just continued the chain.)
@@ -93,13 +104,17 @@ module Samagotchi
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
                         :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
                         :firing_since, :firing_token, :pending_session_id, :pending_turn_id, :failures, :skips, :enabled,
-                        :created_at, :extra) do
+                        :created_at, :disabled_notice, :history, :extra) do
       # The recurrence comes back from JSON with string keys: every reader of
-      # it below matches on `recurrence[:kind]`, so it is symbolised here once.
+      # it below matches on `recurrence[:kind]`, so it is symbolised here once
+      # (the disabled notice too, whose fields the claim hands on as is).
       def self.from_record(record)
         fields = record.attributes
         recurrence = fields[:recurrence]
         fields[:recurrence] = recurrence.transform_keys(&:to_sym) if recurrence.is_a?(Hash)
+        notice = fields[:disabled_notice]
+        fields[:disabled_notice] = notice.is_a?(Hash) ? notice.transform_keys(&:to_sym) : nil
+        fields[:history] = HistoryPart.rows(fields[:history])
         new(**fields, extra: record.extra)
       end
 
@@ -157,6 +172,12 @@ module Samagotchi
         StateFormat.added(:skips, in_version: VERSION, default: 0),
         StateFormat.added(:enabled, in_version: VERSION, default: true),
         StateFormat.added(:created_at, in_version: VERSION, default: nil),
+        # {kind: "skipped"|"failed", count:, reason:, at:}: this entry's budget
+        # turned it off and no chi web has pushed that yet
+        # (#claim_disabled_notices). Set by whichever ticker disabled it.
+        StateFormat.added(:disabled_notice, in_version: VERSION, default: nil),
+        # The last outcomes, newest last (HistoryPart).
+        StateFormat.added(:history, in_version: VERSION, default: []),
         StateFormat.extra(:extra, in_version: VERSION)
       ],
       document_members: [StateFormat.added(:last_tick_at, in_version: VERSION, default: nil)]
@@ -254,16 +275,8 @@ module Samagotchi
       raise Usage, "mode must be one of #{MODES.join(", ")}" unless MODES.include?(mode)
 
       given_catch_up = catch_up.nil? || catch_up.to_s.strip.empty? ? Config.get("schedule.default_catch_up") : catch_up.to_s.strip
-      raise Usage, "catch_up must be one of #{CATCH_UP.join(", ")}" unless CATCH_UP.include?(given_catch_up)
-
-      prompt = prompt.to_s
-      raise Usage, "a schedule needs a prompt" if prompt.strip.empty?
-      # It fires from a schedule, never a person: a shell line would be
-      # refused at every firing (CommandIntake); a /word one is the model's text.
-      raise Usage, CommandIntake::REFUSED if CommandIntake.shell_line?(prompt)
-      if prompt.bytesize > PROMPT_MAX_BYTES
-        raise Usage, "the prompt is #{prompt.bytesize} bytes; the limit is 16 KiB (#{PROMPT_MAX_BYTES} bytes)"
-      end
+      validate_catch_up!(given_catch_up)
+      prompt = validate_prompt!(prompt)
 
       anchor = Session.resolve!(target.to_s, state_dir: @state_dir)
       if Session.load(anchor, state_dir: @state_dir).scratch
@@ -274,10 +287,7 @@ module Samagotchi
       # firing would otherwise multiply the same schedule: the chain keeps one
       # entry per thing it does, and the machine a bounded number of them.
       same = duplicate_in_chain(anchor, prompt: prompt, title: title, recurrence: recurrence)
-      if same
-        raise Usage, "#{same.id} already schedules this (#{same.recurrence_words}, #{mode}: #{same.prompt}); " \
-                     "cancel it with chi schedule cancel #{same.id} to change it"
-      end
+      refuse_duplicate!(same, mode) if same
 
       ids = chain_of(anchor)
       in_chain = entries.count { |entry| ids.include?(entry.anchor) || ids.include?(entry.head) }
@@ -297,7 +307,8 @@ module Samagotchi
         max_skips: int_or_default(max_skips, "schedule.default_max_skips", 12, min: 1),
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
         last_fired: nil, last_result: nil, firing_since: nil, firing_token: nil, pending_session_id: nil,
-        pending_turn_id: nil, failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601, extra: {}
+        pending_turn_id: nil, failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601,
+        disabled_notice: nil, history: [], extra: {}
       )
       write_under_lock { |file| file.entries << entry }
       entry
@@ -319,20 +330,6 @@ module Samagotchi
     def for_chain(session_id, include_disabled: false)
       ids = chain_of(session_id)
       entries(include_disabled: include_disabled).select { |entry| ids.include?(entry.anchor) || ids.include?(entry.head) }
-    end
-
-    # An enabled schedule of the same chain that says the same thing: the same
-    # prompt and recurrence, or the same title.
-    # @return [Entry, nil]
-    def duplicate_in_chain(session_id, prompt:, title:, recurrence:)
-      given_title = title.to_s.strip
-      ids = chain_of(session_id)
-      entries.find do |entry|
-        next unless ids.include?(entry.anchor) || ids.include?(entry.head)
-
-        (entry.prompt == prompt && entry.recurrence == recurrence) ||
-          (!given_title.empty? && entry.title.to_s.strip.casecmp?(given_title))
-      end
     end
 
     # How many enabled schedules one chain may hold, and one machine.
@@ -376,7 +373,7 @@ module Samagotchi
           next unless entry.is_a?(Entry)
 
           if entry.firing_since && !entry.pending_turn_id && firing_expired?(entry, now)
-            interrupted = failed(entry, "interrupted")
+            interrupted = failed(entry, "interrupted", now: now)
             interrupted = interrupted.with(enabled: false) if entry.recurrence[:kind] == "date"
             updated[position] = interrupted
             pending_ids << entry.id
@@ -389,7 +386,7 @@ module Samagotchi
           outcome = resolve_pending(entry, now)
           pending_ids << entry.id
           if outcome
-            updated[position] = finish_pending(entry, outcome)
+            updated[position] = finish_pending(entry, outcome, now: now)
             outcomes << outcome
             if outcome.status == "fired" && entry.mode == CHAIN
               resolved_chains << entry
@@ -424,7 +421,7 @@ module Samagotchi
           if verdict
             kind, reason = verdict
             unless dry_run
-              updated[position] = kind == :skip ? skipped(entry, reason) : failed(entry, reason)
+              updated[position] = kind == :skip ? skipped(entry, reason, now: now) : failed(entry, reason, now: now)
             end
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: kind == :skip ? "skipped" : "failed",
                                     detail: reason, entry: entry)
@@ -432,13 +429,13 @@ module Samagotchi
           end
           if entry.mode == CHAIN && fired_chains[chain_key(links, entry)]
             reason = "the chain just fired; retry at the next tick"
-            updated[position] = skipped(entry, reason) unless dry_run
+            updated[position] = skipped(entry, reason, now: now) unless dry_run
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
             next
           end
           if entry.mode == CHAIN && pending_chains.include?(chain_key(links, entry))
             reason = "a schedule turn is still pending in this chain"
-            updated[position] = skipped(entry, reason) unless dry_run
+            updated[position] = skipped(entry, reason, now: now) unless dry_run
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: reason, entry: entry)
             next
           end
@@ -461,7 +458,7 @@ module Samagotchi
       end
 
       pending.each do |entry|
-        outcome = fire_and_record(entry, links)
+        outcome = fire_and_record(entry, links, now: now)
         outcomes << outcome
         prune_after << outcome.entry if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
       end
@@ -482,6 +479,7 @@ module Samagotchi
       return Outcome.new(id: id_or_name.to_s, status: "failed", detail: "no such schedule") if entry.nil?
 
       links = links_now
+      now = @clock.call
       reserved = nil
       outcome = nil
       write_under_lock do |file|
@@ -507,21 +505,21 @@ module Samagotchi
         if verdict
           kind, reason = verdict
           status = kind == :skip ? "skipped" : "failed"
-          updated = status == "skipped" ? skipped(current, reason) : failed(current, reason) if current.enabled
-          updated ||= current.with(last_result: reason)
+          updated = status == "skipped" ? skipped(current, reason, now: now) : failed(current, reason, now: now) if current.enabled
+          updated ||= with_history(current.with(last_result: reason), status, reason, at: now, session_id: current.head)
           file.entries[position] = updated
           outcome = Outcome.new(id: current.id, title: current.title, status: status, detail: reason, entry: updated)
           next
         end
 
-        reserved = advance(current, @clock.call)
+        reserved = advance(current, now)
         file.entries[position] = reserved
       end
 
       return mark_disabled([outcome], [entry], links: links).first if outcome
       return Outcome.new(id: entry.id, title: entry.title, status: "failed", detail: "no such schedule") unless reserved
 
-      mark_disabled([fire_and_record(reserved, links)], [entry], links: links).first
+      mark_disabled([fire_and_record(reserved, links, now: now)], [entry], links: links).first
     end
 
     # Minutes between the hub's ticks when schedule.auto_tick is on.
@@ -542,96 +540,6 @@ module Samagotchi
     rescue ArgumentError
       "Warning: no schedule tick in the last #{self.class.tick_interval_minutes * 2} minutes; " \
         "set schedule.auto_tick: true or run `chi schedule tick` from cron."
-    end
-
-    # A recurrence from the CLI's flags or the tool's arguments. Blank strings
-    # (what a model sends for the fields it did not use) count as absent.
-    # @return [Hash] {kind:, ...}
-    # @raise [Usage] none or more than one kind given, or an interval that is
-    #   not a positive amount of time
-    def self.recurrence(every: nil, weekday: nil, time: nil, date: nil)
-      every = nil if every.to_s.strip.empty?
-      weekday = nil if weekday.to_s.strip.empty?
-      time = nil if time.to_s.strip.empty?
-      date = nil if date.to_s.strip.empty?
-
-      kinds = [every, weekday, date].compact
-      raise Usage, "a schedule needs one of every, weekday or date" if kinds.empty?
-      raise Usage, "give one of every, weekday or date, not more" if kinds.size > 1
-
-      if every
-        raise Usage, "time is only for a weekday schedule" if time && !weekday
-
-        interval = every.to_s.strip
-        raise Usage, "every needs an interval like 30m, 2h or 1d, got #{every}" unless interval.match?(/\A\d+[smhd]?\z/)
-
-        seconds = interval_seconds(interval)
-        raise Usage, "every must be at least 1s, got #{every}" if seconds.nil? || seconds.zero?
-
-        { kind: "every", interval: interval }
-      elsif weekday
-        raise Usage, "weekday needs time HH:MM" if time.nil?
-
-        day = weekday.to_s.strip
-        raise Usage, "weekday must be 1 (Mon) to 7 (Sun), got #{weekday}" unless day.match?(/\A[1-7]\z/)
-
-        { kind: "weekday", weekday: day.to_i, time: time.to_s.strip }
-      else
-        { kind: "date", at: local_moment(*parse_local(date)).utc.iso8601 }
-      end
-    end
-
-    # The length of an interval in seconds; nil for something that is not an
-    # interval, and nil for zero so a `0m` schedule can never fire every tick.
-    def self.interval_seconds(interval)
-      match = interval.to_s.strip.match(/\A(\d+)(s|m|h|d)?\z/)
-      return nil unless match
-
-      seconds = { "s" => 1, "m" => 60, "h" => 3600, "d" => 86_400, nil => 60 }[match[2]] * match[1].to_i
-      seconds.positive? ? seconds : nil
-    end
-
-    def self.parse_clock(time)
-      match = time.to_s.strip.match(/\A(\d{1,2}):(\d{1,2})\z/)
-      raise Usage, "time must be HH:MM, got #{time}" unless match
-
-      hour = match[1].to_i
-      minute = match[2].to_i
-      raise Usage, "time must be HH:MM, got #{time}" unless (0..23).cover?(hour) && (0..59).cover?(minute)
-
-      [hour, minute]
-    end
-
-    def self.parse_local(text)
-      match = text.to_s.strip.match(/\A(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?\z/)
-      raise Usage, "date must be YYYY-MM-DD or YYYY-MM-DDTHH:MM, got #{text}" unless match
-
-      year = match[1].to_i
-      month = match[2].to_i
-      day = match[3].to_i
-      hour = match[4] ? match[4].to_i : 0
-      minute = match[5] ? match[5].to_i : 0
-      unless Date.valid_date?(year, month, day) && (0..23).cover?(hour) && (0..59).cover?(minute)
-        raise Usage, "date must be a real date, got #{text}"
-      end
-
-      [year, month, day, hour, minute]
-    end
-
-    # A local moment that exists. When the requested minute falls in a
-    # spring-forward gap, the first valid minute whose wall clock is at or
-    # after it.
-    def self.local_moment(year, month, day, hour, minute)
-      moment = Time.local(year, month, day, hour, minute)
-      return moment if moment.hour == hour && moment.min == minute
-
-      wanted = (hour * 60) + minute
-      day_start = Time.local(year, month, day, 0, 0)
-      1440.times do |step|
-        probe = day_start + (step * 60)
-        return probe if (probe.hour * 60) + probe.min >= wanted
-      end
-      moment
     end
 
     private
@@ -685,34 +593,71 @@ module Samagotchi
     end
 
     # The same resolution as #lookup — an id, a unique prefix, or a title, and
-    # an ambiguous one raises Usage rather than taking the first match.
+    # an ambiguous one raises Usage rather than taking the first match. nil
+    # too when the entry is gone by the time the lock is held (another cancel
+    # landed in between): the caller says "no schedule", not "ok".
+    # @return [Entry, nil] the entry as changed (as removed, for a delete)
     def change(id_or_name, enabled: nil, delete: false)
       entry = lookup(id_or_name)
       return nil if entry.nil?
 
+      result = nil
       write_under_lock do |file|
         position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
         next if position.nil?
 
         if delete
+          result = file.entries[position]
           file.entries[position] = nil
           file.entries.compact!
         else
-          changed = file.entries[position].with(enabled: enabled, last_result: enabled ? "enabled" : "disabled")
-          # Enabled again with a fresh budget: its next skip must not end it at once.
-          file.entries[position] = enabled ? changed.with(skips: 0, failures: 0) : changed
+          stored = file.entries[position]
+          word = enabled ? "enabled" : "disabled"
+          # The owner's row only for a change: an enable of an enabled entry adds none.
+          changed = stored.with(enabled: enabled, last_result: word)
+          changed = with_history(changed, word, nil, at: @clock.call) unless stored.enabled == enabled
+          # Enabled again with a fresh budget: its next skip must not end it at
+          # once, and the turn-off it was disabled by is no news any more.
+          result = file.entries[position] = enabled ? changed.with(skips: 0, failures: 0, disabled_notice: nil) : changed
         end
       end
-      entry
+      result
+    end
+
+    # The checks a schedule's fields pass, for #add and #edit.
+    # @raise [Usage]
+    def validate_catch_up!(value)
+      raise Usage, "catch_up must be one of #{CATCH_UP.join(", ")}" unless CATCH_UP.include?(value)
+    end
+
+    # @return [String] the prompt
+    # @raise [Usage]
+    def validate_prompt!(prompt)
+      prompt = prompt.to_s
+      raise Usage, "a schedule needs a prompt" if prompt.strip.empty?
+      # It fires from a schedule, never a person: a shell line would be
+      # refused at every firing (CommandIntake); a /word one is the model's text.
+      raise Usage, CommandIntake::REFUSED if CommandIntake.shell_line?(prompt)
+      if prompt.bytesize > PROMPT_MAX_BYTES
+        raise Usage, "the prompt is #{prompt.bytesize} bytes; the limit is 16 KiB (#{PROMPT_MAX_BYTES} bytes)"
+      end
+
+      prompt
+    end
+
+    # A whole number given for +name+, at least +min+; nil when none was given.
+    # @raise [Usage] not a number
+    def int_value(value, min:, name:)
+      return nil if value.nil? || value.to_s.strip.empty?
+      raise Usage, "#{name} must be a number, got #{value.inspect}" unless value.to_s.strip.match?(/\A-?\d+\z/)
+
+      [value.to_i, min].max
     end
 
     # +name+ is what the caller's flag is called, so a bad value says which one.
     def int_or_default(value, key, fallback, min:, name: key.split(".").last)
-      unless value.nil? || value.to_s.strip.empty?
-        raise Usage, "#{name} must be a number, got #{value.inspect}" unless value.to_s.strip.match?(/\A-?\d+\z/)
-
-        return [value.to_i, min].max
-      end
+      given = int_value(value, min: min, name: name)
+      return given unless given.nil?
 
       configured = Config.get(key)
       configured.to_s.strip.match?(/\A-?\d+\z/) ? [configured.to_i, min].max : fallback
@@ -774,11 +719,12 @@ module Samagotchi
     # is disabled — `late?` never sends a one-off here, but a spent `date` entry
     # arriving from an older file is still spent.
     def reschedule(entry, now)
+      missed = with_history(entry, "missed", "past its time", at: now, session_id: entry.head)
       if entry.recurrence[:kind] == "date"
-        entry.with(next_due: nil, last_result: "missed", firing_since: nil, firing_token: nil, enabled: false)
+        missed.with(next_due: nil, last_result: "missed", firing_since: nil, firing_token: nil, enabled: false)
       else
-        entry.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601, last_result: "missed",
-                   firing_since: nil, firing_token: nil)
+        missed.with(next_due: next_due_for(entry.recurrence, from: now).utc.iso8601, last_result: "missed",
+                    firing_since: nil, firing_token: nil)
       end
     end
 
@@ -797,47 +743,22 @@ module Samagotchi
                  enabled: one_off ? false : entry.enabled)
     end
 
-    # The skips and failures that turned off a recurring entry that was on when
-    # the pass began (+before+), as the file has it now: one diff covers every
-    # path that records one. A `date` one-off is spent, not disabled; an entry
-    # off within budget is an owner's `chi schedule disable`.
-    def mark_disabled(outcomes, before, links: nil)
-      ended = outcomes.select { |outcome| %w[skipped failed].include?(outcome.status) }.map(&:id)
-      status_by_id = outcomes.select { |outcome| %w[skipped failed].include?(outcome.status) }
-                             .to_h { |outcome| [outcome.id, outcome.status] }
-      on = before.select { |entry| entry.enabled && entry.recurrence[:kind] != "date" && ended.include?(entry.id) }.map(&:id)
-      return outcomes if on.empty?
-
-      off = read.entries.grep(Entry).select do |entry|
-        budget_reached = case status_by_id[entry.id]
-                         when "skipped" then entry.skips >= entry.max_skips
-                         when "failed" then entry.failures >= entry.max_failures
-                         else false
-                         end
-        on.include?(entry.id) && !entry.enabled && budget_reached
-      end
-      links ||= links_now unless off.empty?
-      off.each do |entry|
-        index = outcomes.rindex { |outcome| outcome.id == entry.id && %w[skipped failed].include?(outcome.status) }
-        session_id = target_of(entry, links).first || entry.head
-        outcomes[index] = outcomes[index].with(disabled: true, entry: entry, session_id: session_id)
-      end
-      outcomes
-    end
-
-    def skipped(entry, reason)
+    def skipped(entry, reason, now: @clock.call)
       skips = entry.skips + 1
       within_budget = skips < entry.max_skips
-      entry.with(skips: skips, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
-                 last_result: within_budget ? "skipped" : "disabled: #{reason}",
-                 enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
+      updated = entry.with(skips: skips, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
+                           last_result: within_budget ? "skipped" : "disabled: #{reason}",
+                           enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
+      recorded(entry, updated, "skipped", reason, now)
     end
 
-    def failed(entry, reason)
+    def failed(entry, reason, now: @clock.call)
       failures = entry.failures + 1
       within_budget = failures < entry.max_failures
-      entry.with(failures: failures, firing_since: nil, firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
-                 last_result: reason, enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
+      updated = entry.with(failures: failures, firing_since: nil, firing_token: nil, pending_session_id: nil,
+                           pending_turn_id: nil, last_result: reason,
+                           enabled: within_budget && (entry.enabled || entry.recurrence[:kind] == "date"))
+      recorded(entry, updated, "failed", reason, now)
     end
 
     def pending_detail(entry)
@@ -928,12 +849,13 @@ module Samagotchi
       PENDING_MAX_SECONDS
     end
 
-    def finish_pending(entry, outcome)
+    def finish_pending(entry, outcome, now: @clock.call)
       if outcome.status == "fired"
-        entry.with(firing_since: nil, firing_token: nil, due_was: nil, pending_session_id: nil, pending_turn_id: nil,
-                   last_result: outcome.detail, failures: 0, skips: 0)
+        settled = entry.with(firing_since: nil, firing_token: nil, due_was: nil, pending_session_id: nil, pending_turn_id: nil,
+                             last_result: outcome.detail, failures: 0, skips: 0)
+        with_history(settled, "fired", outcome.detail, at: now, session_id: entry.pending_session_id)
       else
-        updated = failed(entry, outcome.detail).with(due_was: nil)
+        updated = failed(entry, outcome.detail, now: now).with(due_was: nil)
         entry.recurrence[:kind] == "date" ? updated.with(enabled: false) : updated
       end
     end
@@ -1092,9 +1014,9 @@ module Samagotchi
       Outcome.new(id: entry.id, title: entry.title, status: kind == :skip ? "skipped" : "failed", detail: reason, entry: entry)
     end
 
-    def fire_and_record(entry, links)
+    def fire_and_record(entry, links, now: @clock.call)
       outcome = fire(entry, links)
-      record(entry, outcome)
+      record(entry, outcome, now: now)
       outcome
     end
 
@@ -1200,7 +1122,7 @@ module Samagotchi
     # scheduled occurrence, so there is no occurrence to put the clock back to.
     # The result goes back under the lock before any pruning, so a prune that
     # raises midway cannot lose the new head.
-    def record(entry, outcome)
+    def record(entry, outcome, now: @clock.call)
       write_under_lock do |file|
         position = file.entries.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
         stored = position && file.entries[position]
@@ -1220,13 +1142,14 @@ module Samagotchi
                     # skips spread over months do not kill a healthy schedule.
                     # A `date` schedule is a one-off: `advance` already left it
                     # with no next_due and disabled, and a firing keeps it so.
-                    stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil, firing_token: nil,
-                                pending_session_id: nil, pending_turn_id: nil,
-                                failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
+                    fired = stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil,
+                                        firing_token: nil, pending_session_id: nil, pending_turn_id: nil,
+                                        failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
+                    with_history(fired, "fired", outcome.detail, at: now, session_id: outcome.entry.head)
                   when "skipped"
-                    skipped(stored, outcome.detail).with(firing_since: nil)
+                    skipped(stored, outcome.detail, now: now).with(firing_since: nil)
                   else
-                    failed(stored, outcome.detail)
+                    failed(stored, outcome.detail, now: now)
                   end
 
         # A skip or a failure is "not now", not "late": the occurrence the tick

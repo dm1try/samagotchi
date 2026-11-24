@@ -20,7 +20,8 @@
 
 # Rule 3: an autoload of a namespace whose target file requires every file that
 # reopens it, and is the only file that does (session_manager.rb its parts,
-# objectives.rb objectives_{backing,edit}.rb, config.rb config/restart_watch.rb).
+# objectives.rb objectives_{backing,edit}.rb, config.rb config/restart_watch.rb,
+# schedules.rb its parts and schedules/recurrence.rb).
 # Firing the autoload loads the whole namespace; no reopener is required first.
 # Kept as autoloads so a process loads those files only when it uses them.
 - rule: 3
@@ -38,6 +39,12 @@
   file: lib/samagotchi/log.rb
   constant: Samagotchi::Config
   reason: config.rb requires config/restart_watch.rb, and nothing else does.
+- rule: 3
+  file: "*"
+  constant: Samagotchi::Schedules
+  reason: >-
+    schedules.rb requires its parts (schedules/edit_part, history_part,
+    notices_part, recurrence), and nothing else does.
 
 # Rule 1: a part naming its host's constants. The host file requires the part,
 # so a require back would be a cycle; the host defines them before any of the
@@ -46,6 +53,18 @@
   file: lib/samagotchi/engine/*.rb
   constant: Samagotchi::Engine::[A-Z][A-Z_]*
   reason: engine.rb requires its parts (Engine::<Concern>Part).
+- rule: 1
+  file: lib/samagotchi/schedules/*.rb
+  constant: Samagotchi::Schedules::[A-Z][A-Z_]*
+  reason: schedules.rb requires its parts (Schedules::<Concern>Part, recurrence.rb).
+- rule: 1
+  file: lib/samagotchi/schedules/*.rb
+  constant: Samagotchi::Schedules::Usage
+  reason: schedules.rb defines Usage and requires its parts; a part raises it only from a method.
+- rule: 1
+  file: lib/samagotchi/schedules/*.rb
+  constant: Samagotchi::Schedules::Entry
+  reason: schedules.rb defines Entry and requires its parts; a part names it only from a method.
 - rule: 1
   file: lib/samagotchi/terminal_ui/attached_loop/*.rb
   constant: Samagotchi::TerminalUI::AttachedLoop::[A-Z][A-Z_]*
