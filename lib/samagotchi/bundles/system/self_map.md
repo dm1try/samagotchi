@@ -71,8 +71,8 @@
   `docs/bundle-authoring.md` in my source dir first.
 
 - Pages: `chi page run|list|rm` runs, lists and removes pages, Ruby scripts in the `pages/` folder beside the
-  config file whose stored result chi web shows at `#/p/NAME`; how I make one is the `skill_pages` memory
-  (`docs/pages.md`).
+  config file (or a bundle's, as the schedules bundle's) whose stored result chi web shows at `#/p/NAME`; how I make
+  one is the `skill_pages` memory (`docs/pages.md`).
 
 An MCP host or a script can drive me: `docs/mcp-server.md`, `docs/thin-clients.md`.
 

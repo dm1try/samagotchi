@@ -77,6 +77,48 @@ the script adds them, at most 20.
 A rule broken fails the run with a message naming the block and the limit: `table 2: column "cost" has format
 :percent (use :money or :count)`, `table 1 has 13 columns (at most 12)`.
 
+## Reading chi's data: `runtime`
+
+From chi 0.189.0 a script has **`runtime`** next to `page`: what chi itself knows, read in the page's own process
+from this chi's code (no `chi` on `PATH`, no second boot, nothing changed). A page that never calls it loads none of
+it. On an older chi `runtime` is a `NameError`, and the run fails with it (the last good result kept).
+
+- **`runtime.schedules`**: every durable schedule ([scheduling.md](scheduling.md)), the earliest due first. Each has
+  the keys `chi schedule list --all --format json` gives a schedule as methods: `id`, `name` (its title, or the start
+  of its prompt in quotes), `title`, `mode`, `prompt`, `recurrence_words`, `next_due`, `last_fired`, `last_result`,
+  `enabled`, `state` (`on`, `firing` or `off`), `off_reason` (`owner`, `skips`, `failures`, `done`, `missed` or
+  `off`; nil unless off), `skips`, `max_skips`, `failures`, `max_failures`, `skip_window`, `anchor`, `head`,
+  `created_at`, and `history`: its runs, oldest first, each with `at`, `status`, `detail` and `session_id`. Times are
+  ISO 8601 UTC strings, nil when there is none.
+  - `runtime.schedules.rows`: every schedule as a table row (all but `history`): `ui.table runtime.schedules.rows,
+    columns: { "name" => "Name", "state" => "State" }`.
+  - `.warning`: `chi schedule list`'s warning when nothing ticks the schedules, else nil; `.unreadable_ids`: the id of
+    each entry of `schedules.json` that doesn't read (nil for one with no id).
+  - A `schedules.json` that isn't JSON fails the run with the store's own words (`… is not readable JSON …: fix or
+    remove it before changing schedules`). The read takes no lock and writes nothing, though chi's debug log may get a
+    line for an entry that doesn't read.
+
+`runtime`, like the rest of the page script DSL, is stable for bundles ([plugins.md](plugins.md#stable-for-bundles)).
+
+## Pages from a bundle
+
+A bundle can ship pages: its manifest's `pages:` names scripts in its `scripts/` ([plugins.md](plugins.md)), each
+`NAME.rb` the page `NAME`. The shipped **schedules** bundle is one: `chi bundle install schedules` adds a
+**Schedules** page ([scheduling.md](scheduling.md#the-schedules-page)).
+
+- A bundle's page is listed and runs as yours does (`chi page list` says `schedules bundle`; its JSON carries
+  `bundle` and `script`, the path of the script it runs). It shows in chi web after the next list read (a reload, or
+  opening the Pages list): an install isn't watched.
+- **Your own `NAME.rb` replaces it**: with `~/.config/samagotchi/pages/schedules.rb` there, that script runs. That is
+  how a bundle's page is made your own: copy its script (`script` in `chi page list --format json`) there and change
+  it. Removing your copy brings the bundle's page back, as never ran.
+- **It can't be removed**: `chi page rm schedules` exits 1 with `page schedules comes with the schedules bundle:
+  uninstall the bundle or write your own ~/.config/samagotchi/pages/schedules.rb`, and chi web has no Delete for it.
+  Uninstalling the bundle takes the page away (its stored result stays on disk, unused).
+- A bundle's script runs only as installed: one edited since (or missing) runs nothing, and the run fails with
+  `bundle schedules's scripts/schedules.rb differs from the installed one (reinstall the bundle)`.
+- When a chi upgrade changes a bundle's script, the page says "The script changed" until a Refresh.
+
 ## Running
 
 - `chi page run NAME` runs the script in a Ruby process of its own and prints a summary of each block: a text's first
@@ -91,7 +133,9 @@ A rule broken fails the run with a message naming the block and the limit: `tabl
   good result is kept).
 - One run of a page at a time: a second `chi page run usage` meanwhile exits 1 with `page usage is already running`.
 - `chi page list` shows each page's title and `ran 2 min ago`, `failed 1 h ago (line 9)` or `(never ran)`, with
-  `changed` when the script changed since its result was made (the result came from an older script; nothing ran). `chi page rm NAME` removes the script and its result.
+  `changed` when the script changed since its result was made (the result came from an older script; nothing ran),
+  and the bundle a page comes with. `chi page rm NAME` removes the script and its result (a bundle's page can't be
+  removed: [Pages from a bundle](#pages-from-a-bundle)).
 
 Exit codes: 0 ran, 1 failed (or no such page, or already running), 2 the command line itself (an unknown flag, a name
 that breaks the rule). See [the CLI](cli.md#commands).
@@ -107,7 +151,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
 - **The page** shows in place of the session area: Back (to where it was opened from: "Pages" from the list, "Back"
   from an answer's link; with nowhere to go back to, the Pages list), the title,
   when it ran and how long it took, **Refresh** and `⋯` with Delete (it asks once, then removes the script and its
-  result, then shows the Pages list). Opening it shows the stored result at once and runs nothing.
+  result, then shows the Pages list; a bundle's page has no `⋯`). Opening it shows the stored result at once and runs
+  nothing.
 - **Refresh** runs the script as `chi page run` does and redraws when the run ends; the button reads "Running…" and
   can't be pressed twice. A run already going (from a terminal, another tab) says "already running". Stopping chi web
   stops a Refresh. A Refresh holds its request until the run ends, up to about 32 s (the 30 s cut and its grace): behind
@@ -150,7 +195,8 @@ that breaks the rule). See [the CLI](cli.md#commands).
 
 ## Where things are stored
 
-- The script: `~/.config/samagotchi/pages/NAME.rb`.
+- The script: `~/.config/samagotchi/pages/NAME.rb`; a bundle's in the bundle's own `scripts/` folder under the system
+  memories (`.bundles/NAME/scripts/`).
 - The result: `~/.local/state/samagotchi/pages/NAME/output.json` (`$XDG_STATE_HOME`): the title, the blocks of the last
   good run, when it ran, how long it took, the sha256 of the script that made it, and the last failure since, if any.
   Its shape is in [internals/pages.md](internals/pages.md).

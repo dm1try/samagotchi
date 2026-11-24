@@ -208,6 +208,16 @@ the session it acted on (a skip or
 failure that used up the budget says `disabled: <reason>`). `list --format json` has
 them as each entry's `history` (and an unpushed turn-off as `disabled_notice`).
 
+`list --format json` gives each entry every stored field (with any key a newer chi
+added), then `recurrence_words`, `skip_window`, and what a reader would otherwise work
+out: `name` (the title, or the start of the prompt in quotes, as `list` names it),
+`state` (`on`, `firing` while a firing is in flight, `off`) and `off_reason`, why an
+off one is off: `owner` (your `disable`), `skips` or `failures` (a budget used up),
+and for a `date` one-off its last outcome in the history: `done` (it fired),
+`failures` (it failed) or `missed`; `off` when none of these says (an older file's
+spent one-off). These come last, so a stored key of the same name never hides them
+(`ScheduleDisplay.json`).
+
 `chi schedule edit ID` changes a schedule in place (its title, prompt, recurrence,
 catch-up or budgets; [CLI](cli.md#durable-schedules-chi-schedule)) and keeps its id,
 session, mode, counters and history. A new recurrence starts its clock at the edit, as
@@ -339,7 +349,8 @@ Run it from systemd or launchd instead if you prefer a timer: the command is the
 same, `chi schedule tick`, and the lock makes overlapping runs harmless — the
 second one exits 0 with "no schedules due (another tick holds the lock)".
 `--dry-run` prints what would fire and changes nothing; `--format json` is the seam
-for scripts and for a future web UI. `chi schedule run-now` reserves the entry
+for scripts; a page script reads the schedules in chi itself instead
+(`runtime.schedules`, [pages.md](pages.md#reading-chis-data-runtime)). `chi schedule run-now` reserves the entry
 under the same lock before starting its action, so it cannot race a tick into a
 duplicate firing.
 
@@ -362,6 +373,21 @@ is the documented driver. When it is off and no tick has run within twice
 the configured interval, `chi schedule add`, `chi schedule list` and `schedule_task`
 warn to turn `schedule.auto_tick` on or run `chi schedule tick` from cron; `--dry-run`
 and lock-held attempts do not refresh `last_tick_at`.
+
+## The Schedules page
+
+`chi bundle install schedules` adds a **Schedules** page to chi web (`#/p/schedules`,
+under the `pages` pill; `chi page run schedules` in a terminal) from the shipped
+schedules bundle ([bundles.md](bundles.md#the-schedules-bundle)). It shows how many
+schedules there are and in which state, with the tick warning when nothing ticks; each
+schedule that is off and why ("turned off by you", "skipped 12 times (≈1 h at a 5 min
+tick): busy", "failed 3 times: …", "one-off, done") with the `chi schedule enable ID`
+that turns it back on; each entry of `schedules.json` that can't be read with the
+`chi schedule cancel ID` that removes it; a table of every schedule (on and firing
+first by next due, then off; times in this machine's zone) and the recent runs, newest
+first. It is read-only: ask chi, or use `chi schedule`, to change one. What it shows is
+as of its last run: Refresh to update. A `schedules.json` that isn't JSON fails the
+run with the store's own words, and the last good result stays.
 
 See [cli.md](cli.md) for the subcommands and flags, and
 [configuration.md](configuration.md) for the `schedule.*` settings.

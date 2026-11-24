@@ -6,16 +6,39 @@ The user side is [pages.md](../pages.md). This is how a run happens and what it 
 
 | File | What |
 |---|---|
-| `lib/samagotchi/pages.rb` | `Pages`: the limits, the name rule (`check_name!`, the one check before any path), the folders, the errors (`Refused`, `BadName`, `Missing`, `Busy`, each owning its message), the values `Stored` and `Failure` |
+| `lib/samagotchi/pages.rb` | `Pages`: the limits, the name rule (`check_name!`, the one check before any path), the folders, the resolver (`script_path`, `user_script_path`, `bundled`), the errors (`Refused`, `BadName`, `Missing`, `FromBundle`, `Busy`, each owning its message), the values `Stored` and `Failure` |
 | `pages/builder.rb` | `Builder` (the script's `ui`: `text`, `table`, `walk`) and `TableBlock` (columns, formats, key columns, cells, the total) |
 | `pages/store.rb` | `Store`: read, list, `record_run`, `record_failure`, `locked`, `remove`, `file_id`, `remove_temporary_outputs` |
 | `pages/runner.rb` | `Runner.run(argv)`: the runner process's whole job |
+| `pages/runtime.rb` | `Runtime`, a script's `runtime`: `#schedules` (`ScheduleList`, `Schedule`, `Run`, `Unreadable`) |
+| `pages/bundled.rb` | `Bundled`: the pages installed bundles ship (a manifest's `pages:`), `Page#refusal` |
 | `pages/launch.rb` | `Launch.run(name, timeout:, cancelled:)`: the one launch path |
 | `page_command.rb` | `chi page run | list | rm` |
 
 `pages.rb` requires json, digest, time, `inline_widgets`, `paths` and `atomic_file`, and autoloads its parts. Nothing
-it reaches requires the engine, the config, the web, the plugins, `ChildEnv` or `ProcessGroup`: the runner loads it
-alone. `launch.rb` is the only file that needs `ChildEnv` and `ProcessGroup`, and nothing in `pages.rb` requires it.
+it reaches at load requires the engine, the config, the web, the plugins, `ChildEnv` or `ProcessGroup`: the runner
+loads it alone. `launch.rb` is the only file that needs `ChildEnv` and `ProcessGroup`, and nothing in `pages.rb`
+requires it. Two parts load more, and only when used: `Runtime#schedules` requires `schedules.rb` (which reaches the
+config, `SessionManager` and `ProcessGroup`; about 70 ms) when a script calls it, and `Bundled` requires
+`installed_bundles.rb` (the config) when a name has no script of the user's. `spec/pages_runtime_spec.rb` pins it: a
+real runner process running a user's page that never calls `runtime` has loaded no `runtime.rb`, `schedules.rb` or
+`config.rb`.
+
+**The resolver.** `Pages.script_path(name)` is the script a name runs: the user's `NAME.rb` when it exists, else the
+page of that name an installed bundle ships (`Bundled.find`), else the user's path (no such page). Every read and run
+goes through it (`Store.read`/`script_sha`, `Launch`, `Runner`, `PageRoutes`). `Store.remove` never does: it deletes
+only `Pages.user_script_path(name)`, and with no user script a bundle's page raises `FromBundle` before anything is
+touched (`pages_bundled_spec` checks the bundle's file is still there). `Store.list` is the user's names (the pages
+folder) and `Bundled.all`'s, one per name. `Stored#bundle` is the bundle whose script runs (nil when the user's runs,
+so a shadowing copy reads as the user's) and `Stored#script` its path.
+
+**Bundle pages** (`Bundled`, from the install records like `BlockRenderers.for_installed`, so chi web loads no plugin):
+each usable `InstalledBundles.standings` record's `manifest.pages` (`InstalledBundles::Manifest#pages`: the kept
+`manifest.yml` only, never the record's mirror, since a key a later manifest gains is never mirrored), the first
+bundle by name winning a name; an unreadable or too-new bundle ships none. `Page#refusal` is
+`InstalledBundles::Dir#file_refusal(:scripts, …)` against the recorded sha: `Launch.run` checks it under the lock and,
+on one, records it as the run's failure and starts nothing. A bundle page's run loads `installed_bundles.rb` in the
+runner too (its `Pages.script_path`), accepted: the shipped one loads the schedules anyway.
 
 ## The one launch path
 
@@ -79,8 +102,8 @@ limit). It arms the deadline when argv carries one (a write of the result and th
 and the write sets a done flag under it, so a result written before the deadline fires is never overwritten), checks
 the
 name and the script, then
-`load(path, dsl)`: the wrap module is a fresh `Module` defining only `page`, so the script's own `def`s land in it, not
-on `Object`. `page(title) { |ui| … }` makes a `Builder`; a second call raises `Refused`. After the load, no `page` call
+`load(path, dsl)`: the wrap module is a fresh `Module` defining only `page` and `runtime` (the Collector's
+`Runtime`, made on the first call), so the script's own `def`s land in it, not on `Object`. `page(title) { |ui| … }` makes a `Builder`; a second call raises `Refused`. After the load, no `page` call
 fails the run too.
 
 It rescues `StandardError`, `ScriptError`, `SystemExit`, `SystemStackError` (endless recursion) and `NoMemoryError` (never a `SignalException`: a TERM is the launcher's cut,
@@ -131,13 +154,14 @@ all `:owner`: a participant's token gets 403 `not_permitted` (`participant_gate_
 
 | Route | Answers |
 |---|---|
-| `GET /api/pages` | `{pages: [{name, title, state, ran_at, failed_at, changed, error_line}]}`, by name (`Store.list`) |
+| `GET /api/pages` | `{pages: [{name, title, state, ran_at, failed_at, changed, error_line, bundle}]}`, by name (`Store.list`) |
 | `GET /api/pages/NAME` | the page (below); 404 `page_missing` with no script. Runs nothing |
 | `POST /api/pages/NAME/run` | `Launch.run(name, timeout: 30, cancelled: -> { !@server_running.call })` inside the request; the page as after the run, with `stderr` (its last 2 KB) when it failed; 409 `page_busy`, 404 `page_missing`, 503 `server_stopping` (chi web's stop ended it: "the run was stopped") |
-| `DELETE /api/pages/NAME` | `Store.remove`: `{removed: NAME}`; 409 `page_busy`, 404 `page_missing` |
+| `DELETE /api/pages/NAME` | `Store.remove`: `{removed: NAME}`; 409 `page_busy`, 409 `page_bundled` (a bundle's page, `FromBundle`), 404 `page_missing` |
 
-The page: `{name, title, state, ran_at, duration_ms, changed, changed_after_failure, script_changed_at, error:
-{message, line, at} | null, blocks}`. `changed` is `Stored#changed?`; `changed_after_failure` says the script differs
+The page: `{name, title, state, ran_at, duration_ms, changed, bundle, changed_after_failure, script_changed_at, error:
+{message, line, at} | null, blocks}`. `bundle` (`Stored#bundle`) makes `page_view.js` leave out `⋯` and its Delete;
+an older cached app.js still offers it, and the 409's message shows in its toast. `changed` is `Stored#changed?`; `changed_after_failure` says the script differs
 from the one that failed (so the page needs no sha); `script_changed_at` is the script's mtime. A text block carries
 `html`, the `MarkdownRenderer`'s sanitised render, when rendering is available (`web.markdown`), else `text` only.
 The error codes' `detail` is the exception's own message.
@@ -187,4 +211,7 @@ owner's `~/.claude/plans/evals/0016-pages-skill/`.
 
 ## Later builds
 
-- Not planned yet: picks on a page, a data API (`runtime`), a bundle's pages, parameters.
+- `runtime` has one method, `schedules`, with its first page (the schedules bundle). A method comes with its first
+  caller: sessions, a session's stats, a config value are the candidates.
+- Not planned yet: picks on a page, parameters, a live install (the hub watches the pages folder only, so a bundle's
+  page shows on the next list read).

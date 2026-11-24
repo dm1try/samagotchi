@@ -411,6 +411,21 @@ The port is bound to loopback, not the LAN. Under colima, run it from a folder i
 shares only that with its VM by default, and elsewhere SearXNG starts on its own default settings (JSON off).
 `curl 'http://127.0.0.1:8888/search?q=ruby&format=json'` should answer JSON.
 
+## The schedules bundle
+
+`chi bundle install schedules` installs a **Schedules** page (`lib/samagotchi/bundles/schedules/scripts/schedules.rb`):
+in chi web it is under the `pages` pill (`#/p/schedules`), and `chi page run schedules` runs it from a terminal. No
+profile includes it, so `chi update` lists it as not installed until you install it. What it shows is in
+[scheduling.md](scheduling.md#the-schedules-page). It has no plugin, tools or settings: the manifest's `pages:` names
+its one script ([plugins.md](plugins.md#pages)), and the script reads the schedules with `runtime.schedules`
+([pages.md](pages.md#reading-chis-data-runtime)).
+
+- **Read-only.** It changes nothing; for each schedule that is off it prints the `chi schedule enable ID` that turns it
+  on.
+- **Your own version.** Copy the script (`chi page list --format json` gives its path as `script`) to
+  `~/.config/samagotchi/pages/schedules.rb` and change it: yours runs instead. Remove your copy to get the bundle's back.
+- **Removing it.** `chi page rm schedules` refuses (the page comes with the bundle); uninstall the bundle instead.
+
 ## The loop-guard bundle
 
 `chi bundle install loop-guard` installs the bundle shipped with chi (`chi
