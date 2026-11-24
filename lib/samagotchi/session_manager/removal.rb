@@ -422,6 +422,8 @@ module Samagotchi
             PluginSessionState.remove(id)
           when :context_sources
             removed.concat(ContextSources.remove_session(id, state_dir: state_dir))
+          when :peer_mailbox
+            removed.concat(PeerMailbox.remove_session(id, state_dir: state_dir))
           when :participants
             Participants.end_sessions([id], by: "delete", state_dir: state_dir)
           when :system_one_runs

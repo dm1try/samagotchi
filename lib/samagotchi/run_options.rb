@@ -200,6 +200,7 @@ module Samagotchi
                  chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
                  chi broadcast [-m TEXT] [--all] [--dry-run] | log | deliver   a note for every session it may concern
                  chi context <add|push|ls|show|refresh|rm|mute|unmute>   live external text attached to sessions
+                 chi peer <pair|unpair|say|ls> …     a peer agent's side of a session (its messages to chi)
                  chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
                  chi answer ID --question QID --option N   answer a question a session waits on
                  chi share ID --name NAME | ls [ID] | cap ID P D | revoke ID [P]|--all   invite people into a session
@@ -217,7 +218,7 @@ module Samagotchi
                  chi schedule <add|list|show|tick|run-now|enable|disable|cancel>   durable schedules that outlive every worker
                  chi mcp serve                    chi as an MCP server on stdio (claude mcp add chi -- chi mcp serve)
                  chi remote <add|ls|rm>           other machines' chi web, for chi --remote NAME
-                 chi --remote NAME <send|answer|note|context|sessions|share|mcp> …   those commands on that machine (or CHI_REMOTE=NAME)
+                 chi --remote NAME <send|answer|note|context|peer|sessions|share|mcp> …   those commands on that machine (or CHI_REMOTE=NAME)
                  chi --remote NAME --attach ID | --resume ID | --dir DIR [-p TEXT]   a session on that machine, in this terminal
                  chi self                         version, paths, model and bundles
                  chi update [--dry-run]           update this chi, its bundles and the desktop helper

@@ -14,6 +14,7 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
                         config_path: File.join(config_dir, "config.yml"),
                         hooks_dir: File.join(config_dir, "hooks"),
                         context_dir: File.join(root, "state", "context"),
+                        mailbox_dir: File.join(root, "state", "mailbox"),
                         runs_dir: File.join(root, "state", "system_one"),
                         home_path: File.join(config_dir, "home.json"),
                         shim_path: File.join(root, "state", "bin", "chi"),
@@ -75,6 +76,13 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
   it "denies writes to System 1's saved runs: a label there may train a model" do
     v = verdict_for(name: "write", path: "state/system_one/runs/approvals.allow/2026-11-01.jsonl", content: "x")
     expect([v.decision, v.rule, v.source]).to eq([:deny, "system-one-runs", "core"])
+  end
+
+  it "denies writes to the peer mailbox: a message there speaks as a peer agent; chi peer writes it" do
+    v = verdict_for(name: "write", path: "state/mailbox/abc/claude/in/3.json", content: "{}")
+    expect([v.decision, v.rule, v.source]).to eq([:deny, "chi-mailbox", "core"])
+    v = verdict_for(name: "edit", path: "state/mailbox/abc/claude/link.json", old_text: "a", new_text: "b")
+    expect([v.decision, v.rule]).to eq([:deny, "chi-mailbox"])
   end
 
   it "denies writes to attached context: a source's command runs later, outside the gate" do

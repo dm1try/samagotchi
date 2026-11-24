@@ -213,7 +213,8 @@ module Samagotchi
       # (SessionInbox.deliver): resume_session, which keeps its own checks
       # (a claim on the starting marker: of starts racing, one spawns),
       # logged as +event+.
-      # @param event [Symbol] :delegate_woke_parent (a ring) or :context_woke_session (a push)
+      # @param event [Symbol] :delegate_woke_parent (a ring), :context_woke_session (a push) or
+      #   :peer_woke_session (a peer's say)
       # @return [Symbol] :woken (this start spawned it), :starting (another
       #   start won the claim, or is pending), :live (a worker took it since)
       #   or :owned (a one-turn chi run or its terminal's scratch session did)

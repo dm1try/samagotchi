@@ -106,6 +106,16 @@ RSpec.describe "SessionInbox.deliver" do
       .with(session.id, state_dir: tmpdir, event: :context_woke_session)
   end
 
+  it "logs a peer's say's start as peer_woke_session" do
+    allow(Samagotchi::SessionManager).to receive(:start_for_inbox).and_return(:woken)
+
+    result = Samagotchi::SessionInbox.deliver(:peer, session.id, state_dir: tmpdir) { true }
+
+    expect(result).to have_attributes(kind: :peer, wake: :woken)
+    expect(Samagotchi::SessionManager).to have_received(:start_for_inbox)
+      .with(session.id, state_dir: tmpdir, event: :peer_woke_session)
+  end
+
   describe "SessionManager.start_for_inbox" do
     before { allow(Process).to receive(:spawn) }
 

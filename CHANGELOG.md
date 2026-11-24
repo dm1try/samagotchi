@@ -23,6 +23,14 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Peer mail: settle wake receipts even if handling a turn's result raises an I/O error.
+- Peer mail: refuse further messages when 200 noted messages from a peer still await a turn.
+- Peer mail: retry a temporarily unreadable message instead of discarding it and later messages.
+- Peer mail: recovery retains an asking wake note's full text, just as a normally unmarked wake does.
+- Peer mail: a batch replayed after its notes were saved no longer starts a wake without a wake note.
+- Peer mail: retry receipts after a write failure without advancing the in-memory mailbox cursor.
+- Peer mail: label a wake turn with the peer that requested it, even when another peer's note arrives last.
+- Peer mail: refuse forged message files with multiline or otherwise unnormalized summaries.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not
   "failed: ...".
 - chi web: after a reload, a plugin's line after a turn stays right under that turn instead of moving below the next

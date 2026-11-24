@@ -23,6 +23,9 @@ module Samagotchi
       # serves the session (TurnCheckpoint.settle). Its queued id's wait
       # (chi send --queue --wait) reads the end it records in the session dir.
       def settle_interrupted_turn
+        # No turn runs yet: a peer receipt left woke or read is a dead
+        # worker's turn's (the mark's, or one that never began), ended failed.
+        @peer_receipts&.settle_open
         mark = TurnCheckpoint.settle(@session, session_dir: @session_dir)
         return unless mark
 

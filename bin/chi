@@ -75,6 +75,8 @@ SUBCOMMANDS = {
   "broadcast" => ["samagotchi/broadcast_command", "BroadcastCommand"],
   # live external text attached to sessions (add, push, ls, show, rm, mute)
   "context" => ["samagotchi/context_command", "ContextCommand"],
+  # a peer agent's side of a session: pair, unpair, say (what chi did with it), ls
+  "peer" => ["samagotchi/peer_command", "PeerCommand"],
   # a message into sessions as the user's (-m)
   "send" => ["samagotchi/send_command", "SendCommand"],
   # answer the question a session waits on, then wait (--question, --option)

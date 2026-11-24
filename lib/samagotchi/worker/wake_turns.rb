@@ -6,6 +6,7 @@ require_relative "../child_reports"
 require_relative "../client_id"
 require_relative "../iteration_limit"
 require_relative "../log"
+require_relative "../peer_mailbox"
 require_relative "../session_inbox"
 require_relative "../turn_origin"
 
@@ -102,12 +103,12 @@ module Samagotchi
                              max_iterations: IterationLimit.for) do |result, error|
           if error
             steps_kept = @turn_flow.prompt_turn_failed(error: error, wake: failed, wake_kept: kept) == :kept
-            @inbound.unmark_wake(mark) if mark && !steps_kept
+            @unmarked_this_turn = @inbound.unmark_wake(mark) if mark && !steps_kept
             @wakes.pause!
           else
             @continue_offer.after_turn(result)
             if result.canceled? && @turn_flow.restores != restores
-              @inbound.unmark_wake(mark) if mark
+              @unmarked_this_turn = @inbound.unmark_wake(mark) if mark
               @wakes.pause!
             end
           end
@@ -125,6 +126,18 @@ module Samagotchi
         name = context_wake.name
         Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!(peer: context_wake.peer_turn?))
         run_wake(origin: context_wake.origin, failed: "the change in attached context #{name}", mark: context_wake)
+      end
+
+      # A turn nobody typed for a peer's message that asked (a mail wake): a
+      # continue turn from peer:<name> whose first message is the batch's
+      # last note, already in the conversation (named by its turn id), on
+      # #run_wake's rules. It counts toward session.max_wakes and, unless the
+      # message agrees, toward context.peer_turns.
+      # +mail_wake+: a WorkerInbound::MailWake.
+      def run_mail_wake_turn(mail_wake)
+        Log.info(:worker, "mail_wake_turn", peer: mail_wake.peer, in_a_row: @wakes.count!(peer: !mail_wake.agreed))
+        run_wake(origin: mail_wake.origin, failed: "the message from your peer agent #{PeerMailbox.label(mail_wake.peer)}",
+                 mark: mail_wake)
       end
 
       # The background tasks this session started that finished unseen, as
@@ -184,7 +197,9 @@ module Samagotchi
 
       # The idle loop's sleep: the fallback tick, or less while reports or
       # attached-context wakes wait out the start grace.
-      def idle_wait = @wakes.idle_wait(@poll_interval) { wake_state == :due || @inbound.context_wake_waiting? }
+      def idle_wait
+        @wakes.idle_wait(@poll_interval) { wake_state == :due || @inbound.context_wake_waiting? || @inbound.mail_wake_waiting? }
+      end
     end
   end
 end

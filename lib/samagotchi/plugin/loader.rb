@@ -27,6 +27,7 @@ module Samagotchi
     # Engine's list of the plugins' toolkits (chi.toolkit: Toolkit::Kit);
     # +tool_index+ the Engine's Tools::ToolIndex (chi.tool_source);
     # +peer_sources+ the Engine's PeerSources (chi.peer_source);
+    # +peer_registry+ the Engine's PeerRegistry (chi.peer);
     # +prompt_sections+ the Engine's PromptSections (chi.prompt_section),
     # +prompt_changed+ rebuilds its system prompts (chi.prompt_changed!),
     # +judgments+ the Engine's SystemOne::Judgments (chi.judgment),
@@ -35,7 +36,7 @@ module Samagotchi
     # (HookRoutes#plugin_hook_failed).
     Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, :stage_tools, :init,
                             :toolkits, :tool_index, :peer_sources, :prompt_sections, :prompt_changed, :judgments,
-                            :hook_failed, keyword_init: true)
+                            :hook_failed, :peer_registry, keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).

@@ -30,7 +30,17 @@ RSpec.describe Samagotchi::SessionStores do
     expect(Samagotchi::SessionManager::SESSION_STATE_STORES).to eq(described_class.removal_stores)
     expect(Samagotchi::SessionManager::SESSION_STATE_STORES)
       .to contain_exactly(:session_files, :plugin_session_state, :context_sources, :participants, :system_one_runs,
-                          :context_candidates_log)
+                          :context_candidates_log, :peer_mailbox)
+  end
+
+  it "registers the peer mailbox's files (the peer's folder) and the worker's receipts (the session's)" do
+    stores = described_class::STORES.select { |store| %w[PeerMailbox PeerReceipts].include?(store.owner) }
+    expect(stores.map { |store| [store.file, store.owner, store.removal, store.cross_version, store.corpus_dir] })
+      .to eq([["link.json", "PeerMailbox", :peer_mailbox, true, described_class::MAILBOX],
+              ["in/", "PeerMailbox", :peer_mailbox, true, described_class::MAILBOX],
+              ["lock", "PeerMailbox", :peer_mailbox, false, nil],
+              ["peer_receipts.json", "PeerReceipts", :session_files, true, described_class::SIDE_CAR]])
+    expect(described_class::MAILBOX).to eq("mailbox/compat-session/claude")
   end
 
   it "marks a cross-version store for the corpus or explains why it cannot be recorded" do

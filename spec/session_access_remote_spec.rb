@@ -862,4 +862,60 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(err.string).to include("--scope=project on a remote needs --cwd: a folder there")
     end
   end
+
+  describe "chi peer through a Remote (chi web's …/peers routes)" do
+    it "says the say on the server, which waits: the request's read timeout covers the wait" do
+      said = { status: "received", serial: 12, receipt: { serial: 12, state: "woke", turn: "t", at: "x" }, earlier: [[10, "paused"]] }
+      access, calls = scripted([200, said])
+      result = access.peer_say("s-1", "claude", text: "hi", summary: "s", wake: true, re: "s-ab", wait: 8)
+      expect(result.line("claude")).to eq("#12 received · woke chi · also held: #10 (paused)")
+      method, path, opts = calls.last
+      expect([method, path]).to eq([:post, "/api/sessions/s-1/peers/claude/say"])
+      expect(opts[:body]).to eq(text: "hi", summary: "s", wake: true, re: "s-ab", wait: 8)
+      expect(opts[:read_timeout]).to be >= 8 + 30
+      expect(Samagotchi::SessionAccess::HTTPTransport::READ_TIMEOUT).to be > 8
+    end
+
+    it "reads a refused say (409) and a gone session (404) as PeerSay refusals" do
+      access, = scripted([409, { status: "continued", next_id: "n-1" }])
+      expect(access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil).line("claude"))
+        .to eq("this session was continued as n-1: say it there")
+      access, = scripted([404, { error: "not_found", detail: "no session s-1" }])
+      expect(access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil).status).to eq(:gone)
+    end
+
+    it "pairs, refuses an old worker, unpairs and lists" do
+      access, calls = scripted([200, { status: "paired", link: { peer: "claude", address: "a", paired_at: "2026-11-24T10:00:00Z", from: nil } }])
+      expect(access.peer_pair("s-1", "claude", address: "a", from: nil).link.address).to eq("a")
+      expect(calls.last.first(2)).to eq([:post, "/api/sessions/s-1/peers/claude/pair"])
+
+      access, = scripted([409, { status: "old_worker" }])
+      expect(access.peer_pair("s-1", "claude", address: nil, from: nil).status).to eq(:old_worker)
+
+      access, calls = scripted([200, { unpaired: true }])
+      expect(access.peer_unpair("s-1", "claude")).to be(true)
+      expect(calls.last.first(2)).to eq([:delete, "/api/sessions/s-1/peers/claude"])
+
+      access, = scripted([200, { exchanges: [], peers: [{ name: "claude", label: "Claude", messages: [{ serial: 1, wake: true }] }] }])
+      expect(access.peer_list("s-1").map { |peer| [peer.name, peer.messages.map(&:serial)] }).to eq([["claude", [1]]])
+    end
+
+    it "pairs and says through chi web's routes in this process, the line the server built" do
+      session = make
+      session.messages = [{ role: "user", content: "hi" }]
+      session.save(state_dir: tmpdir)
+      allow(Samagotchi::SessionManager).to receive(:start_for_inbox).and_return(:woken)
+      expect(remote.peer_pair(session.id, "claude", address: nil, from: "spec").status).to eq(:paired)
+      said = remote.peer_say(session.id, "claude", text: "hi", summary: nil, wake: true, re: nil, wait: 0)
+      expect(said.line("claude")).to eq("#1 received · no answer from chi yet")
+      expect(remote.peer_list(session.id).first.messages.map(&:serial)).to eq([1])
+      expect(remote.peer_unpair(session.id, "claude")).to be(true)
+    end
+
+    it "says an older chi web has no chi peer" do
+      access, = scripted([404, { error: "not_found", detail: "not found: /api/sessions/s-1/peers/claude/say" }])
+      expect { access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil) }
+        .to raise_error(Samagotchi::SessionAccess::RemoteTooOld, "chi web on #{RemoteBackend.entry.name} is older: it has no chi peer (update chi there: chi update)")
+    end
+  end
 end

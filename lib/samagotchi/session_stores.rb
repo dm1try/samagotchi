@@ -3,6 +3,7 @@
 module Samagotchi
   # The files that hold state for a session, including stores outside its
   # sidecar directory. `corpus_dir` is relative to the compatibility corpus.
+  # A `file` ending in "/" is a folder of files (PeerMailbox's in/).
   # A Symbol in `continue` names the carry step; a String explains why it stays.
   module SessionStores
     Store = Data.define(:file, :owner, :removal, :cross_version, :continue, :corpus_dir, :corpus_exception) do
@@ -17,6 +18,10 @@ module Samagotchi
 
     SIDE_CAR = "sessions/compat-session"
     CONTEXT = "context/sessions/compat-session"
+    MAILBOX = "mailbox/compat-session/claude"
+    # Until a continue carries the mailbox (its :peers step), it stays with
+    # the previous link, whose say refuses with the next id.
+    MAILBOX_STAYS = "the mailbox stays with the previous link; a say there is refused with the next id"
 
     STORES = [
       Store.new(file: "archived", owner: "ArchiveStore", removal: :session_files, cross_version: true,
@@ -60,6 +65,16 @@ module Samagotchi
       Store.new(file: "peer_exchanges.jsonl", owner: "PeerExchanges", removal: :session_files, cross_version: true,
                 continue: "exchanges stay with the previous link; the new pairing starts empty", corpus_dir: nil,
                 corpus_exception: "older readers do not read peer exchange metadata"),
+      # A peer's side of the session (PeerMailbox): <state>/mailbox/<id>/<peer>/.
+      Store.new(file: "link.json", owner: "PeerMailbox", removal: :peer_mailbox, cross_version: true,
+                continue: MAILBOX_STAYS, corpus_dir: MAILBOX),
+      Store.new(file: "in/", owner: "PeerMailbox", removal: :peer_mailbox, cross_version: true,
+                continue: MAILBOX_STAYS, corpus_dir: MAILBOX),
+      Store.new(file: "lock", owner: "PeerMailbox", removal: :peer_mailbox, cross_version: false,
+                continue: "a lock is not session data", corpus_dir: nil),
+      # What the worker did with each peer message (PeerReceipts).
+      Store.new(file: "peer_receipts.json", owner: "PeerReceipts", removal: :session_files, cross_version: true,
+                continue: MAILBOX_STAYS, corpus_dir: SIDE_CAR),
       Store.new(file: "owner.lock", owner: "OwnerLock", removal: :session_files, cross_version: false,
                 continue: "the owner lock is not session data", corpus_dir: SIDE_CAR),
       Store.new(file: "reminders.json", owner: "ReminderCarry", removal: :session_files, cross_version: true,

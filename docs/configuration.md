@@ -1297,7 +1297,7 @@ One record is one line, plus indented payload lines at debug level:
 - Tags: `turn` (a session's event trail), `http` (model requests),
   `worker`, `bridge`, `web`, `attached`, `idle`, `recap`, `hooks`,
   `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps), `context` (attached context fetches),
-  `broadcast` (chi broadcast's triage), `toolkit`, `system_one`, `prompt` (a system prompt section left out
+  `peer` (a peer agent's messages, chi peer), `broadcast` (chi broadcast's triage), `toolkit`, `system_one`, `prompt` (a system prompt section left out
   after an error).
 - The format is parsed by `Samagotchi::LogLine` (`parse`, `each_record`);
   keep tools that read it on that parser.

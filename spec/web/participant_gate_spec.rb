@@ -72,6 +72,14 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
     )
   end
 
+  it "does not grant participants the peer mailbox's routes" do
+    refused = [403, { "error" => "not_permitted", "detail" => Samagotchi::ParticipantMessages::NOT_PERMITTED }]
+    expect(json("/api/sessions/#{session.id}/peers/claude/messages/1")).to eq(refused)
+    expect(json("/api/sessions/#{session.id}/peers/claude", method: "DELETE")).to eq(refused)
+    expect(json("/api/sessions/#{session.id}/peers/claude/pair", method: "POST")).to eq(refused)
+    expect(json("/api/sessions/#{session.id}/peers/claude/say", method: "POST")).to eq(refused)
+  end
+
   describe "who a request is" do
     it "is the owner for the owner's token, whatever grants exist" do
       token

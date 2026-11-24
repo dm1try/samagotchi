@@ -10,7 +10,7 @@ module Samagotchi
     # "chi <cmd> runs on this machine only: run it on <remote>"). The v1 scope is the remote-sessions plan's
     # D3: send, answer, note, a session's context (add, push, ls, show, rm)
     # and sessions list/stop/restart/archive/unarchive/delete, chi share
-    # (the shared-sessions plan's P2); the rest
+    # (the shared-sessions plan's P2), chi peer (peer-mailbox); the rest
     # stays local. bin/chi's subcommands that act on the machine, not on
     # sessions, are MACHINE. The run flags (chi --attach, -p, --resume: a
     # session in this terminal, a remote attach there) are RUN's.
@@ -149,6 +149,23 @@ module Samagotchi
         # remote's chi web, as chi send and chi answer.
         "mcp" => SUPPORTED,
         "mcp serve" => SUPPORTED,
+
+        # A peer agent's side of a session (PeerMailbox): the remote's chi
+        # web pairs and writes, and a say waits there (POST …/say, wait:).
+        "peer" => SUPPORTED,
+        "peer pair" => SUPPORTED,
+        "peer pair --address" => SUPPORTED,
+        "peer pair --from" => SUPPORTED,
+        "peer unpair" => SUPPORTED,
+        "peer say" => SUPPORTED,
+        "peer say --wake" => SUPPORTED,
+        "peer say --nowake" => SUPPORTED,
+        "peer say --summary" => SUPPORTED,
+        "peer say --re" => SUPPORTED,
+        "peer say --message" => SUPPORTED,
+        "peer say --wait" => SUPPORTED,
+        "peer ls" => SUPPORTED,
+        "peer ls --format" => SUPPORTED,
 
         "broadcast" => LOCAL_ONLY
       }.freeze

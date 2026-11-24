@@ -51,6 +51,7 @@ require_relative "worker/child_side"
 require_relative "worker/command_queue"
 require_relative "worker/block_fixes"
 require_relative "worker/senders"
+require_relative "worker/mail"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -103,6 +104,7 @@ module Samagotchi
     include CommandQueuePart
     include BlockFixesPart
     include SendersPart
+    include MailPart
 
     FALLBACK_TICK_SECONDS = 5
     # A worker just started runs no wake turn for delegate reports this
@@ -291,6 +293,8 @@ module Samagotchi
         @event_log.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
       end
       prune_tombstones
+      # What this worker did with each peer message (PeerReceipts, read once).
+      @peer_receipts = PeerReceipts.new(session_id: @session_id, state_dir: @state_dir)
       settle_interrupted_turn
       settle_stale_status
       # Before the Bridge serves anything: a UI joining a resumed worker's
@@ -361,6 +365,8 @@ module Samagotchi
                                    event_log: @event_log, turn_state: @turn_state, context_absorber: @context_absorber, wakes: @wakes,
                                    awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                    stopped: -> { stopped_on_disk? },
+                                   peer_registry: @engine.peer_registry, peer_receipts: @peer_receipts,
+                                   mail_cap: -> { ToolOutputCut.max_chars(nil) },
                                    queue_command: lambda { |line, client_id, after_file, enqueued_id, author: nil|
                                      @bridge.queue_command(line, client_id: client_id, after_file: after_file,
                                                                  enqueued_id: enqueued_id, author: author)
@@ -507,6 +513,7 @@ module Samagotchi
       # ahead of an exit or restart a client asked for: it is a note then.
       @inbound.absorb_notes
       absorb_fresh_verdicts
+      return if absorb_mail(hold: pass_hold)
       return if absorb_context(wake: nothing_queued? && !@exit_claim.taken?)
 
       if (prompt = @inbound.take_initial_prompt)
@@ -708,6 +715,7 @@ module Samagotchi
       # A first turn sees the context attached before it, and any turn the
       # background tasks that finished since the last look.
       absorb_context(before_turn: true)
+      absorb_mail(hold: :before_turn)
       @task_wakes.absorb
       user_input(origin.client_id)
       @continue_offer.drop(origin)
@@ -763,6 +771,7 @@ module Samagotchi
       @turn_author = origin.participant_author
       restores = @turn_flow.restores
       begin
+        peer_turn_started(turn_args[:id])
         @checkpoint.begin_turn(prompt: prompt, turn_id: turn_args[:id], enqueued_id: origin.enqueued_id, author: turn_author_fields(origin),
                                source: turn_args[:opener_source], reply: ReplyFor.opener_fields(@session.messages, turn_args[:reply_for]))
         @session.status = Session::STATUS_RUNNING
@@ -788,7 +797,7 @@ module Samagotchi
         @checkpoint.end_turn
         refuse_queued_commands
       end
-      yield result, error
+      settle_peer_turn(turn_args[:id], result, error) { yield result, error }
       response = result&.output
       # A turn that ran out of iterations and asks whether to continue left
       # no reply: its text is what came before its last tool calls, and a

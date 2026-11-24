@@ -13,7 +13,7 @@ module Samagotchi
     # (read each call). Each surface keeps its set:
     #   .protected     the config dir, the hooks dir, the approval store's
     #                  dir, the installed bundles' dir, attached context,
-    #                  System 1's saved runs: an ask only the user may answer
+    #                  the peer mailbox, System 1's saved runs: an ask only the user may answer
     #                  (ParentApprovals.chi_files?)
     #   .touches       .protected and the session repo's git hooks dir: a
     #                  rule's touches: chi_dirs (Targets#touches_chi?)
@@ -28,13 +28,14 @@ module Samagotchi
       module_function
 
       # chi's config dir, the hooks dir, the approval store's dir, the
-      # installed bundles' dir, attached context and System 1's saved runs
+      # installed bundles' dir, attached context, the peer mailbox (a message
+      # there speaks as a peer) and System 1's saved runs
       # (labels there may train a model: no agent writes them).
       def protected
         hooks = begin Hooks::Loader.hooks_dir rescue nil end
         bundles = begin MemoryPaths.bundles_dir rescue nil end
         [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles, File.join(Paths.state_dir, "context"),
-         File.join(Paths.state_dir, "system_one")]
+         File.join(Paths.state_dir, "mailbox"), File.join(Paths.state_dir, "system_one")]
           .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
       end
 

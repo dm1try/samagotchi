@@ -44,6 +44,7 @@ require_relative "working_set"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
 require_relative "reply_wait"
+require_relative "peer_mailbox"
 require_relative "task_transcript"
 require_relative "tools/task_runtime"
 
@@ -796,8 +797,7 @@ module Samagotchi
     # participant_revise: a participant's Revise draft is kept, and the
     # Engine checks it at the stamp (ParticipantRevise): what chi web needs
     # to pass one on (ReviseAnchor::PARTICIPANT_FEATURE).
-    # activity: GET /activity answers with Worker#activity_snapshot, so
-    # `chi schedule tick` can ask a live worker what it is busy with.
+    # activity: GET /activity answers with Worker#activity_snapshot (chi schedule tick asks a live worker's).
     # participant_client_id: it reads a participant's client id as
     # participant:<id>; chi web sends a worker without it review:<id>
     # (Delivery::PARTICIPANT_ID_FEATURE).
@@ -810,7 +810,7 @@ module Samagotchi
                 WorkerLink::ACTIVITY_FEATURE, ObjectivesTrack::FEATURE, Delivery::OWN_TURN_STEER_FEATURE,
                 Delivery::CANCEL_TURN_ID_FEATURE, ReviseAnchor::PARTICIPANT_FEATURE, Delivery::PARTICIPANT_ID_FEATURE,
                 WorkingSet::ITEM_FEATURE, BlockFix::FEATURE, Delivery::AGENT_FEATURE,
-                Delivery::ASK_FEATURE, ReplyFor::FEATURE].freeze
+                Delivery::ASK_FEATURE, ReplyFor::FEATURE, PeerMailbox::FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

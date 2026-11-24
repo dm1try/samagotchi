@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
     it "refuses send and a note for a one-turn run's or a scratch session, and every kind for a gone one or one being deleted" do
       expect(refusals(:send)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
       expect(refusals(:note)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
-      %i[push ring fresh_verdict].each { |kind| expect(refusals(kind)).to eq(gone: :gone, deleting: :deleting) }
+      %i[push peer ring fresh_verdict].each { |kind| expect(refusals(kind)).to eq(gone: :gone, deleting: :deleting) }
       %i[schedule plugin delegate participant agent automatic].each do |kind|
         expect(refusals(kind)).to eq(gone: :gone, tui: :owned, deleting: :deleting, scratch: :scratch)
       end
@@ -110,13 +110,17 @@ RSpec.describe Samagotchi::SessionInbox::WakePolicy do
 
   it "has one row per kind, and only send un-stops; send and a worker's leave start an archived link" do
     expect(described_class::ROWS.keys)
-      .to eq(%i[send note push ring fresh_verdict leave schedule plugin delegate participant agent automatic])
+      .to eq(%i[send note push peer ring fresh_verdict leave schedule plugin delegate participant agent automatic])
     expect(described_class::ROWS.values.select(&:unstops).map(&:kind)).to eq([:send])
     expect(described_class::ROWS.values.select(&:starts_archived).map(&:kind)).to eq(%i[send leave])
     expect(described_class::ROWS.transform_values(&:resolves))
-      .to eq(send: :head, note: :head, push: :pinned, ring: :reader, fresh_verdict: :pinned, leave: :pinned,
+      .to eq(send: :head, note: :head, push: :pinned, peer: :pinned, ring: :reader, fresh_verdict: :pinned, leave: :pinned,
              schedule: :pinned, plugin: :pinned, delegate: :pinned, participant: :pinned, agent: :pinned, automatic: :pinned)
     expect { described_class.for(:bogus) }.to raise_error(ArgumentError)
+  end
+
+  it "gives a peer's say the push row, kind apart (chi peer say is a delivery: P4)" do
+    expect(described_class.for(:peer).with(kind: :push)).to eq(described_class.for(:push))
   end
 
   describe ".for_sender" do

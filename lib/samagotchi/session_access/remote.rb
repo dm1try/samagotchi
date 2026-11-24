@@ -16,6 +16,7 @@ require_relative "../guardrails/parent_policy"
 require_relative "../model_profile"
 require_relative "../grants"
 require_relative "http_transport"
+require_relative "remote_peers"
 require_relative "../chi_invocation"
 require_relative "../client_id"
 require_relative "../delivery"
@@ -35,6 +36,8 @@ module Samagotchi
     # the remote. Waits and prefixes run on the server (plan D2); a wait
     # here asks again until it ends or the caller's own timeout passes.
     class Remote
+      include RemotePeers
+
       # The longest a wait route waits (Web::SessionAccessRoutes::
       # WAIT_MAX_SECONDS): each request asks for at most this.
       WAIT_SLICE = 30.0

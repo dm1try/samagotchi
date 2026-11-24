@@ -15,6 +15,10 @@ require_relative "../context_candidates"
 require_relative "../worker_inbound"
 require_relative "../context_sources"
 require_relative "../peer_exchanges"
+require_relative "../peer_mailbox"
+require_relative "../peer_receipts"
+require_relative "../peer_roster"
+require_relative "../peer_say"
 require_relative "../archive_store"
 require_relative "../session_chain"
 require_relative "../send_command/busy"
@@ -538,7 +542,134 @@ module Samagotchi
         raise BadRequest.new(e.message, code: "invalid_participant")
       end
 
+      # --- peers (PeerMailbox: the peer's side; PeerReceipts: the worker's)
+
+      # Pairs +peer+ with session +id+ (link.json). Refused, nothing
+      # written, when the session was continued or a live worker of it
+      # doesn't take the peer mail (a pairing to it would look done and
+      # not work).
+      # @return [PeerPaired]
+      # @raise [PeerMailbox::Invalid] a bad name
+      # @raise [Session::NotFound] no such session
+      def peer_pair(id, peer, address:, from:)
+        PeerMailbox.check_name!(peer)
+        raise Session::NotFound, id unless Session.exist?(id, **dir)
+        if (next_id = continued_as(id))
+          return PeerPaired.new(status: :continued, next_id: next_id)
+        end
+        return PeerPaired.new(status: :old_worker) if old_peer_worker?(id)
+
+        PeerPaired.new(status: :paired, link: PeerMailbox.pair(id, peer, address: address, from: from, state_dir: state_dir!))
+      end
+
+      # Ends the pairing (link.json); the messages stay.
+      # @return [Boolean] whether there was one
+      def peer_unpair(id, peer) = PeerMailbox.unpair(id, peer, state_dir: state_dir!)
+
+      # @return [Array<PeerRoster::Peer>]
+      def peer_list(id) = PeerRoster.build(id, state_dir: state_dir!)
+
+      # A message from +peer+ into session +id+, as a delivery
+      # (SessionInbox.deliver :peer): refused before anything is written
+      # for a gone session, a continued one, no pairing, a live worker
+      # without the peer mail, UNTAKEN_MAX unread; else written inside the
+      # delivery's block (a session being deleted refuses first), which
+      # asks for a worker by the message's own +wake+ alone (no
+      # context.wake, no window). Then what chi did, at once when it can't
+      # answer yet, else the receipt within +wait+ seconds (a look every
+      # PeerSay::POLL_SECONDS).
+      # @return [PeerSay]
+      # @raise [PeerMailbox::Invalid] a bad name, an empty or oversized text
+      def peer_say(id, peer, text:, summary:, wake:, re:, wait: 0, sleeper: ->(seconds) { sleep(seconds) },
+                   clock: -> { monotonic })
+        PeerMailbox.check_name!(peer)
+        PeerMailbox.checked_text(text)
+        return PeerSay.new(status: :gone) unless Session.exist?(id, **dir)
+        if (next_id = continued_as(id))
+          return PeerSay.new(status: :continued, next_id: next_id)
+        end
+        return PeerSay.new(status: :not_paired) unless PeerMailbox.link(id, peer, state_dir: state_dir!)
+        return PeerSay.new(status: :old_worker) if old_peer_worker?(id)
+
+        message = nil
+        start_failed = false
+        delivered = begin
+          SessionInbox.deliver(:peer, id, state_dir: state_dir!) do
+            message = PeerMailbox.post(id, peer, text: text, summary: summary, wake: wake, re: re, state_dir: state_dir!,
+                                                 taken: PeerReceipts.taken(id, peer, state_dir: state_dir!))
+            message.wake
+          end
+        rescue PeerMailbox::Full
+          return PeerSay.new(status: :full)
+        rescue StandardError => e
+          raise unless message
+
+          Log.exception(:peer, "peer_say_wake_failed", e, sid: id, peer: peer)
+          start_failed = true
+          nil
+        end
+        return PeerSay.new(status: delivered.wake == :deleting ? :deleting : :gone) if delivered&.refused?
+
+        at_once = start_failed ? :start_failed : peer_at_once(id, delivered.wake)
+        receipt = at_once ? nil : peer_receipt_within(id, peer, message.serial, wait, sleeper, clock)
+        peer_said(id, peer, message.serial, at_once, receipt)
+      end
+
       private
+
+      # Whether +id+'s live worker doesn't take the peer mail (its Bridge
+      # features: a read-only look). No live worker: nil (the next one does).
+      def old_peer_worker?(id)
+        features = WorkerLink.live_features(id, state_dir: state_dir!)
+        features && !features.include?(PeerMailbox::FEATURE)
+      end
+
+      # What a say says without waiting (PeerSay::AT_ONCE), from the
+      # delivery's +wake+ and the session; nil when a worker sees the
+      # message now and the say may wait for its receipt.
+      def peer_at_once(id, wake)
+        case wake
+        when :stopped, :archived, :owned, :starting, :deleting then wake
+        when :scratch then :start_failed
+        when :live, :woken
+          session = Session.load(id, **dir)
+          started = Array(session.messages).any? { |m| %w[user assistant model].include?((m[:role] || m["role"]).to_s) }
+          return :no_turn unless started
+
+          :running if wake == :live && session.status == Session::STATUS_RUNNING
+        else :not_running
+        end
+      end
+
+      # The worker's receipt for +serial+, looked at until one comes or
+      # +wait+ seconds pass (one look for 0).
+      # @return [PeerReceipts::Receipt, nil]
+      def peer_receipt_within(id, peer, serial, wait, sleeper, clock)
+        deadline = clock.call + wait.to_f
+        loop do
+          receipt = PeerReceipts.receipt(id, peer, serial, state_dir: state_dir!)
+          return receipt if receipt
+
+          left = deadline - clock.call
+          return nil unless left.positive?
+
+          sleeper.call([PeerSay::POLL_SECONDS, left].min)
+        end
+      end
+
+      # The say's PeerSay: the peer's other held messages read now, and the
+      # turns a held reason counts, as configured here.
+      def peer_said(id, peer, serial, at_once, receipt)
+        latest = PeerReceipts.read(id, state_dir: state_dir!).peer(peer).receipts.to_h { |item| [item.serial, item] }
+        earlier = latest.values.select { |item| item.state == "held" && item.serial != serial }.sort_by(&:serial)
+                        .map { |item| [item.serial, item.reason.to_s] }
+        wakes = WorkerWakes.new(grace: 0)
+        turns = case receipt&.reason
+                when "peer_turns" then wakes.peer_turns
+                when "max_wakes" then wakes.max
+                end
+        PeerSay.new(status: :received, serial: serial, wake: at_once, receipt: receipt, earlier: earlier, turns: turns)
+      end
 
       # A session source's push, as a push delivery (SessionInbox.deliver
       # :push): the text recorded, then a wake when it asks one (a change

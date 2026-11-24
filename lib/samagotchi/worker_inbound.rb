@@ -19,6 +19,7 @@ require_relative "turn_origin"
 require_relative "participants"
 require_relative "tools/task_record"
 require_relative "worker_wakes"
+require_relative "worker_inbound/mail"
 
 module Samagotchi
   # What comes into a worker's session between turns, each kind with its
@@ -29,11 +30,16 @@ module Samagotchi
   # - attached context (#absorb_context): once the conversation started,
   #   saved, then the subscriptions written; a source asking to wake may
   #   start a context wake turn (a ContextWake);
+  # - a peer's mail (#absorb_mail, MailPart): one note per message, saved,
+  #   then the receipts written; a message asking to wake may start a mail
+  #   wake turn (a MailWake);
   # - the first prompt (#take_initial_prompt): taken once and saved
   #   cleared; as a command (#initial_command?) the session is saved idle;
   # - an input file (#take_input): a Prompt for a turn, whose own save is
   #   the turn's, or a command queued.
   class WorkerInbound
+    include MailPart
+
     # One context wake per source in this long (D5): later changes inside
     # it arrive as notes.
     CONTEXT_WAKE_WINDOW = 600
@@ -101,8 +107,13 @@ module Samagotchi
     # @param queue_command [#call] (line, client_id, after_file, enqueued_id)
     #   queues a session command for the loop's next pass; after_file is the
     #   input file it came in, or nil
+    # @param peer_registry [PeerRegistry, nil] the peers the loaded bundles
+    #   declared (nil: no mail is taken)
+    # @param peer_receipts [PeerReceipts, nil] the worker's receipts
+    # @param mail_cap [#call, nil] the most characters of a peer's text a
+    #   wake turn's note holds (the tool output cap)
     def initialize(session:, state_dir:, session_dir:, engine:, event_log:, turn_state:, context_absorber:, wakes:,
-                   awaiting_continue:, stopped:, queue_command:)
+                   awaiting_continue:, stopped:, queue_command:, peer_registry: nil, peer_receipts: nil, mail_cap: nil)
       @session = session
       @state_dir = state_dir
       @session_dir = session_dir
@@ -114,6 +125,9 @@ module Samagotchi
       @awaiting_continue = awaiting_continue
       @stopped = stopped
       @queue_command = queue_command
+      @peer_registry = peer_registry
+      @peer_receipts = peer_receipts
+      @mail_cap = mail_cap
       @initial_prompt_taken = false
       @context_wake_waiting = false
       # The link this one continues, when its notes may still come here
@@ -209,14 +223,17 @@ module Samagotchi
 
     # A failed wake turn kept nothing but its note: the note goes back to
     # a plain note (no turn start, the background wording), so a reload
-    # draws no empty turn for it. +wake+: a ContextWake or a TaskWake.
+    # draws no empty turn for it. +wake+: a ContextWake, a TaskWake or a
+    # MailWake.
+    # @return [Boolean] whether it put one back
     def unmark_wake(wake)
       messages = @engine.messages_checkpoint
       index = messages.index { |m| m[:turn_start] && m[:turn_id] == wake.turn_id }
-      return unless index
+      return false unless index
 
       messages[index] = ContextNote.message(**wake.note)
       @engine.rollback_to(messages)
+      true
     end
 
     # spawn_session hands the first prompt over in last_prompt, but
@@ -360,7 +377,7 @@ module Samagotchi
 
       awaiting = @awaiting_continue.call
       unless @wakes.context_open?(awaiting_continue: awaiting, names: candidates.map(&:name))
-        peer_held(candidates.find(&:peer), ChildRing::MAX_WAKES_KEY) if @wakes.spent?
+        peer_held(candidates.find(&:peer)&.peer, ChildRing::MAX_WAKES_KEY) if @wakes.spent?
         return nil
       end
 
@@ -373,7 +390,7 @@ module Samagotchi
         held << delivery
         false
       end
-      peer_held(held.first, WorkerWakes::PEER_TURNS_KEY)
+      peer_held(held.first&.peer, WorkerWakes::PEER_TURNS_KEY)
       waking.first
     end
 
@@ -398,14 +415,14 @@ module Samagotchi
     end
 
     # A peer's answer waits as a note: the UIs hear it once per
-    # interactive input (WorkerWakes#notice_peer_budget!). +key+: the
-    # budget that holds it.
-    def peer_held(delivery, key)
-      return unless delivery && @wakes.notice_peer_budget!
+    # interactive input (WorkerWakes#notice_peer_budget!). +label+: the
+    # peer's name ("Codex"), +key+: the budget that holds it.
+    def peer_held(label, key)
+      return unless label && @wakes.notice_peer_budget!
 
       turns = key == ChildRing::MAX_WAKES_KEY ? @wakes.max : @wakes.peer_turns
       @event_log.announce(type: :hook_notice, hook: "context", level: :info, between_turns: true,
-                          text: "#{delivery.peer} answered again; it waits as a note for your next message " \
+                          text: "#{label} answered again; it waits as a note for your next message " \
                                 "(#{turns} wake turn#{"s" if turns != 1} in a row, #{key})")
     end
 
