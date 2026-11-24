@@ -8,6 +8,7 @@ require_relative "version"
 
 module Samagotchi
   autoload :BlockRenderers, File.expand_path("block_renderers", __dir__)
+  autoload :Pages, File.expand_path("pages", __dir__)
 
   # Parses and validates a bundle manifest.yml.
   #
@@ -50,6 +51,9 @@ module Samagotchi
   #   block_renderers:       # optional — a fence's language → the scripts/
   #     - lang: mermaid      #   files chi web's page loads to draw it
   #       load: [lib.js, draw.js]   # (BlockRenderers); each one a scripts: key
+  #   pages: [schedules.rb]  # optional — page scripts (docs/pages.md), each a
+  #                          #   scripts: key named NAME.rb: the page NAME
+  #                          #   (Pages::Bundled)
   #   session_settings: [cap] # optional — the settings a session may set
   #                          #   (chi --set cost-cap.cap=3), read by the
   #                          #   plugin from ctx.settings at call time;
@@ -109,7 +113,7 @@ module Samagotchi
     # here is one this chi ignores: #unknown_keys, which `chi bundle check`
     # and the Installer say.
     KEYS = %w[name version scope description files hooks trust_level plugin requires_chi requires_chi_next needs
-              scripts context_providers block_renderers includes session_settings settings].freeze
+              scripts context_providers block_renderers pages includes session_settings settings].freeze
 
     # The first chi release that reads each manifest key or shape (from git:
     # the first tag whose manifest.rb reads it), for `chi bundle check`'s
@@ -133,12 +137,13 @@ module Samagotchi
       "block_renderers" => "0.151.0",
       "plugin.required" => "0.157.0",
       "plugin.parts" => "0.183.0"
+      # Unreleased: "pages".
     }.freeze
 
     # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
     # the description a mapping gave, for the files that have one.
     attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :trust_level, :plugin, :requires_chi, :needs, :includes,
-                :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types, :unknown_keys
+                :scripts, :context_providers, :block_renderers, :pages, :session_settings, :session_setting_types, :settings, :setting_types, :unknown_keys
 
     def initialize(path:)
       @path = path
@@ -169,6 +174,7 @@ module Samagotchi
       @scripts = parse_scripts(raw["scripts"])
       @context_providers = parse_context_providers(raw["context_providers"])
       @block_renderers = parse_block_renderers(raw["block_renderers"])
+      @pages = parse_pages(raw["pages"])
       @includes = parse_includes(raw["includes"])
       @session_settings = self.class.parse_session_settings(raw["session_settings"])
       @session_setting_types = self.class.parse_session_setting_types(raw["session_settings"])
@@ -200,7 +206,7 @@ module Samagotchi
     # that key, which reads as empty with its message in the problems:
     #   name, version (never checked: identity is the record's), scope;
     #   files and their descriptions, scripts, plugin (hooks: is ignored,
-    #   HooksRetired); needs, context_providers; block_renderers
+    #   HooksRetired); needs, context_providers; block_renderers and pages
     #   (against +fallback_scripts+ when scripts: failed); includes (after
     #   what its check reads); session_settings with its types, settings
     #   with theirs (one raw value each, so one problem); requires_chi,
@@ -304,6 +310,7 @@ module Samagotchi
       found["scripts"] = SINCE["scripts"] unless @scripts.empty?
       found["context_providers"] = SINCE["context_providers"] unless @context_providers.empty?
       found["block_renderers"] = SINCE["block_renderers"] unless @block_renderers.empty?
+      found["pages"] = SINCE["pages"] if !@pages.empty? && SINCE.key?("pages")
       found["plugin.required"] = SINCE["plugin.required"] if @plugin&.dig(:required) && SINCE.key?("plugin.required")
       found["plugin.parts"] = SINCE["plugin.parts"] if @plugin&.dig(:parts) && SINCE.key?("plugin.parts")
       found["session_settings"] = SINCE["session_settings"] unless @session_settings.empty?
@@ -318,7 +325,7 @@ module Samagotchi
     # +file_descriptions+ (name → text) writes those files as mappings.
     def self.write(dir:, name:, version:, files:, scope: nil, description: "", trust_level: nil,
                    plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], block_renderers: [], file_descriptions: {},
-                   session_settings: [], session_setting_types: {}, settings: nil, setting_types: {})
+                   session_settings: [], session_setting_types: {}, settings: nil, setting_types: {}, pages: [])
       FileUtils.mkdir_p(dir)
       manifest = {
         "name" => name,
@@ -344,6 +351,7 @@ module Samagotchi
       manifest["scripts"] = scripts.transform_keys(&:to_s) unless scripts.empty?
       manifest["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
       manifest["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
+      manifest["pages"] = pages.map(&:to_s) unless pages.empty?
       manifest["session_settings"] = session_settings_entry(session_settings, session_setting_types) unless Array(session_settings).empty?
       manifest["settings"] = session_settings_entry(settings, setting_types) unless settings.nil?
       File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
@@ -452,6 +460,7 @@ module Samagotchi
       @context_providers = tolerate(problems, "context_providers", []) { parse_context_providers(raw["context_providers"]) }
       script_names = problems.key?("scripts") ? fallback_scripts.map(&:to_s) : @scripts.keys
       @block_renderers = tolerate(problems, "block_renderers", []) { parse_block_renderers(raw["block_renderers"], script_names) }
+      @pages = tolerate(problems, "pages", []) { parse_pages(raw["pages"], script_names) }
       @includes = tolerate(problems, "includes", []) { parse_includes(raw["includes"]) }
       @session_settings, @session_setting_types = tolerate(problems, "session_settings", [[], {}]) do
         [self.class.parse_session_settings(raw["session_settings"]), self.class.parse_session_setting_types(raw["session_settings"])]
@@ -648,6 +657,26 @@ module Samagotchi
       renderers
     rescue BlockRenderers::Invalid => e
       raise ValidationError, e.message
+    end
+
+    # pages: → the page scripts in order, each a scripts: key; [] when absent.
+    # @param script_names [Array<String>] the scripts: keys
+    # @raise [ValidationError]
+    def parse_pages(raw, script_names = @scripts.keys)
+      return [] if raw.nil?
+      raise ValidationError, "pages: must be a list of script names in scripts/ (NAME.rb)" unless raw.is_a?(Array)
+
+      raw.each do |file|
+        unless file.is_a?(String) && file.end_with?(".rb") && Pages.valid_name?(file.delete_suffix(".rb"))
+          raise ValidationError, "pages: #{file.inspect} isn't a page script (NAME.rb, NAME lowercase letters, digits " \
+                                 "and hyphens, at most 40)"
+        end
+        raise ValidationError, "pages: #{file} isn't under scripts:" unless script_names.include?(file)
+      end
+      twice = raw.tally.select { |_file, count| count > 1 }.keys
+      raise ValidationError, "pages: #{twice.join(", ")} listed more than once" unless twice.empty?
+
+      raw
     end
 
     # includes: → the names in order, duplicates dropped; [] when absent.

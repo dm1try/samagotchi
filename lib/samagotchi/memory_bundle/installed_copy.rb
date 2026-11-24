@@ -49,7 +49,7 @@ module Samagotchi
           plugin: plugin(bundle, provenance, dir),
           scripts: copies(bundle.scripts, provenance.scripts_dir, File.join(dir, "scripts")),
           requires_chi: manifest.requires_chi, needs: manifest.needs,
-          context_providers: manifest.context_providers, block_renderers: manifest.block_renderers,
+          context_providers: manifest.context_providers, block_renderers: manifest.block_renderers, pages: manifest.pages,
           session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
           settings: manifest.settings, setting_types: manifest.setting_types
         )

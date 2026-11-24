@@ -43,6 +43,9 @@ module Samagotchi
     #   script_names                the scripts/ files it lists
     #   context_providers           Array<ContextProviders::Provider>
     #   block_renderers             Array<BlockRenderers::Renderer>
+    #   pages                       the page scripts (pages:, Pages::Bundled): the
+    #                               kept manifest's only, [] from the record (a
+    #                               key a later manifest gains is never mirrored)
     #   session_settings, session_setting_types, settings, setting_types
     #                               as Manifest reads them (settings nil when
     #                               the manifest said nothing of them)
@@ -62,7 +65,7 @@ module Samagotchi
     #                               the first chi that read it), {} from the record
     #   origin                      :kept or :record
     class Manifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :needs,
-                                 :script_names, :context_providers, :block_renderers, :session_settings,
+                                 :script_names, :context_providers, :block_renderers, :pages, :session_settings,
                                  :session_setting_types, :settings, :setting_types, :file_descriptions,
                                  :plugin_required, :plugin_parts, :includes, :unknown_keys, :floor_keys, :problems,
                                  :origin)
@@ -135,6 +138,7 @@ module Samagotchi
             script_names: pick.call("scripts", kept.scripts.keys, mirrored.script_names),
             context_providers: pick.call("context_providers", kept.context_providers, mirrored.context_providers),
             block_renderers: pick.call("block_renderers", kept.block_renderers, mirrored.block_renderers),
+            pages: pick.call("pages", kept.pages, mirrored.pages),
             session_settings: session.session_settings, session_setting_types: session.session_setting_types,
             settings: settings.settings, setting_types: settings.setting_types,
             file_descriptions: pick.call("files", kept.file_descriptions, mirrored.file_descriptions),
@@ -160,6 +164,7 @@ module Samagotchi
             script_names: bundle.scripts.keys,
             context_providers: parsed(problems, "context_providers", []) { ContextProviders.parse_list(raw["context_providers"]) },
             block_renderers: parsed(problems, "block_renderers", []) { BlockRenderers.parse_list(raw["block_renderers"]) },
+            pages: [],
             session_settings: list(raw["session_settings"]) || [],
             session_setting_types: types(raw["session_setting_types"]),
             settings: list(raw["settings"]),
@@ -218,6 +223,8 @@ module Samagotchi
       def context_providers? = !context_providers.empty?
 
       def block_renderers? = !block_renderers.empty?
+
+      def pages? = !pages.empty?
     end
   end
 end
