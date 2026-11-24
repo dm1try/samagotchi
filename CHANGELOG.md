@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- skills (0.1.11): "a step failed, the skill wasn't updated" is a warning now (yellow in the web, `warning:` in the
+  terminal).
+
 ### Fixed
 
 - chi page: a run that finishes just before its 30 s cut keeps its result instead of "stopped after 30 s", and the
