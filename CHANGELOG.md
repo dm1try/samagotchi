@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Peer mail: retry a temporarily unreadable message instead of discarding it and later messages.
 - Peer mail: recovery retains an asking wake note's full text, just as a normally unmarked wake does.
 - Peer mail: a batch replayed after its notes were saved no longer starts a wake without a wake note.
 - Peer mail: label a wake turn with the peer that requested it, even when another peer's note arrives last.

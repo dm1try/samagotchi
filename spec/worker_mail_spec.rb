@@ -190,6 +190,23 @@ RSpec.describe "the worker's peer mail" do
       expect(saved_notes.size).to eq(2)
     end
 
+    it "retries an unreadable file without moving past it or later messages" do
+      say("first", wake: false)
+      say("second", wake: false)
+      path = File.join(Samagotchi::PeerMailbox.in_dir(session.id, "claude", state_dir: state_dir), "1.json")
+      allow(File).to receive(:open).and_call_original
+      allow(File).to receive(:open).with(path, File::RDONLY | File::NOFOLLOW).and_raise(Errno::EMFILE)
+
+      expect { inbound.absorb_mail }.to raise_error(IOError, /unreadable.*claude.*1/)
+      expect(book.peer("claude").taken).to eq(0)
+      expect(saved_notes).to be_empty
+
+      allow(File).to receive(:open).with(path, File::RDONLY | File::NOFOLLOW).and_call_original
+      expect(inbound.absorb_mail).to be_nil
+      expect(saved_notes.map { |note| Samagotchi::PeerNote.text_of(note[:content]) }).to eq(%w[first second])
+      expect(book.peer("claude").taken).to eq(2)
+    end
+
     it "refuses a forged multiline summary without putting its instruction in a note" do
       message = say("safe")
       path = File.join(Samagotchi::PeerMailbox.in_dir(session.id, "claude", state_dir: state_dir), "1.json")

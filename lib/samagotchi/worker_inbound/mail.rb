@@ -107,6 +107,8 @@ module Samagotchi
           declared = @peer_registry.declared?(peer)
           last = nil
           PeerMailbox.messages(@session.id, peer, since: @peer_receipts.peer(peer).taken, state_dir: @state_dir).map do |entry|
+            raise IOError, "unreadable peer mail #{peer} ##{entry.serial}" if entry.is_a?(PeerMailbox::BadFile) && entry.reason == "unreadable"
+
             message = entry.is_a?(PeerMailbox::PeerMessage) ? entry : nil
             at = message ? Time.iso8601(message.at) : Time.at(0)
             last = at unless last && last > at
