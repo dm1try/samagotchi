@@ -468,6 +468,119 @@ RSpec.describe Samagotchi::ScheduleCommand do
     end
   end
 
+  describe "edit" do
+    it "changes only the fields given, keeps the budgets and counters, and prints the updated row" do
+      id = session
+      entry = schedules.add(target: id, prompt: "Audit", title: "Audit", recurrence: hourly, max_skips: 7, max_failures: 2,
+                            keep_links: 3)
+      schedules.send(:write_under_lock) { |file| file.entries.map! { |stored| stored.with(skips: 2, failures: 1) } }
+
+      status, printed, error = run("edit", entry.id, "--title", "Morning audit", "-m", "Audit the queue")
+      expect(status).to eq(0), error
+      edited = schedules.lookup(entry.id)
+      expect(edited).to have_attributes(title: "Morning audit", prompt: "Audit the queue", recurrence: hourly,
+                                        next_due: entry.next_due, max_skips: 7, max_failures: 2, keep_links: 3,
+                                        skips: 2, failures: 1, enabled: true, anchor: id, mode: "chain")
+      expect(printed).to start_with("#{entry.id}  Morning audit  chain  every 1h")
+      expect(edited.history.last).to include(status: "edited", detail: "title, prompt")
+    end
+
+    it "sets catch-up and each budget" do
+      entry = schedules.add(target: session, prompt: "Audit", recurrence: hourly)
+
+      status, _, error = run("edit", entry.id, "--catch-up", "none", "--keep-links", "0", "--max-failures", "9",
+                             "--max-skips", "30")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(entry.id)).to have_attributes(catch_up: "none", keep_links: 0, max_failures: 9, max_skips: 30)
+      expect(schedules.lookup(entry.id).history.last[:detail]).to eq("catch_up, keep_links, max_failures, max_skips")
+
+      status, _, error = run("edit", entry.id, "--catch-up", "later")
+      expect(status).to eq(2)
+      expect(error).to include("catch_up must be one of once, none")
+      status, _, error = run("edit", entry.id, "--max-skips", "lots")
+      expect(status).to eq(2)
+      expect(error).to include("max_skips must be a number")
+    end
+
+    it "recomputes next_due from a new recurrence and clears due_was" do
+      entry = schedules.add(target: session, prompt: "Audit", recurrence: every)
+      schedules.send(:write_under_lock) { |file| file.entries.map! { |stored| stored.with(due_was: stored.next_due) } }
+
+      status, _, error = run("edit", entry.id, "--weekday", "3", "--time", "07:30")
+      expect(status).to eq(0), error
+      edited = schedules.lookup(entry.id)
+      expect(edited.recurrence).to eq(kind: "weekday", weekday: 3, time: "07:30")
+      due = Time.iso8601(edited.next_due).localtime
+      expect([due.wday, due.hour, due.min]).to eq([3, 7, 30])
+      expect(due).to be > @clock
+      expect(edited.due_was).to be_nil
+    end
+
+    it "refuses the session and mode flags, --time alone, nothing to change and an unknown id" do
+      entry = schedules.add(target: session, prompt: "Audit", recurrence: hourly)
+      [["--session", "abc"], ["--continues", "abc"], ["--mode", "same"]].each do |flag|
+        status, _, error = run("edit", entry.id, *flag)
+        expect(status).to eq(2)
+        expect(error).to include("edit can't change the session or mode: cancel it and add a new one")
+      end
+
+      status, _, error = run("edit", entry.id, "--time", "10:00")
+      expect(status).to eq(2)
+      expect(error).to include("a schedule needs one of every, weekday or date")
+
+      status, _, error = run("edit", entry.id)
+      expect(status).to eq(2)
+      expect(error.lines.first).to start_with("chi schedule edit: nothing to change")
+
+      status, _, error = run("edit")
+      expect(status).to eq(2)
+      expect(error.lines.first).to eq("chi schedule edit: edit needs a schedule id\n")
+
+      status, _, error = run("edit", "gone", "--title", "X")
+      expect([status, error]).to eq([1, "no schedule gone\n"])
+      expect(schedules.lookup(entry.id).history).to eq([])
+    end
+
+    it "refuses another entry's title in the chain but takes its own" do
+      id = session
+      first = schedules.add(target: id, prompt: "Audit", title: "Audit", recurrence: hourly)
+      second = schedules.add(target: id, prompt: "Weekly", title: "Weekly", recurrence: every)
+
+      status, _, error = run("edit", second.id, "--title", "audit")
+      expect(status).to eq(2)
+      expect(error).to include("#{first.id} already schedules this")
+
+      status, _, error = run("edit", first.id, "--title", "Audit", "-m", "Audit again")
+      expect(status).to eq(0), error
+    end
+
+    it "refuses a recurrence edit while a firing is in flight, and takes a prompt edit for the next firing" do
+      entry = schedules.add(target: session, prompt: "Audit", recurrence: hourly)
+      schedules.send(:write_under_lock) do |file|
+        file.entries.map! { |stored| stored.with(firing_since: @clock.utc.iso8601, pending_turn_id: "turn") }
+      end
+
+      status, _, error = run("edit", entry.id, "--every", "2h")
+      expect(status).to eq(2)
+      expect(error).to include("a run is in progress; edit the time after it settles")
+      expect(schedules.lookup(entry.id).recurrence).to eq(hourly)
+
+      status, _, error = run("edit", entry.id, "-m", "Audit later")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(entry.id)).to have_attributes(prompt: "Audit later", pending_turn_id: "turn")
+    end
+
+    it "leaves a spent date one-off disabled" do
+      entry = schedules.add(target: session, prompt: "Once", recurrence: Samagotchi::Schedules.recurrence(date: "2026-11-20T09:00"))
+      schedules.send(:write_under_lock) { |file| file.entries.map! { |stored| stored.with(enabled: false, next_due: nil) } }
+
+      status, printed, error = run("edit", entry.id, "--date", "2027-01-05T09:00")
+      expect(status).to eq(0), error
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false)
+      expect(printed).to include("disabled")
+    end
+  end
+
   describe "run-now, enable, disable and cancel" do
     it "refuses an ambiguous prefix or title with exit 2, naming the matches" do
       fixed = %w[a1b2c3d4e5f6a7b8 a1b2c3d4e5f6a7c9]
@@ -557,7 +670,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
     it "prints the usage for no subcommand or --help, and exits 2 for an unknown one" do
       status, printed, = run
       expect(status).to eq(0)
-      expect(printed).to start_with("Usage: chi schedule <add|list|show|tick|run-now|enable|disable|cancel> [flags]\n")
+      expect(printed).to start_with("Usage: chi schedule <add|edit|list|show|tick|run-now|enable|disable|cancel> [flags]\n")
 
       status, printed, error = run("help")
       expect(status).to eq(0), error

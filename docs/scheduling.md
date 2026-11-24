@@ -199,9 +199,16 @@ whole budget again, not one skip.
 
 `chi schedule show ID` ends with the entry's last 20 outcomes, newest first, one
 line each in local time: `fired`, `skipped`, `failed`, `missed`, your `enabled` and
-`disabled`, with the reason and the session it acted on (a skip or
+`disabled`, a `chi schedule edit`'s `edited` (naming the fields), with the reason and
+the session it acted on (a skip or
 failure that used up the budget says `disabled: <reason>`). `list --format json` has
 them as each entry's `history` (and an unpushed turn-off as `disabled_notice`).
+
+`chi schedule edit ID` changes a schedule in place (its title, prompt, recurrence,
+catch-up or budgets; [CLI](cli.md#durable-schedules-chi-schedule)) and keeps its id,
+session, mode, counters and history. A new recurrence starts its clock at the edit, as
+an `add`'s does, and waits for a firing in flight to settle; a spent `date` one-off
+stays disabled after an edit until you `enable` it.
 
 A recurring schedule the owner has disabled stays off when an in-flight skip or
 failure is recorded. A `date` one-off is the exception: a skip or failure puts its

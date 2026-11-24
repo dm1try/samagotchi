@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - `chi schedule show ID` lists the schedule's last 20 outcomes, newest first (fired, skipped, failed, missed, your
   enable and disable), each with its reason and session; `list --format json` has them as `history`.
+- `chi schedule edit ID` changes a schedule in place: its title, prompt, recurrence, catch-up or budgets (only the
+  flags given), keeping its id, session, mode and counters ([docs/cli.md](docs/cli.md#durable-schedules-chi-schedule)).
 
 ### Changed
 

@@ -24,6 +24,7 @@ require_relative "session_row"
 require_relative "state_format"
 require_relative "turn_checkpoint"
 require_relative "worker_link"
+require_relative "schedules/edit_part"
 require_relative "schedules/history_part"
 require_relative "schedules/notices_part"
 require_relative "schedules/recurrence"
@@ -53,6 +54,7 @@ module Samagotchi
   # read-modify-write, never across the action: SessionContinue.run waits up to
   # 30 s for a recap and 5 s for an archive, and an `add` must not wait on it.
   class Schedules
+    include EditPart
     include HistoryPart
     include NoticesPart
 
@@ -285,10 +287,7 @@ module Samagotchi
       # firing would otherwise multiply the same schedule: the chain keeps one
       # entry per thing it does, and the machine a bounded number of them.
       same = duplicate_in_chain(anchor, prompt: prompt, title: title, recurrence: recurrence)
-      if same
-        raise Usage, "#{same.id} already schedules this (#{same.recurrence_words}, #{mode}: #{same.prompt}); " \
-                     "cancel it with chi schedule cancel #{same.id} to change it"
-      end
+      refuse_duplicate!(same, mode) if same
 
       ids = chain_of(anchor)
       in_chain = entries.count { |entry| ids.include?(entry.anchor) || ids.include?(entry.head) }
@@ -336,15 +335,23 @@ module Samagotchi
     # An enabled schedule of the same chain that says the same thing: the same
     # prompt and recurrence, or the same title.
     # @return [Entry, nil]
-    def duplicate_in_chain(session_id, prompt:, title:, recurrence:)
+    # +except+: the id of the entry an edit changes, which is no duplicate of itself.
+    def duplicate_in_chain(session_id, prompt:, title:, recurrence:, except: nil)
       given_title = title.to_s.strip
       ids = chain_of(session_id)
       entries.find do |entry|
+        next if entry.id == except
         next unless ids.include?(entry.anchor) || ids.include?(entry.head)
 
         (entry.prompt == prompt && entry.recurrence == recurrence) ||
           (!given_title.empty? && entry.title.to_s.strip.casecmp?(given_title))
       end
+    end
+
+    # @raise [Usage] naming the schedule that already says the same thing
+    def refuse_duplicate!(same, mode)
+      raise Usage, "#{same.id} already schedules this (#{same.recurrence_words}, #{mode}: #{same.prompt}); " \
+                   "cancel it with chi schedule cancel #{same.id} to change it"
     end
 
     # How many enabled schedules one chain may hold, and one machine.
