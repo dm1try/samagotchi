@@ -1,6 +1,6 @@
 ---
 name: claude-peer
-version: 0.6.1
+version: 0.7.0
 scope: system
 description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as a message with its text (chi peer say); /claude install-skill installs Claude's chi-peer skill, which pairs"
 trust_level: reviewed

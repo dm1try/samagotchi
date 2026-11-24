@@ -1,6 +1,6 @@
 ---
 name: codex-peer
-version: 0.5.1
+version: 0.6.0
 scope: system
 description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as a message with its text (chi peer say); /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
