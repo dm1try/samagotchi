@@ -23,3 +23,19 @@ test("revealInHistory: an element nothing hides stays as it is; none is null", (
   assert.ok(revealInHistory(bubble) === bubble);
   assert.equal(revealInHistory(null), null);
 });
+
+test("revealInHistory: a note hidden in a closed notes row (quiet_notes.js) opens its row", async () => {
+  if (!("MutationObserver" in globalThis)) globalThis.MutationObserver = window.MutationObserver;
+  const { installQuietNotes } = await import("../../../lib/samagotchi/web/public/quiet_notes.js");
+  const history = document.createElement("div");
+  history.innerHTML = '<div class="bubble output">a</div><div class="bubble hook-notice">skills: x</div>'
+    + '<div class="bubble note"><div class="note-line">note from slack</div><div class="note-text">n</div></div>';
+  document.body.append(history);
+  installQuietNotes({ historyEl: history });
+  const text = history.querySelector(".note-text");
+  assert.ok(history.querySelector(".note").classList.contains("quiet-hidden"));
+  revealInHistory(text);
+  assert.equal(history.querySelector(".quiet-notes").getAttribute("aria-expanded"), "true");
+  assert.equal(history.querySelectorAll(".quiet-hidden").length, 0);
+  history.remove();
+});

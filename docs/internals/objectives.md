@@ -194,6 +194,7 @@ command), which absorbs the file. It no longer waits for the fallback tick.
 - **The entry** (`objectives_entry.js`, from `turn_html.js noteBubbleTemplate`): `Objectives.entry` puts the note's items
   and, against the list before it, `changes` (`Objectives.changes`, display only) on the history item and on
   `context_added`. A first list is pills; a later one a line, `You marked O1 done`. The raw text stays the tooltip.
+  It is a `.bubble.note`, so it folds into the history's notes row (`quiet_notes.js`, named `objectives` there).
 - **Moves** (`objectives_moves.js`): a tool row's id is a chip (`moveRowText`), and a row that recorded a move carries
   `data-move-id`. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
   a live end and a hand-off all draw it. The newest line's Not yet is `objectivesStrip.notYet`. A decision card's

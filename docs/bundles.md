@@ -942,8 +942,9 @@ failed step): *"A step of skill release failed. Find out why before skipping
 it; if the skill is out of date, fix it now: edit the step that changed in
 its file (or memory_write the whole skill) and add a Changelog line."* No
 steer once a skill read this turn has changed, by any tool. If the turn ends
-with a failed step and no skill read changed, one line says so: `skill
-release was followed, a step failed, the skill wasn't updated`. A failure
+with a failed step and no skill read changed, one warning line says so: `skill
+release was followed, a step failed, the skill wasn't updated` (yellow in chi
+web, `warning:` in the terminal). A failure
 unrelated to the skill (a test
 meant to fail) can set it off too: once per turn, and only after a skill was
 read.

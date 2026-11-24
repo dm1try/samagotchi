@@ -8,8 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi web: plugin lines and context notes under a turn's answer fold into one closed row, "▸ 3 notes · source-links,
+  skills, claude-inbox"; tap it to read them. A warning marks the row. Your prompt, the answer, a peer's answer and a
+  note that starts a turn stay as they are.
+- skills (0.1.11): "a step failed, the skill wasn't updated" is a warning now (yellow in the web, `warning:` in the
+  terminal).
+
 ### Fixed
 
+- chi web: after a reload, a plugin's line after a turn stays right under that turn instead of moving below the next
+  time divider and notes.
 - chi page: a run that finishes just before its 30 s cut keeps its result instead of "stopped after 30 s", and the
   runner's own "stopped" record is no longer overwritten by "ended without a result"; text in another encoding (a
   Latin-1 file) reads right instead of turning into `�`; a cut run leaves no `output.json.*.tmp` behind; a failed run

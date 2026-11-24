@@ -88,6 +88,18 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:max(16px,var(--s
 #history>.bubble.folded{display:none}
 .answer-fold{display:flex;align-items:baseline;gap:0;align-self:stretch;max-width:100%;min-width:0;margin:0;padding:12px 14px;font:inherit;font-size:13px;font-weight:600;line-height:1.5;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent-strong);border-radius:12px}
 @media(hover:hover){.answer-fold:hover .answer-fold-size{color:var(--text-2)}}
+/* The notes row (quiet_notes.js): a stretch of background items folded, a sibling before them. */
+#history>.quiet-hidden{display:none}
+.quiet-notes{display:flex;align-items:baseline;gap:6px;align-self:stretch;max-width:100%;min-width:0;min-height:32px;margin:0;padding:5px 12px;font:inherit;font-size:13px;line-height:1.5;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:0;border-left:3px solid var(--text-faint);border-radius:0 8px 8px 0}
+@media(hover:hover){.quiet-notes:hover{background:var(--bg-hover);color:var(--text-2)}}
+.quiet-notes:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+.quiet-notes::before{content:"▸";color:var(--text-faint);flex:none}
+.quiet-notes.open::before{content:"▾"}
+.quiet-notes.warn{border-left-color:var(--warn)}
+.qn-count{flex:none;font-weight:600;white-space:nowrap}
+.qn-names{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qn-warn{flex:none;margin-left:auto;white-space:nowrap;color:var(--warn-text)}
+@media(max-width:600px){.quiet-notes{min-height:44px;align-items:center}}
 .answer-fold:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .answer-fold::before{content:"▾\00a0";color:var(--accent);flex:none}
 .answer-fold.folded::before{content:"▸\00a0"}

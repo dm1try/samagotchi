@@ -345,3 +345,51 @@ test("a drawn turn's answered question replaces its slot, before a card still as
   assert.deepEqual(questionCards.said, [["a1", "asks"]]);
   assert.equal(h.querySelector(".bubble.question").dataset.drawn, "T1");
 });
+
+// A reloaded [answer][timing][gap][note][prompt]: what live showed between two turns.
+const GAP_NOTE_TURNS = '<div class="bubble user">one</div><div class="bubble output">a1</div><div class="turn-timing">t1</div>'
+  + '<div class="time-gap">gap</div><div class="bubble note">note</div>'
+  + '<div class="bubble user" data-turn-id="t-2">two</div><div class="bubble output">a2</div>';
+
+test("a between-turn line goes right after its turn: above the next turn's divider and notes, as live", () => {
+  const h = history(GAP_NOTE_TURNS);
+  harness(h).cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "after", turns_since: 1 }]);
+  assert.deepEqual(order(h), ["one", "a1", "t1", "h: after", "gap", "note", "two", "a2"]);
+});
+
+test("two between-turn lines keep their order after the turn", () => {
+  const h = history(GAP_NOTE_TURNS);
+  harness(h).cards.placeSnapshotCards([
+    { type: "hook_notice", hook: "h", text: "first", turns_since: 1 },
+    { type: "hook_notice", hook: "h", text: "second", turns_since: 1 },
+  ]);
+  assert.deepEqual(order(h), ["one", "a1", "t1", "h: first", "h: second", "gap", "note", "two", "a2"]);
+});
+
+test("a card stamped the same way still goes right before the next prompt", () => {
+  const h = history(GAP_NOTE_TURNS);
+  harness(h).cards.placeSnapshotCards([{ type: "card", id: "c1", title: "t", body: "b", turns_since: 1 }]);
+  assert.deepEqual(order(h), ["one", "a1", "t1", "gap", "note", "c1", "two", "a2"]);
+});
+
+test("with no turn after it, a between-turn line still goes above the trailing divider and notes", () => {
+  const h = history('<div class="bubble user">one</div><div class="bubble output">a1</div><div class="turn-timing">t1</div>'
+    + '<div class="time-gap">gap</div><div class="bubble note">n1</div><div class="bubble note">n2</div>');
+  harness(h).cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "after", turns_since: 0 }]);
+  assert.deepEqual(order(h), ["one", "a1", "t1", "h: after", "gap", "n1", "n2"]);
+});
+
+test("a between-turn line doesn't walk over a wake's opening note", () => {
+  const h = history('<div class="bubble user">one</div><div class="bubble output">a1</div>'
+    + '<div class="bubble note turn-start">woke</div><div class="bubble output">a2</div><div class="bubble note">n</div>');
+  harness(h).cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "after", turns_since: 0 }]);
+  assert.deepEqual(order(h), ["one", "a1", "woke", "a2", "h: after", "n"]);
+});
+
+test("a between-turn line walks over a notes row (quiet_notes.js) over the notes between the turns", () => {
+  const h = history('<div class="bubble user">one</div><div class="bubble output">a1</div><div class="turn-timing">t1</div>'
+    + '<div class="time-gap">gap</div><button class="quiet-notes">row</button><div class="bubble note">note</div>'
+    + '<div class="bubble user">two</div>');
+  harness(h).cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "after", turns_since: 1 }]);
+  assert.deepEqual(order(h), ["one", "a1", "t1", "h: after", "gap", "row", "note", "two"]);
+});

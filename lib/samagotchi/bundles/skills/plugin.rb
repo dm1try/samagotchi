@@ -194,7 +194,7 @@ class Plugin
     missed = @read - @written
     return unless missed.size == @read.size
 
-    ctx.notify("skill #{missed.join(", ")} was followed, a step failed, the skill wasn't updated")
+    ctx.notify("skill #{missed.join(", ")} was followed, a step failed, the skill wasn't updated", level: :warn)
   end
 
   # --- history ---------------------------------------------------------------

@@ -187,7 +187,8 @@ on; `[Automatic input from <client id>, sent mid-task; not your user's
 message. …]` for an unknown one).
 
 Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
-end line. A question from `:before_tool_call` shows **before** the tool
+end line. In chi web a line shown on its own (not a row of a step) sits in a closed notes row with the other
+background items beside it, `▸ 2 notes · source-links, skills`; a `level: :warn` line marks the row `⚠ 1`. A question from `:before_tool_call` shows **before** the tool
 line (the gate runs first), so its text should name the call. The notices
 are also logged (`turn` tag, `hook_notice`).
 

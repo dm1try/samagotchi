@@ -241,7 +241,7 @@ RSpec.describe "The skills plugin", :bundle do
                              "date, fix it now: edit the step that changed in its file (or memory_write the whole " \
                              "skill) and add a Changelog line."])
       fire(p, :after_turn, status: "completed")
-      expect(notices).to eq([["skill release was followed, a step failed, the skill wasn't updated", :info]])
+      expect(notices).to eq([["skill release was followed, a step failed, the skill wasn't updated", :warn]])
     end
 
     it "is quiet when the skill was updated, or nothing failed, and starts over each turn" do

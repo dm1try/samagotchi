@@ -419,3 +419,20 @@ test("the page: a switched stack hides the top's fold row too; a new Revise on t
   assert.equal(answer(history, "v3").nextElementSibling.querySelector(".stack-switch-n [aria-hidden]").textContent, "3/3");
   history.remove();
 });
+
+test("the page: a superseded turn's notes row (quiet_notes.js) is no piece of the turn: never stack-hidden", async () => {
+  const { installQuietNotes } = await import("../../../lib/samagotchi/web/public/quiet_notes.js");
+  const { history } = page([["v1", "first", { card: "bubble hook-notice" }], ["v2", "second", { revises: "v1" }]]);
+  const line = history.querySelector(".hook-notice");
+  line.textContent = "skills: x";
+  const note = document.createElement("div");
+  note.className = "bubble note";
+  line.after(note);
+  installQuietNotes({ historyEl: history });
+  await tick();
+  const row = history.querySelector(":scope > .quiet-notes");
+  assert.ok(row && row.nextElementSibling === line);
+  assert.ok(visible(row), "the row stays on view");
+  assert.deepEqual(historyTurns(history).find((t) => t.id === "v1").els.filter((el) => el === row), []);
+  history.remove();
+});
