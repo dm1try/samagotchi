@@ -933,8 +933,9 @@ seen as a version (so `/skill diff` has it) and counts as the skill updated.
 A plain read keeps no version.
 
 **The nudge** (`nudge: true`). Some models, finding a skill's step broken,
-skip it and go on without fixing the skill. In a turn that read a skill
-(`memory_read` of a `skill_*` name, or `read` of its file), the first failing
+skip it and go on without fixing the skill. In a turn that read a skill you
+saved yourself (`memory_read` of a `skill_*` name, or `read` of its file;
+memories shipped by a bundle are skipped), the first failing
 tool call after it (an `execute` that exited non-zero, except a grep-family
 search that found nothing, a tool error) steers
 the model once (a call a guardrail or the user denied doesn't count as a

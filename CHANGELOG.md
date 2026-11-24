@@ -31,6 +31,8 @@ and commands may change between minor versions. How releases are made:
   runner's own "stopped" record is no longer overwritten by "ended without a result"; text in another encoding (a
   Latin-1 file) reads right instead of turning into `�`; a cut run leaves no `output.json.*.tmp` behind; a failed run
   keeps fields a newer chi wrote in the page's output.
+- `chi page`: help names the pages folder it reads, including when `XDG_CONFIG_HOME` is set.
+- chi web: a live wake note opens its turn, as it does after a reload.
 
 ## [0.187.0] - 2026-11-23
 

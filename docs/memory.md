@@ -439,7 +439,7 @@ It is a memory like any other: `memory_read`, `chi --mute skill_release`,
 skills`, [docs/bundles.md](bundles.md#the-skills-bundle)) adds `/skill save`,
 `/skill list`, `/skill show`, `/skill diff`, keeps older versions with a
 one-line diff after each update, and nudges a model that skips a failing
-step instead of fixing the skill.
+step instead of fixing the skill; a skill a bundle ships is skipped.
 
 chi ships one skill itself: `skill_pages` in the system bundle
 (`lib/samagotchi/bundles/system/skill_pages.md`), how to make, check and link a

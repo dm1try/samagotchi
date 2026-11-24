@@ -76,7 +76,8 @@ gets one `<button class="quiet-notes">` before its first item, closed, and its i
 sibling tied to its first item (WeakMaps, as `answer_fold.js`'s), not a wrapper: the bubbles stay direct children of
 `#history`, where every walker (`turn_range.js`, `cards_place.js`, the stage's hand-off, the reload check) and the
 other observers expect them; a row something was placed after goes back before its item and keeps its open class.
-Its one observer watches `#history`'s own children, and a settle writes only what changed (the copy, answer-fold,
+A between-turn notice is placed after its turn, not below the next divider (`cards_place.js afterTurnEnd`). Its one
+observer watches `#history`'s own children, and a settle writes only what changed (the copy, answer-fold,
 Revise and objectives observers see class and subtree writes). `revise_stack.js historyTurns`, `history_shape.js
 childItems` and `bubbles.js showRecap`'s walk skip the rows, and `history_reveal.js revealInHistory` opens one over a
 jump's target.
@@ -874,14 +875,15 @@ parse is `peer_text.js`'s cut of an `inline` note's text block.
 - `peer_note.js`: `peerNoteTemplate`, which `turn_html.js noteBubbleTemplate` draws a note with `peer` as. It keeps
   what an opening note has (`bubble note`, `turn-start`, `data-opening-id`, the time title), so `TURN_PROMPT`,
   `card_stamps.js`, `stage_handoff.js OPENING`, `reload_check.js` and `revise_stack.js` (its `.note-text` is the
-  summary) read it as any wake note. With `peer.inline` the peer's text goes in `.peer-text` under the summary (an
+  summary) read it as any wake note. A live `context_added` wake note carries `turn_start`/`turn_id`, so live and reload
+  agree on its opening. With `peer.inline` the peer's text goes in `.peer-text` under the summary (an
   element of its own, not a `data-peer-slot`, its source in `data-peer-md`): already as markdown when a history
   read sent the note's `peer_html` (`MessageDisplay#peer_text_html`, `PeerNote.text_of`, rendered and
   sanitized as an answer is), else as plain text (a live `context_added`, an older server), the "what chi told the
   agent" fold shows the content without the block, and the bubble carries `data-peer-inline`. Without it (an older
   session, an answer over the cap) the bubble draws as before.
 - `peer_text.js` (pure): `peerBlock(content)` cuts the text out between the first `[PEER MESSAGE from …]` line and the
-  last `[END PEER MESSAGE]` line and undoes the absorber's `(quoted) ` mark on forged frame lines
+  last `[END PEER MESSAGE]` line and undoes the `PeerNote.block` mark on forged frame lines
   (`PEER_FORGED_OPENINGS` and `PEER_FORGED_LINES`, the Ruby `PeerNote::FORGED_OPENINGS` and `FORGED_LINES`, and the same line breaks and leads
   as `Steer::FORGED_BREAKS` / `FORGED_LEAD`: `peer_text.test.js` keeps the lists alike and undoes the Ruby specs' cases);
   null without a block.
