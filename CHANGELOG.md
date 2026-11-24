@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.188.0] - 2026-11-24
+
 ### Added
 
 - `chi peer pair|unpair|say|ls` (also through `--remote`), `claude_read` / `codex_read` for a long message, and chi
@@ -35,7 +37,7 @@ and commands may change between minor versions. How releases are made:
   disabled one is easy to tell apart; the name column is padded to the widest name of the rows printed.
   `list_schedules` names them the same way.
 - chi web: plugin lines and context notes under a turn's answer fold into one closed row, "▸ 3 notes · source-links,
-  skills, claude-inbox"; tap it to read them. A warning marks the row. Your prompt, the answer, a peer's answer and a
+  skills, objectives"; tap it to read them. A warning marks the row. Your prompt, the answer, a peer's answer and a
   note that starts a turn stay as they are.
 - skills (0.1.11): "a step failed, the skill wasn't updated" is a warning now (yellow in the web, `warning:` in the
   terminal).
@@ -44,14 +46,6 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- Peer mail: settle wake receipts even if handling a turn's result raises an I/O error.
-- Peer mail: refuse further messages when 200 noted messages from a peer still await a turn.
-- Peer mail: retry a temporarily unreadable message instead of discarding it and later messages.
-- Peer mail: recovery retains an asking wake note's full text, just as a normally unmarked wake does.
-- Peer mail: a batch replayed after its notes were saved no longer starts a wake without a wake note.
-- Peer mail: retry receipts after a write failure without advancing the in-memory mailbox cursor.
-- Peer mail: label a wake turn with the peer that requested it, even when another peer's note arrives last.
-- Peer mail: refuse forged message files with multiline or otherwise unnormalized summaries.
 - The system prompt names the real system memories folder when the config lives outside ~/.config.
 - chi web: a message an agent or visitor sent keeps its "agent NAME" label after a reload.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not
@@ -64,6 +58,8 @@ and commands may change between minor versions. How releases are made:
   keeps fields a newer chi wrote in the page's output.
 - `chi page`: help names the pages folder it reads, including when `XDG_CONFIG_HOME` is set.
 - chi web: a live wake note opens its turn, as it does after a reload.
+
+Update with `chi update` (claude-peer 0.7.0, codex-peer 0.6.0, skills 0.1.12, the dev profile 0.7.11).
 
 ## [0.187.0] - 2026-11-23
 
@@ -6882,7 +6878,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.187.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.188.0...HEAD
+[0.188.0]: https://github.com/dm1try/samagotchi/compare/v0.187.0...v0.188.0
 [0.187.0]: https://github.com/dm1try/samagotchi/compare/v0.186.0...v0.187.0
 [0.186.0]: https://github.com/dm1try/samagotchi/compare/v0.185.0...v0.186.0
 [0.185.0]: https://github.com/dm1try/samagotchi/compare/v0.184.0...v0.185.0

@@ -60,8 +60,9 @@ module Samagotchi
         "ctx.cancel_controller" => "0.183.0",
         "ctx.secrets" => "0.183.0",
         "ctx.sign_in" => "0.183.0",
-        "ctx.card(between_turns:)" => "0.183.0"
-        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "chi.peer", "ctx.peers".
+        "ctx.card(between_turns:)" => "0.183.0",
+        "chi.peer" => "0.188.0",
+        "ctx.peers" => "0.188.0"
       }.freeze
 
       # chi.on's on_error: values. :log (the default) logs a raise and goes

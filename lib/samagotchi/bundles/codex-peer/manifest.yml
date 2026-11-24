@@ -17,5 +17,4 @@ scripts:
 # The plugin needs Samagotchi::Plugin::Peer on the mailbox: chi.peer and
 # ctx.peers, and the skill's chi peer pair|say, are the next chi's (an older
 # chi has no chi.peer: the plugin fails to load there).
-requires_chi: ">= 0.185.0"
-requires_chi_next: true
+requires_chi: ">= 0.188.0"

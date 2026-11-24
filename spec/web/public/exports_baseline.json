@@ -896,7 +896,6 @@
     "peerGroups",
     "peerKey",
     "peerPopoverTemplate",
-    "peerShown",
     "peerStatusCommand"
   ],
   "peer_data.js": [
@@ -916,6 +915,10 @@
     "createPeerLinks",
     "fullTemplate",
     "upTemplate"
+  ],
+  "peer_mailbox_api.js": [
+    "getPeerMessage",
+    "unpairPeer"
   ],
   "peer_note.js": [
     "peerNoteTemplate",
@@ -995,6 +998,17 @@
   ],
   "question_cards.js": [
     "createQuestionCards"
+  ],
+  "quiet_notes.js": [
+    "HIDDEN_CLASS",
+    "PASS",
+    "QUIET",
+    "ROW_CLASS",
+    "installQuietNotes",
+    "quietRuns",
+    "revealQuiet",
+    "rowLabel",
+    "rowTemplate"
   ],
   "read_view.js": [
     "readLines",
