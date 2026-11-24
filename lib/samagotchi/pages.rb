@@ -25,6 +25,7 @@ module Samagotchi
     autoload :TableBlock, File.expand_path("pages/builder", __dir__)
     autoload :Store, File.expand_path("pages/store", __dir__)
     autoload :Runtime, File.expand_path("pages/runtime", __dir__)
+    autoload :Bundled, File.expand_path("pages/bundled", __dir__)
 
     # A page's name: lowercase letters, digits and hyphens, a letter or a
     # digit first, at most 40.
@@ -60,6 +61,15 @@ module Samagotchi
       end
     end
 
+    # A remove of a page a bundle ships (Bundled): its script is the
+    # bundle's, and the page lasts as long as the bundle does.
+    class FromBundle < Error
+      def initialize(name, bundle)
+        super("page #{name} comes with the #{bundle} bundle: uninstall the bundle or write your own " \
+              "#{Paths.tilde(Pages.user_script_path(name))}")
+      end
+    end
+
     # Another run (or a remove) holds the page's lock.
     class Busy < Error
       def initialize(name)
@@ -77,7 +87,12 @@ module Samagotchi
     # A page as stored (Store.read): the blocks of its last good run (none
     # before one, ran_at nil) and the last failure since, if any.
     # +current_sha+ is the script's sha256 now (nil when the script is gone).
-    Stored = Data.define(:name, :title, :blocks, :ran_at, :duration_ms, :script_sha, :error, :current_sha) do
+    # +bundle+ the bundle whose script it runs (Bundled), nil for the
+    # user's own; +script+ the script's path (Pages.script_path).
+    Stored = Data.define(:name, :title, :blocks, :ran_at, :duration_ms, :script_sha, :error, :current_sha, :bundle,
+                         :script) do
+      def initialize(bundle: nil, script: nil, **fields) = super
+
       # :never_ran, :ok or :failed (the last run failed; the good blocks, if
       # any, are still there).
       def state
@@ -117,6 +132,27 @@ module Samagotchi
     # @return [String] <state dir>/pages
     def state_dir = File.join(Paths.state_dir, "pages")
 
-    def script_path(name) = File.join(scripts_dir, "#{check_name!(name)}.rb")
+    # Where the user's own NAME.rb is (or would be): what a remove deletes.
+    def user_script_path(name) = File.join(scripts_dir, "#{check_name!(name)}.rb")
+
+    # The script NAME runs: the user's NAME.rb when there is one, else the
+    # page of that name an installed bundle ships (Bundled), else the user's
+    # path (no such page). Every read and run resolves here; a remove never
+    # does (user_script_path).
+    def script_path(name)
+      user = user_script_path(name)
+      return user if File.file?(user)
+
+      Bundled.find(name)&.path || user
+    end
+
+    # The bundle page NAME runs, nil when the user's NAME.rb shadows it or no
+    # bundle ships one.
+    # @return [Bundled::Page, nil]
+    def bundled(name)
+      return nil if File.file?(user_script_path(name))
+
+      Bundled.find(name)
+    end
   end
 end

@@ -38,7 +38,7 @@ RSpec.describe Samagotchi::Pages::Launch do
 
   def script(name, body)
     FileUtils.mkdir_p(pages.scripts_dir)
-    File.write(pages.script_path(name), body)
+    File.write(pages.user_script_path(name), body)
   end
 
   def run(name, timeout: 20) = described_class.run(name, timeout: timeout)

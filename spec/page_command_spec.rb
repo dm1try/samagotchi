@@ -5,10 +5,13 @@ require "stringio"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/page_command"
+require_relative "support/bundle_pages"
 
 # `chi page run | list | rm`: output and exit codes against a temp config
 # and state dir. run starts a real runner process.
 RSpec.describe Samagotchi::PageCommand do
+  include BundlePages
+
   let(:tmp) { Dir.mktmpdir("page-command") }
   let(:pages) { Samagotchi::Pages }
   let(:store) { Samagotchi::Pages::Store }
@@ -26,7 +29,7 @@ RSpec.describe Samagotchi::PageCommand do
 
   def script(name, body)
     FileUtils.mkdir_p(pages.scripts_dir)
-    File.write(pages.script_path(name), body)
+    File.write(pages.user_script_path(name), body)
   end
 
   def usage_page
@@ -157,7 +160,7 @@ RSpec.describe Samagotchi::PageCommand do
       expect(run("list", "--format", "json")).to eq(0)
       expect(JSON.parse(out.string)).to eq([{ "name" => "draft", "title" => nil, "ran_at" => nil, "duration_ms" => nil,
                                               "script_sha" => nil, "error" => nil, "state" => "never_ran",
-                                              "changed" => false }])
+                                              "changed" => false, "bundle" => nil, "script" => pages.script_path("draft") }])
     end
 
     it "says there are none" do
@@ -175,6 +178,21 @@ RSpec.describe Samagotchi::PageCommand do
 
       expect(run("rm", "draft")).to eq(1)
       expect(err.string).to eq("chi page rm: no page draft\n")
+    end
+
+    it "refuses a bundle's page, exit 1, naming the way out; list names its bundle and script" do
+      scripts = install_page_bundle
+      expect(run("rm", "board")).to eq(1)
+      expect(err.string).to eq("chi page rm: page board comes with the pager bundle: uninstall the bundle or write your own " \
+                               "#{Samagotchi::Paths.tilde(pages.user_script_path("board"))}\n")
+      expect(File.file?(File.join(scripts, "board.rb"))).to be(true)
+
+      expect(run("list")).to eq(0)
+      expect(out.string).to eq("board  (never ran)  pager bundle\n")
+      out.truncate(0)
+      out.rewind
+      expect(run("list", "--format", "json")).to eq(0)
+      expect(JSON.parse(out.string).first).to include("name" => "board", "bundle" => "pager", "script" => File.join(scripts, "board.rb"))
     end
   end
 

@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Pages::Store do
 
   def script(name, body = "page 'x' do |ui| end\n")
     FileUtils.mkdir_p(pages.scripts_dir)
-    File.write(pages.script_path(name), body)
+    File.write(pages.user_script_path(name), body)
   end
 
   def sha(name) = described_class.script_sha(name)

@@ -7,11 +7,14 @@ require "fileutils"
 require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/pages"
+require_relative "../support/bundle_pages"
 
 # The pages routes (Web::PageRoutes): the list, a page as stored, Refresh
 # (a real runner process through Pages::Launch) and Delete, against a temp
 # config and state dir. A participant's token: participant_gate_spec.
 RSpec.describe Samagotchi::Web::App, "pages" do
+  include BundlePages
+
   let(:tmp) { Dir.mktmpdir("web-pages") }
   let(:pages) { Samagotchi::Pages }
   let(:store) { Samagotchi::Pages::Store }
@@ -29,7 +32,7 @@ RSpec.describe Samagotchi::Web::App, "pages" do
 
   def script(name, body)
     FileUtils.mkdir_p(pages.scripts_dir)
-    File.write(pages.script_path(name), body)
+    File.write(pages.user_script_path(name), body)
   end
 
   def usage
@@ -65,7 +68,7 @@ RSpec.describe Samagotchi::Web::App, "pages" do
       expect(broken).to include("state" => "failed", "error_line" => 2, "ran_at" => nil, "changed" => false)
       expect(broken["failed_at"]).to eq(store.read("broken").error.at)
       expect(idle).to eq("name" => "idle", "title" => nil, "state" => "never_ran", "ran_at" => nil, "failed_at" => nil,
-                         "changed" => false, "error_line" => nil)
+                         "changed" => false, "error_line" => nil, "bundle" => nil)
       expect(used).to include("title" => "Usage, last 7 days", "state" => "ok", "changed" => true, "failed_at" => nil)
       expect(used["ran_at"]).to be_a(String)
     end
@@ -203,6 +206,21 @@ RSpec.describe Samagotchi::Web::App, "pages" do
       end
       expect(call("/api/pages/nope", method: "DELETE"))
         .to eq([404, { "error" => "page_missing", "detail" => "no page nope" }])
+    end
+  end
+
+  describe "a bundle's page" do
+    it "is listed and shown with its bundle, runs, and answers 409 page_bundled to a Delete" do
+      scripts = install_page_bundle
+      expect(call("/api/pages").last["pages"].map { |row| row.slice("name", "bundle", "state") })
+        .to eq([{ "name" => "board", "bundle" => "pager", "state" => "never_ran" }])
+      expect(call("/api/pages/board/run", method: "POST").last).to include("state" => "ok", "bundle" => "pager")
+      expect(call("/api/pages/board").last).to include("title" => "From the bundle", "bundle" => "pager")
+
+      status, body = call("/api/pages/board", method: "DELETE")
+      expect([status, body["error"]]).to eq([409, "page_bundled"])
+      expect(body["detail"]).to start_with("page board comes with the pager bundle: uninstall the bundle or write your own ")
+      expect(File.file?(File.join(scripts, "board.rb"))).to be(true)
     end
   end
 end
