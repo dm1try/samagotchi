@@ -70,8 +70,9 @@ button.pg-row-main:focus-visible{outline:2px solid var(--accent);outline-offset:
   /* The meta wraps under the title, on a line of its own. */
   .pg-meta{order:5;flex-basis:100%;white-space:normal}
 }
-/* All sessions' Pages group (pages_group.js): one row of cards that scrolls sideways, over a "Sessions" heading. Its own
-   card rules: the session cards' are scoped to #allList .card; the Pages list's cards share them. */
+/* A page card (the Pages list's), and All sessions' former Pages group (pages_group.js, kept for an older cached app.js:
+   remove the group's rules after 0.189.0): one row of cards that scrolls sideways. Their own card rules: the session
+   cards' are scoped to #allList .card. */
 #pagesGroup{display:flex;flex-direction:column;gap:8px;flex:none;min-width:0}
 #pagesGroup[hidden]{display:none}
 .pg-group-label{font-size:11px;font-weight:600;line-height:1;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}

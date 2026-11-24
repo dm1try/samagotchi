@@ -3,7 +3,7 @@
 // `pages` event, no reload), opens the Pages list, whose card opens the
 // page; Refresh runs its script and changes the result, a script that raises
 // keeps the last result under the failure line, Back returns to the list.
-// The page is the usage fixture of Build
+// All sessions has no Pages group. The page is the usage fixture of Build
 // 1's specs (spec/fixtures/pages), written into this worker's config and
 // removed after.
 import fs from "node:fs";
@@ -26,6 +26,8 @@ test("a page: the pill appears live, opens the Pages list, a card opens the page
     // Making the script is what the hub sees (a run doesn't touch the scripts folder).
     remove = usePage(chi, "usage", USAGE_RB, { "usage.json": USAGE_JSON });
     await expect(pill).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#allView .pg-card")).toHaveCount(0);
+    await expect(page.locator("#pagesGroup")).toBeHidden();
     await pill.click();
 
     await expect(page).toHaveURL(/#\/pages$/);

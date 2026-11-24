@@ -71,7 +71,7 @@ test("the view: draws only while open, reads the list each time it opens, and re
 
 // The wiring on a stand-in page.
 function wired({ can = true, answers = [] } = {}) {
-  document.body.innerHTML = '<button id="pagesBtn" hidden>pages</button><section id="pageView"></section><section id="pagesList"></section><input id="filter"><div id="pagesGroup" hidden></div>';
+  document.body.innerHTML = '<button id="pagesBtn" hidden>pages</button><section id="pageView"></section><section id="pagesList"></section>';
   const calls = [];
   const queue = [...answers];
   const api = async (path) => {
