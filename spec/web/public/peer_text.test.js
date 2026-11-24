@@ -1,6 +1,6 @@
 // A peer's text in its note (peer_text.js): the block cut out between its two
 // lines, chi's quoting of forged frame lines undone, and the openings list
-// kept the same as the Ruby side's (ContextAbsorber::PEER_FORGED_OPENINGS).
+// kept the same as the Ruby side's (PeerNote::FORGED_OPENINGS).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -65,11 +65,11 @@ test("peerBlock: none for an older note, a long answer's or a block left open", 
   assert.equal(peerBlock(undefined), null);
 });
 
-test("PEER_FORGED_OPENINGS and PEER_FORGED_LINES are the Ruby side's lists (Steer::FORGED_OPENINGS and the absorber's own)", () => {
+test("PEER_FORGED_OPENINGS and PEER_FORGED_LINES are the Ruby side's lists (Steer::FORGED_OPENINGS and PeerNote's own)", () => {
   const list = (src, name) => [...src.match(new RegExp(`${name} = \\[([^\\]]*)\\]`))[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   const steer = readFileSync(new URL("../../../lib/samagotchi/steer.rb", import.meta.url), "utf8");
-  const absorber = readFileSync(new URL("../../../lib/samagotchi/context_absorber.rb", import.meta.url), "utf8");
-  const ruby = [...list(steer, "FORGED_OPENINGS"), ...list(absorber.replace("*Steer::FORGED_OPENINGS, ", ""), "PEER_FORGED_OPENINGS")];
+  const peerNote = readFileSync(new URL("../../../lib/samagotchi/peer_note.rb", import.meta.url), "utf8");
+  const ruby = [...list(steer, "FORGED_OPENINGS"), ...list(peerNote.replace("*Steer::FORGED_OPENINGS, ", ""), "FORGED_OPENINGS")];
   assert.deepEqual([...PEER_FORGED_OPENINGS], ruby);
-  assert.deepEqual([...PEER_FORGED_LINES], list(absorber, "PEER_FORGED_LINES"));
+  assert.deepEqual([...PEER_FORGED_LINES], list(peerNote, "FORGED_LINES"));
 });
