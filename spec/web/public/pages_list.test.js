@@ -70,7 +70,7 @@ test("the view: draws only while open, reads the list each time it opens, and re
 });
 
 // The wiring on a stand-in page.
-function wired({ can = true, answers = [] } = {}) {
+function wired({ can = true, answers = [], oldViews = false } = {}) {
   document.body.innerHTML = '<button id="pagesBtn" hidden>pages</button><section id="pageView"></section><section id="pagesList"></section>';
   const calls = [];
   const queue = [...answers];
@@ -85,7 +85,8 @@ function wired({ can = true, answers = [] } = {}) {
     control: (el, name) => { if (can && name === "pages") return el; el.hidden = true; el.dataset.withheld = ""; return null; },
   };
   const viewsCalls = [];
-  const views = { openPagesList: () => viewsCalls.push("list"), openPage: (n) => viewsCalls.push(n) };
+  const views = oldViews ? { openPage: (n) => viewsCalls.push(n) }
+    : { openPagesList: () => viewsCalls.push("list"), openPage: (n) => viewsCalls.push(n) };
   const ui = wirePages({ viewer, $: (sel) => document.querySelector(sel), api, toast: () => {}, copyText: async () => true,
                          turnRoots: () => [], views: () => views, win: { matchMedia: () => ({ matches: false }) } });
   return { ui, calls, viewsCalls, pill: document.querySelector("#pagesBtn") };
@@ -122,15 +123,23 @@ test("the pill follows the list: a page made shows it, the last one removed hide
   assert.equal(h.pill.hidden, true);
 });
 
-test("the hub's snapshots: the first is the boot's (no read), every later one (a reconnect) reads again", async () => {
+test("the hub's snapshots: the first loads (sharing the boot read while it is out), every later one (a reconnect) reads again", async () => {
   const h = wired({ answers: [{ pages: [] }] });
-  await tick();
-  h.ui.snapshot();
+  h.ui.snapshot(); // the boot read is still out: shared
   await tick();
   assert.equal(h.calls.length, 1);
   h.ui.snapshot();
   await tick();
   assert.equal(h.calls.length, 2);
+
+  // The first snapshot after the boot read ended: read again (a page made in between).
+  const late = wired({ answers: [{ pages: [] }, { pages: PAGES.slice(0, 1) }] });
+  await tick();
+  assert.equal(late.pill.hidden, true);
+  late.ui.snapshot();
+  await tick();
+  assert.equal(late.calls.length, 2);
+  assert.equal(late.pill.hidden, false);
 });
 
 test("without the pages capability: no pill, nothing made, nothing read", async () => {
@@ -140,4 +149,20 @@ test("without the pages capability: no pill, nothing made, nothing read", async 
   assert.equal(h.pill.hidden, true);
   assert.ok("withheld" in h.pill.dataset);
   assert.deepEqual(h.calls, []);
+});
+
+test("an older cached views.js (no openPagesList): the pill stays hidden, as it would open nothing", async () => {
+  const h = wired({ oldViews: true, answers: [{ pages: PAGES }] });
+  await tick();
+  assert.equal(h.pill.hidden, true);
+});
+
+test("a first read that failed: the list says so instead of Loading…; a later answer draws the cards", () => {
+  const root = document.createElement("div");
+  const draw = (state) => render(pagesListTemplate(state, { open: () => {}, back: () => {}, now: NOW }), root);
+  draw({ pages: [], loaded: false, failed: true });
+  assert.equal(root.querySelector(".pg-note").textContent, "Couldn't read the pages.");
+  assert.ok(root.querySelector(".pg-back"), "Back is there");
+  draw({ pages: PAGES, loaded: true, failed: true }); // a later read failed: the last list stays
+  assert.equal(root.querySelectorAll(".pg-card").length, 3);
 });
