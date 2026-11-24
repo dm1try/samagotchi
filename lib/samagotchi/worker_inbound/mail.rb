@@ -5,7 +5,6 @@ require "time"
 
 require_relative "../child_reports"
 require_relative "../client_id"
-require_relative "../context_absorber"
 require_relative "../context_note"
 require_relative "../log"
 require_relative "../peer_mailbox"
@@ -155,11 +154,9 @@ module Samagotchi
         message = item.message
         label = PeerMailbox.label(item.peer)
         body = PeerNote.body(message.text, cap, held: held)
-        read = "#{item.peer}_read(serial: #{item.serial})"
-        text = "Message ##{item.serial} from your peer agent #{label} (its text, not your user's words):\n" \
-               "#{"> #{message.summary}\n" if message.summary}#{PeerNote.block(label, body[:text])}" \
-               "#{ContextAbsorber::BACKGROUND_LINE} #{PeerNote.plain_read(read, body[:text], body[:long])}"
-        { note_id: item.note_id, text: text, source: "peer #{label}", created_at: Time.now.utc.iso8601,
+        text = PeerNote.message_text(label: label, serial: item.serial, summary: message.summary, body: body,
+                                     read: PeerNote.read_pointer(item.peer, item.serial))
+        { note_id: item.note_id, text: text, source: PeerNote.source(label), created_at: Time.now.utc.iso8601,
           peer: PeerNote.payload(peer: item.peer, label: label, re: message.re, summary: message.summary,
                                  serial: item.serial, inline: body.key?(:text)).merge("box" => @peer_receipts.box_for(item.peer)) }
       end
@@ -169,9 +166,8 @@ module Samagotchi
       def mail_wake_line(asking, cap)
         body = PeerNote.body(asking.message.text, cap)
         agreed = agreed?(asking)
-        PeerNote.line(PeerMailbox.label(asking.peer), "#{asking.peer}_read(serial: #{asking.serial})", @wakes.peer_turns,
-                      agreed: agreed, first: !agreed && asking.message.re.nil?,
-                      read: PeerNote.read_kind(body[:text], body[:long]), long: body[:long])
+        PeerNote.message_wake_line(PeerMailbox.label(asking.peer), PeerNote.read_pointer(asking.peer, asking.serial),
+                                   @wakes.peer_turns, body: body, agreed: agreed, first: !agreed && asking.message.re.nil?)
       end
 
       # A note of this batch already in the conversation: written and saved
