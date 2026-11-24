@@ -93,6 +93,9 @@ run it. `peer.turns: 0` means a peer's message never wakes chi. `context.wake` i
   (`serial`, `offset`, `limit`), which pages it.
 - 200 messages chi hasn't read: further says are refused until it reads them.
 - The mailbox keeps every message chi hasn't taken, and the newest 50 it has.
+- A continued message is cut at 4 KiB in the new link; run `chi peer ls <previous id>` to read the rest.
+- A `chi peer say` sent at the very moment of a continue may stay with the previous session; run
+  `chi peer ls <previous id>` to read it there.
 
 ## Continuing a session
 
