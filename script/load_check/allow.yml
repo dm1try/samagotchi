@@ -43,7 +43,7 @@
   file: "*"
   constant: Samagotchi::Schedules
   reason: >-
-    schedules.rb requires its parts (schedules/edit_part, history_part,
+    schedules.rb requires its parts (schedules/busy_part, edit_part, history_part,
     notices_part, recurrence), and nothing else does.
 
 # Rule 1: a part naming its host's constants. The host file requires the part,
