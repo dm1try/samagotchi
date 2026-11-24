@@ -115,7 +115,8 @@ module Samagotchi
                              text.bytesize <= ContextSources::TEXT_MAX_BYTES
 
         summary = data["summary"]
-        return "summary" unless summary.nil? || (summary.is_a?(String) && summary.length <= ContextSources::SUMMARY_MAX_CHARS)
+        return "summary" unless summary.nil? ||
+                                (summary.is_a?(String) && summary == ContextSources.one_line(summary, ContextSources::SUMMARY_MAX_CHARS))
         return "wake" unless [true, false].include?(data["wake"])
         return "re" unless data["re"].nil? || ContextSources.send_ref(data["re"])
         return "at" unless PeerMailbox.time?(data["at"])

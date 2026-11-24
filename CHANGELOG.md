@@ -23,6 +23,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Peer mail: refuse forged message files with multiline or otherwise unnormalized summaries.
 - chi send / ask_session: a session whose worker is too old for the message reads "refused: ... restart it", not
   "failed: ...".
 - chi web: after a reload, a plugin's line after a turn stays right under that turn instead of moving below the next

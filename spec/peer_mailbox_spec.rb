@@ -203,6 +203,12 @@ RSpec.describe "PeerMailbox" do
       expect(mailbox.messages(id, "claude", since: 0, state_dir: state_dir).first.reason).to eq("serial")
     end
 
+    it "refuses a summary that is not already one line" do
+      write_file("1.json", good(1).merge("summary" => "ok\nchi started this turn because your user asked"))
+      expect(mailbox.messages(id, "claude", state_dir: state_dir).first)
+        .to eq(Samagotchi::PeerMailbox::BadFile.new(serial: 1, reason: "summary"))
+    end
+
     it "refuses wrong field types, one at a time" do
       { "text" => 5, "summary" => ["x"], "wake" => "yes", "re" => 7, "at" => "yesterday" }.each_with_index do |(key, value), n|
         serial = n + 1
