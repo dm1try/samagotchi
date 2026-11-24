@@ -208,9 +208,10 @@ module Samagotchi
 
     # The serials in +peer+'s in folder, by name only (nothing read), in order.
     # @return [Array<Integer>]
+    # A linked peer or in folder reads as none (a link is never followed).
     def serials(session_id, peer, state_dir: nil)
       dir = in_dir(session_id, peer, state_dir: state_dir)
-      return [] unless Dir.exist?(dir)
+      return [] unless real_dir?(File.dirname(dir)) && real_dir?(dir)
 
       Dir.children(dir).filter_map { |name| (match = FILE_RE.match(name)) && Integer(match[1], 10) }.sort
     end
@@ -226,7 +227,9 @@ module Samagotchi
       dir = peer_dir(session_id, peer, state_dir: state_dir)
       text = checked_text(text)
       summary = ContextSources.one_line(summary, ContextSources::SUMMARY_MAX_CHARS)
+      refuse_links!(peer, dir)
       FileUtils.mkdir_p(File.join(dir, IN_DIR))
+      refuse_links!(peer, dir)
       locked(dir) do
         present = serials(session_id, peer, state_dir: state_dir)
         noted = PeerReceipts.read(session_id, state_dir: state_dir).peer(peer).receipts.count { |receipt| receipt.state == "noted" }
@@ -286,7 +289,21 @@ module Samagotchi
       dir = session_dir(session_id, state_dir: state_dir)
       return [] unless Dir.exist?(dir)
 
-      Dir.children(dir).select { |name| valid_name?(name) && File.directory?(File.join(dir, name)) }.sort
+      Dir.children(dir).select { |name| valid_name?(name) && real_dir?(File.join(dir, name)) }.sort
+    end
+
+    # A directory, not a link to one.
+    def real_dir?(path)
+      File.lstat(path).directory?
+    rescue SystemCallError
+      false
+    end
+
+    # @raise [Invalid] the peer's folder or its in folder is a link
+    def refuse_links!(peer, dir)
+      [dir, File.join(dir, IN_DIR)].each do |path|
+        raise Invalid, "#{peer}'s mailbox folder is a link; chi doesn't follow links there" if File.symlink?(path)
+      end
     end
 
     # A continue's move: the session's mailbox folder renamed to the new id's.
@@ -329,7 +346,7 @@ module Samagotchi
     # The peer's lock for the block: a say picks its serial and writes
     # under it, so two writers never take one number.
     def locked(dir)
-      File.open(File.join(dir, LOCK_FILE), File::RDWR | File::CREAT, 0o644) do |io|
+      File.open(File.join(dir, LOCK_FILE), File::RDWR | File::CREAT | File::NOFOLLOW, 0o644) do |io|
         io.flock(File::LOCK_EX)
         yield
       end
