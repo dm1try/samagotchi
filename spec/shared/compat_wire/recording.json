@@ -205,6 +205,7 @@
         "role": "user",
         "content": "compatibility corpus",
         "at": "2026-01-01T00:00:00Z",
+        "client_id": "web:compat",
         "turn_id": "compat-turn",
         "drawn": "compat-turn"
       },

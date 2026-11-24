@@ -20,6 +20,7 @@ RSpec.describe "Prompt snapshots" do
 
   def expect_snapshot(name, actual)
     path = File.join(fixture_dir, name)
+    actual = normalize_system_memories_path(actual)
     if ENV["UPDATE_PROMPTS"] == "1"
       FileUtils.mkdir_p(fixture_dir)
       File.write(path, actual)

@@ -1219,6 +1219,7 @@ module Samagotchi
       unless turn.continue
         user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author),
                          **participant_mode_fields(turn.context), MessageTime::KEY => turn.at }
+        user_message[:client_id] = turn.origin.client_id if turn.origin.client_id
         user_message[:verify] = turn.verify.to_h if turn.verify
         user_message[:images] = image_refs unless image_refs.empty?
         # Only an opener from a sender the model reads a header for

@@ -102,6 +102,7 @@ module EffectiveModelConfigs
   # session ids), so a golden compares what the code decided.
   def self.normalize(text, server:, down_port:, paths: [], ids: [])
     out = text.to_s.dup
+    out = out.gsub(/(System scope:  ).* \(cross-project\)/, '\1~/.config/samagotchi/memories/ (cross-project)')
     ids.compact.each { |id| out = out.gsub(id, "SESSION_ID").gsub("sid=#{id[0, 8]}", "sid=SID") }
     paths.compact.sort_by { |path| -path.length }.each { |path| out = out.gsub(path, "TMP") }
     out = out.gsub(Dir.home, "HOME") unless Dir.home.to_s.empty?
