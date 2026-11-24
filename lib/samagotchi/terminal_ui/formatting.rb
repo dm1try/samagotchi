@@ -232,7 +232,8 @@ module Samagotchi
 
       # Who sent a line, by its client_id: its row's label (the whole id or
       # its longest prefix), a turn an attached context source started
-      # (context:<name>) as "context <name> changed", a finished background
+      # (context:<name>) as "context <name> changed", a peer's message's
+      # (peer:<name>) as "peer <name>", a finished background
       # task's (task:<id>) as "task <id8> finished", AUTOMATIC_LABEL for an
       # id chi doesn't know; +fallback+ for none (the user's own) and for a
       # row labelled as none (ClientId::FIRST_PROMPT, CARD_ANSWER).
@@ -251,6 +252,8 @@ module Samagotchi
           return "schedule"
         when "agent"
           return "agent #{ClientId.agent_name(id)}"
+        when "peer"
+          return "peer #{ClientId.peer_name(id)}"
         when "session"
           return "session #{ClientId.session_name(id)}"
         end

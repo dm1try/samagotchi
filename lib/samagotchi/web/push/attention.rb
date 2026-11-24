@@ -31,9 +31,10 @@ module Samagotchi
         WAITING = %w[approval question continue card].freeze
         # notify.js DONE_MIN_SECONDS, UNWATCHED_ORIGINS: a finished turn
         # shorter than this was watched (no "done"), unless nobody started
-        # it (a delegate child's report, a context change, a finished task).
+        # it (a delegate child's report, a context change, a peer's message, a
+        # finished task).
         DONE_MIN_SECONDS = 10
-        UNWATCHED_ORIGINS = %w[delegate_report context task].freeze
+        UNWATCHED_ORIGINS = %w[delegate_report context peer task].freeze
         TITLE_MAX = 61
         BODIES = { "question" => "needs an answer", "approval" => "needs approval", "continue" => "hit its step limit",
                    "card" => "needs you", "failed" => "turn failed" }.freeze

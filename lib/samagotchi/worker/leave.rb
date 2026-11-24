@@ -244,6 +244,9 @@ module Samagotchi
         # /exit --delete deletes next: its save could land after the delete and
         # write the session back.
         absorb_context unless deleting
+        # A peer's message that came in the same gap: a note, held (the
+        # worker leaves; it reads it at its next start).
+        absorb_mail(hold: result == :exit_requested ? :exit : :leaving) unless deleting
         # The watch goes with this process: a task that finished since the
         # last look (nothing held the exit for it: queue, a note-only task,
         # /exit) is a plain note for the next turn, not lost. Not into a

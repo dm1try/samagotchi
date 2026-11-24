@@ -738,7 +738,7 @@ module Samagotchi
       def origin_of(value) = TurnOrigin.of(value)
       def reminder_origin?(origin) = origin.client_id.to_s.start_with?(ClientId::SYSTEM_PREFIX)
       def report_origin?(origin) = origin.source == "delegate_report"
-      def context_origin?(origin) = origin.source == "context"
+      def context_origin?(origin) = %w[context peer].include?(origin.source)
       def task_origin?(origin) = origin.source == "task"
       # A turn with no prompt: "(continuing)"; a context wake's or a task
       # finish wake's label alone.

@@ -34,6 +34,7 @@ require_relative "tools/task_runtime"
 require_relative "tools/tool_index"
 require_relative "tools/tool_surface"
 require_relative "peer_sources"
+require_relative "peer_registry"
 require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "plugin/card"
@@ -408,6 +409,9 @@ module Samagotchi
       # The context sources the peer bundles declare as a peer agent's
       # answers (chi.peer_source); the worker's ContextAbsorber asks it.
       @peer_sources = PeerSources.new
+      # The peers the loaded bundles declare (chi.peer): the worker's mail
+      # path (WorkerInbound#absorb_mail) takes their messages.
+      @peer_registry = PeerRegistry.new
       # The system-prompt text plugins add (chi.prompt_section), run when
       # the prompt is built (#build_system_prompt's sections:).
       @prompt_sections = Plugin::PromptSections.new
@@ -674,6 +678,9 @@ module Samagotchi
 
     # @return [PeerSources] the sources the peer bundles declared
     attr_reader :peer_sources
+
+    # @return [PeerRegistry] the peers the loaded bundles declared (chi.peer)
+    attr_reader :peer_registry
 
     # ── Plugin init tasks (chi.init) ──────────────────────────────────────
 

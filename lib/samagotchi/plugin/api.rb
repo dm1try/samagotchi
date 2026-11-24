@@ -60,7 +60,8 @@ module Samagotchi
         "ctx.cancel_controller" => "0.183.0",
         "ctx.secrets" => "0.183.0",
         "ctx.sign_in" => "0.183.0",
-        "ctx.card(between_turns:)" => "0.183.0"
+        "ctx.card(between_turns:)" => "0.183.0",
+        "chi.peer" => "0.188.0"
       }.freeze
 
       # chi.on's on_error: values. :log (the default) logs a raise and goes
@@ -86,6 +87,7 @@ module Samagotchi
         @toolkits = []
         @prompt_sections = []
         @peer_sources = []
+        @peers = []
         @judgments = []
         @tool_source = nil
         @committed = false
@@ -436,6 +438,22 @@ module Samagotchi
         nil
       end
 
+      # A peer agent this bundle speaks for (claude, codex): its messages in
+      # the session's mailbox (PeerMailbox, chi peer say) become its notes
+      # and may wake chi, on context.peer_turns. Declared here, in-process,
+      # never by a file a peer can write; gone with the bundle. +name+: a
+      # lowercase letter, then lowercase letters and digits; the peer's
+      # label is its name capitalised.
+      def peer(name)
+        raise ArgumentError, "this chi has no peer registry (plugins: false)" unless @registries.peer_registry
+
+        name = @registries.peer_registry.check!(name, bundle: @bundle)
+        raise ArgumentError, "peer #{name} is declared twice" if @peers.include?(name)
+
+        @peers << name
+        nil
+      end
+
       # A cheap question this bundle asks System 1 (docs/plugins.md,
       # Judgments): ctx.judge and ctx.judge_later ask it, and each ask saves a
       # run. Off until the user sets its mode in config.yml's
@@ -466,6 +484,7 @@ module Samagotchi
       def commit!
         check_annotations!
         @peer_sources.each { |item| @registries.peer_sources.check!(item[:name], label: item[:label], bundle: @bundle) }
+        @peers.each { |name| @registries.peer_registry.check!(name, bundle: @bundle) }
         context = @context
         @commands.each do |cmd|
           block = cmd[:block]
@@ -504,6 +523,7 @@ module Samagotchi
         end
         @registries.tool_index.add(@tool_source) if @tool_source
         @peer_sources.each { |item| @registries.peer_sources.declare(item[:name], label: item[:label], bundle: @bundle) }
+        @peers.each { |name| @registries.peer_registry.declare(name, bundle: @bundle) }
         @judgments.each { |declaration| @registries.judgments.declare(declaration) }
         @committed = true
       end
@@ -522,7 +542,8 @@ module Samagotchi
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
                      services: @services.size, inits: @inits.size, toolkits: @toolkits.size,
                      prompt_sections: @prompt_sections.size,
-                     tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size, judgments: @judgments.size }
+                     tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size, peers: @peers.size,
+                     judgments: @judgments.size }
 
       # Each annotation's command is one #command staged.
       def check_annotations!

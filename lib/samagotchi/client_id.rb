@@ -41,6 +41,9 @@ module Samagotchi
     # A turn chi ran because an attached context source changed:
     # context:<name> (Worker's context wake).
     CONTEXT_PREFIX = "context:"
+    # A turn chi ran because a peer agent's message asked: peer:<name>
+    # (Worker's mail wake, WorkerInbound::MailWake).
+    PEER_PREFIX = "peer:"
     # A turn chi ran because a background task this session started
     # finished unseen: task:<task id> (Worker's task finish wake).
     TASK_PREFIX = "task:"
@@ -132,6 +135,7 @@ module Samagotchi
       Sender.new(match: CHILD_PREFIX, **unattended, origin: "delegate_report", source: "delegate_report",
                  label: "delegate report"),
       Sender.new(match: CONTEXT_PREFIX, **unattended, origin: "context"),
+      Sender.new(match: PEER_PREFIX, **unattended, origin: "peer", label: "peer"),
       Sender.new(match: TASK_PREFIX, **unattended, origin: "task"),
       Sender.new(match: SYSTEM_PREFIX, **unattended, label: "reminder"),
       Sender.new(match: REMINDER, **unattended, origin: "reminder", label: "reminder"),
@@ -173,7 +177,8 @@ module Samagotchi
     end
 
     # What sent a turn: "delegate" (a delegating parent), "delegate_report"
-    # (a child's report), "context" (a context wake), "task" (a task finish
+    # (a child's report), "context" (a context wake), "peer" (a peer's
+    # message, a mail wake), "task" (a task finish
     # wake), "participant", "reminder", "schedule" (a durable
     # schedule's firing), else "client" (the owner, chi send, a plugin, nil).
     # @return [String]
@@ -204,6 +209,15 @@ module Samagotchi
     # guardrails.parent_answers (Web::SessionCreate#parent_gate and its
     # callers).
     def parent_line?(client_id) = [CLI_SEND, CLI_ANSWER].include?(client_id.to_s) || agent?(client_id)
+
+    # The name in a mail wake's id (peer:<name>), cleaned as a label reads
+    # it ("?" when nothing is left); nil for another id.
+    def peer_name(client_id)
+      return nil unless sender(client_id).match == PEER_PREFIX
+
+      name = client_id.to_s.delete_prefix(PEER_PREFIX).downcase.gsub(/[^a-z0-9]/, "")[0, 24]
+      name.empty? ? "?" : name
+    end
 
     # The client id an agent's message carries: agent:<name> (a name
     # AgentCaller.clean gave).
