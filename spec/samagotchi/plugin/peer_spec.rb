@@ -323,7 +323,7 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
     it "is declared beside the send tool, and the plugin declares its peer (chi.peer), not a context source" do
       expect(chi.tools.keys).to eq(%w[echo_send echo_read])
-      expect(chi.tools["echo_read"][:params].keys).to eq(%i[serial offset limit])
+      expect(chi.tools["echo_read"][:params].keys).to eq(%i[serial box offset limit])
       expect(chi.tools["echo_read"][:description]).to include("Message #N from your peer agent Echo")
       expect(chi.peers).to eq(["echo"])
     end

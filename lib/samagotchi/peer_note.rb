@@ -109,7 +109,7 @@ module Samagotchi
 
     # The call that reads a peer's message +serial+ (Plugin::Peer's tool
     # beside <peer>_send): "codex_read(serial: 12)".
-    def read_pointer(peer, serial) = "#{peer}_read(serial: #{serial})"
+    def read_pointer(peer, serial, box: nil) = "#{peer}_read(serial: #{serial}#{", box: \"#{box}\"" if box})"
 
     # A peer's message as its note says it: the opening (MESSAGE_OPEN), the
     # +summary+, its text in the block (+body+: .body's, { text: } or

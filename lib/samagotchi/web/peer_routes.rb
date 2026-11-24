@@ -62,9 +62,13 @@ module Samagotchi
 
       # GET /api/sessions/:id/peers/:name/messages/:serial → the message
       # (its text) and its receipt; 404 no_message.
-      def handle_peer_message(_req, id, name, serial)
+      def handle_peer_message(req, id, name, serial)
         @session_class.load(id, state_dir: default_state_dir)
         return invalid_peer(name) unless PeerMailbox.valid_name?(name)
+
+        box = req.GET["box"].to_s
+        expected = PeerReceipts.read(id, state_dir: default_state_dir).peer(name).box
+        return error_response(409, "wrong_box", "this message belongs to another session") if !box.empty? && expected != box
 
         message = PeerMailbox.message(id, name, serial, state_dir: default_state_dir)
         return error_response(404, "no_message", "no message #{serial.to_s[0, 20]} from #{name}") unless message

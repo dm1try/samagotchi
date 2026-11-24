@@ -240,6 +240,7 @@ module Samagotchi
 
       READ_PARAMS = {
         serial: { type: "integer", required: true, description: "The message's number (#N in its note)" },
+        box: { type: "string", description: "The mailbox box named in the note (for a continued or forked session)" },
         offset: { type: "integer", description: "The first line to read (1-based); default 1" },
         limit: { type: "integer", description: "How many lines at most" }
       }.freeze
@@ -252,7 +253,7 @@ module Samagotchi
         serial = Integer(args["serial"].to_s, 10, exception: false)
         return "Error: serial must be a message's number" unless serial&.positive?
 
-        message = ctx.peers.message(peer::PEER, serial)
+        message = ctx.peers.message(peer::PEER, serial, box: args["box"])
         return "Error: no message ##{serial} from #{peer::NAME} in this session (only the newest are kept)" unless message
 
         lines = message.text.lines

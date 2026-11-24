@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../peer_mailbox"
+require_relative "../peer_receipts"
 require_relative "../session"
 
 module Samagotchi
@@ -30,8 +31,11 @@ module Samagotchi
 
       # +name+'s message +serial+ (its text, summary, wake, re, at).
       # @return [PeerMailbox::PeerMessage, nil] nil when it isn't there (trimmed) or isn't good
-      def message(name, serial)
+      def message(name, serial, box: nil)
         id = @host.session_id.call or return nil
+        expected = @host.session_id.call && PeerReceipts.read(id, state_dir: state_dir).peer(name.to_s).box
+        return nil if box && expected != box
+
         PeerMailbox.message(id, name.to_s, serial, state_dir: state_dir)
       rescue PeerMailbox::Invalid, SessionPaths::InvalidId
         nil
