@@ -5,6 +5,7 @@ require "json"
 require "time"
 require_relative "atomic_file"
 require_relative "context_sources"
+require_relative "peer_receipts"
 require_relative "session_paths"
 
 module Samagotchi
@@ -228,7 +229,8 @@ module Samagotchi
       FileUtils.mkdir_p(File.join(dir, IN_DIR))
       locked(dir) do
         present = serials(session_id, peer, state_dir: state_dir)
-        if present.count { |serial| serial > taken.to_i } >= UNTAKEN_MAX
+        noted = PeerReceipts.read(session_id, state_dir: state_dir).peer(peer).receipts.count { |receipt| receipt.state == "noted" }
+        if noted >= UNTAKEN_MAX || present.count { |serial| serial > taken.to_i } >= UNTAKEN_MAX
           raise Full, "chi has #{UNTAKEN_MAX} unread messages from #{peer}"
         end
 

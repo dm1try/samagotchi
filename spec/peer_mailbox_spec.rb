@@ -164,6 +164,19 @@ RSpec.describe "PeerMailbox" do
       expect(serials.size).to eq(200)
       expect(post(taken: 1).serial).to eq(201)
     end
+
+    it "refuses a say when 200 noted messages remain unread" do
+      rows = (1..200).map { |n| Samagotchi::PeerReceipts::Receipt.new(serial: n, state: "noted", at: "x") }
+      peer = Samagotchi::PeerReceipts::Peer.new(box: "a1b2c3", taken: 200, receipts: rows)
+      Samagotchi::PeerReceipts.write(id, Samagotchi::PeerReceipts::Book.new(peers: { "claude" => peer }), state_dir: state_dir)
+      expect { post("next", taken: 200) }.to raise_error(Samagotchi::PeerMailbox::Full, /200 unread messages from claude/)
+      expect(serials).to be_empty
+
+      read = rows.first.with(state: "read", turn: "t1")
+      peer = peer.with(receipts: [read] + rows.drop(1))
+      Samagotchi::PeerReceipts.write(id, Samagotchi::PeerReceipts::Book.new(peers: { "claude" => peer }), state_dir: state_dir)
+      expect(post("next", taken: 200).serial).to eq(201)
+    end
   end
 
   describe "reading a file before trusting it" do
