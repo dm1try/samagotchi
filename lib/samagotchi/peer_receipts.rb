@@ -117,6 +117,7 @@ module Samagotchi
     def absorbed(batch, waking:, hold:)
       return if batch.empty?
 
+      previous = @book
       at = now
       batch.group_by(&:peer).each do |name, items|
         current = peer(name)
@@ -136,6 +137,9 @@ module Samagotchi
         update_peer(name, current.with(taken: [current.taken, taken.to_i].max, receipts: receipts))
       end
       write
+    rescue SystemCallError, IOError
+      @book = previous
+      raise
     end
 
     # A turn starts (+turn_id+): every held or noted receipt is read by it.

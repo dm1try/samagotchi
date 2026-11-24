@@ -282,6 +282,19 @@ RSpec.describe "the worker's peer mail" do
       expect(wakes.wake_hold(awaiting_continue: false, peer: true)).to eq(:paused)
     end
 
+    it "retries a failed receipt write in the same worker without waking the saved note" do
+      say("held")
+      receipts.box_for("claude")
+      allow(receipts).to receive(:write).and_raise(IOError, "receipt write failed")
+      expect { inbound.absorb_mail(hold: :queued) }.to raise_error(IOError, "receipt write failed")
+      expect(saved_notes.size).to eq(1)
+
+      allow(receipts).to receive(:write).and_call_original
+      expect(inbound.absorb_mail).to be_nil
+      expect(states).to eq(1 => %w[held paused])
+      expect(saved_notes.map { |note| note[:turn_start] }).to eq([nil])
+    end
+
     it "takes nothing before the conversation started, unless a turn is about to run" do
       session.messages = []
       say("early")
