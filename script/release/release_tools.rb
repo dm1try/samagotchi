@@ -95,6 +95,8 @@ module ReleaseTools
     require_relative "../../lib/samagotchi/thinking_tails"
     require_relative "../../lib/samagotchi/tools/delegate_cursor"
     require_relative "../../lib/samagotchi/archive_store"
+    require_relative "../../lib/samagotchi/peer_mailbox"
+    require_relative "../../lib/samagotchi/peer_receipts"
 
     Dir.mktmpdir("chi-compat-corpus-") do |tmp|
       staged = File.join(tmp, "corpus")
@@ -182,7 +184,8 @@ module ReleaseTools
           end,
           *wire_paths
         ]
-        missing = required.reject { |path| File.file?(path) }
+        # A store row whose file ends in "/" is a folder (PeerMailbox's in/).
+        missing = required.reject { |path| path.end_with?("/") ? Dir.exist?(path) : File.file?(path) }
         raise Error, "compatibility corpus writer omitted #{missing.join(", ")}" unless missing.empty?
       ensure
         isolated_env.each { |key, value| value ? ENV[key] = value : ENV.delete(key) }
@@ -345,9 +348,27 @@ module ReleaseTools
 
     [archive_path, pending_path, File.join(session_dir, Samagotchi::Objectives::CARDS_FILE),
      File.join(session_dir, Samagotchi::ObjectivesCheck::FILE), File.join(session_dir, Samagotchi::ObjectivesTrack::FILE),
-     reminders_path, recap_path, parent_path, delegates_path, tails_path, continued_from_path]
+     reminders_path, recap_path, parent_path, delegates_path, tails_path, continued_from_path,
+     *write_compat_peer_mail!(sessions_dir, at)]
   end
   private_class_method :write_compat_session_stores!
+
+  # A peer's pairing and one message (PeerMailbox, the peer's folder) and
+  # the worker's receipt for it (PeerReceipts, the session's folder).
+  # @return [Array<String>] the stores' paths
+  def write_compat_peer_mail!(sessions_dir, at)
+    id = COMPAT_SESSION_ID
+    Samagotchi::PeerMailbox.pair(id, "claude", address: "compat-address", from: "compat", state_dir: sessions_dir, now: at)
+    Samagotchi::PeerMailbox.post(id, "claude", text: "compatibility corpus", summary: "compat: VERDICT OK", wake: true,
+                                               re: "s-compat", state_dir: sessions_dir, now: at)
+    receipt = Samagotchi::PeerReceipts::Receipt.new(serial: 1, state: "held", reason: "peer_turns", at: COMPAT_STAMP)
+    peer = Samagotchi::PeerReceipts::Peer.new(box: "c0ffee", taken: 1, receipts: [receipt])
+    Samagotchi::PeerReceipts.write(id, Samagotchi::PeerReceipts::Book.new(peers: { "claude" => peer }), state_dir: sessions_dir)
+    peer_dir = Samagotchi::PeerMailbox.peer_dir(id, "claude", state_dir: sessions_dir)
+    [File.join(peer_dir, Samagotchi::PeerMailbox::LINK_FILE), "#{File.join(peer_dir, Samagotchi::PeerMailbox::IN_DIR)}/",
+     Samagotchi::PeerReceipts.path(id, state_dir: sessions_dir)]
+  end
+  private_class_method :write_compat_peer_mail!
 
   def normalize_json_store!(path)
     data = JSON.parse(File.read(path))

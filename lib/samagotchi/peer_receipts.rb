@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
+require_relative "atomic_file"
 require_relative "session_paths"
 
 module Samagotchi
@@ -85,6 +87,14 @@ module Samagotchi
         Book.from_h(JSON.parse(File.read(file)))
       rescue JSON::ParserError, SystemCallError, EncodingError
         Book.empty
+      end
+
+      # Replaces the file with +book+ (the worker's, on its loop thread).
+      # @return [String] the path
+      def write(session_id, book, state_dir: nil)
+        file = path(session_id, state_dir: state_dir)
+        FileUtils.mkdir_p(File.dirname(file))
+        AtomicFile.write(file, "#{JSON.generate(book.to_h)}\n")
       end
 
       # @return [Integer] the last serial the worker took from +peer+ (0: none)

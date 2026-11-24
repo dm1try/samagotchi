@@ -161,6 +161,26 @@ RSpec.describe Samagotchi::SessionManager do
       [own, other].each { |loc| FileUtils.rm_rf(loc.dir) }
     end
 
+    it "removes the session's peer mailbox (mailbox/<id>/), not another's, and its receipts" do
+      require "samagotchi/peer_mailbox"
+      other_id = "11111111-2222-3333-4444-555555555555"
+      [session.id, other_id].each do |id|
+        Samagotchi::PeerMailbox.post(id, "claude", text: "hi", summary: nil, wake: false, re: nil, state_dir: tmpdir)
+      end
+      FileUtils.mkdir_p(session_dir)
+      File.write(File.join(session_dir, "peer_receipts.json"), "{}")
+      own = Samagotchi::PeerMailbox.session_dir(session.id, state_dir: tmpdir)
+      other = Samagotchi::PeerMailbox.session_dir(other_id, state_dir: tmpdir)
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir)
+
+      expect(result[:removed]).to include(own)
+      expect([Dir.exist?(own), Dir.exist?(other), Dir.exist?(session_dir)]).to eq([false, true, false])
+    ensure
+      # The root is next to tmpdir, shared with other spec processes: only ours goes.
+      [own, other].compact.each { |dir| FileUtils.rm_rf(dir) }
+    end
+
     it "takes a unique id prefix" do
       result = described_class.delete_session(session.id[0, 6], state_dir: tmpdir)
 
