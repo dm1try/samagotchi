@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
 - A schedule turned off by its skip or failure budget notifies the phone whatever ran the tick: a cron
   `chi schedule tick` or a `run-now` too, not only chi web's own tick (chi web pushes it, with `schedule.auto_tick`
   off as well).
+- chi web: pages have their own `pages` pill in the top bar (when there is at least one page, in every view, on a
+  desktop and a phone); it opens the Pages list, and appears without a reload when chi makes the first page. All
+  sessions no longer shows a Pages group ([docs/pages.md](docs/pages.md#in-chi-web)).
 
 ### Fixed
 

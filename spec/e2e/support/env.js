@@ -277,7 +277,8 @@ export function chiCli(env, args) {
 // A page script NAME (docs/pages.md) in the env's config with +source+, and
 // +files+ beside it ({name: text}, what it reads); @return remove(), which
 // the test calls in a finally: the chi fixture is shared by a worker's
-// tests, and a page left over would put a Pages group into the next ones.
+// tests, and a page left over would put the pages pill into every later
+// test's top bar.
 export function usePage(env, name, source, files = {}) {
   const dir = path.join(env.dirs.config, "samagotchi", "pages");
   fs.mkdirSync(dir, { recursive: true });

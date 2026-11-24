@@ -7,7 +7,7 @@ require_relative "../pages/launch"
 module Samagotchi
   module Web
     # The pages routes, mixed into App (docs/internals/pages.md, chi web): the
-    # list for All sessions' Pages group, a page as stored (opening runs
+    # list for the Pages list and the pages pill, a page as stored (opening runs
     # nothing), Refresh (one run through Pages::Launch, inside the request)
     # and Delete. All the owner's: a participant never sees pages. The name
     # is checked (Pages.valid_name?) before anything builds a path; one that

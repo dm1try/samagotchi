@@ -371,7 +371,9 @@ proxies the stream and relays the writes. The routes, wire shapes, replay rules,
 never pulls from the page: `chi web` runs one `Samagotchi::Web::SessionHub` (a thread inside
 the server, no daemon) that keeps an in-memory projection of the session list and pushes
 changes to every open tab over `GET /api/events` (SSE: a `snapshot` frame on every connect,
-then `session` for an upsert and `session_gone` for a removal, `: ping` while idle, no replay).
+then `session` for an upsert and `session_gone` for a removal, `: ping` while idle, no replay;
+and `pages`, no data, when the pages' scripts folder changed: one `File.stat` of `Pages.scripts_dir` a tick, which
+Server.start passes as `pages_dir:`, never on the first look; the page reads `GET /api/pages` again on it).
 The snapshot names chi's version: a tab served by another one (its `<body data-version>`) offers a
 reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade. It also names
 `installed`, the newest chi on this machine (`InstalledVersions`: the highest `samagotchi-<v>.gemspec`

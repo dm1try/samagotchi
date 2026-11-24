@@ -152,7 +152,7 @@ const CONTROLS = {
   infoMoreBtn: "#infoMoreBtn", infoStopBtn: "#infoStopBtn", infoContinueBtn: "#infoContinueBtn",
   infoArchiveBtn: "#infoArchiveBtn", infoDeleteBtn: "#infoDeleteBtn",
   stopTurn: ".ts-cancel", questionCard: ".bubble.question, details.question",
-  reviseBtn: ".revise-btn", settingsChip: ".settings-chip",
+  reviseBtn: ".revise-btn", settingsChip: ".settings-chip", pagesBtn: "#pagesBtn",
 };
 const controls = Object.fromEntries(Object.entries(CONTROLS).map(([name, selector]) => [name, state(selector)]));
 process.stdout.write(`${JSON.stringify({ requests: [...new Set(requests)].sort(), streams: [...new Set(streams)].sort(), controls, errors })}\n`);

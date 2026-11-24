@@ -25,6 +25,7 @@ require_relative "auto_update"
 require_relative "token"
 require_relative "tunnel"
 require_relative "../config"
+require_relative "../pages"
 require_relative "../chi_home"
 require_relative "../child_env"
 require_relative "../installed_gem"
@@ -473,7 +474,8 @@ module Samagotchi
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
 
-        hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
+        hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager,
+                               pages_dir: Pages.scripts_dir)
         update_check ||= UpdateCheck.new(hub: hub)
         Token.load_or_create(token_path) if lan || public_url
         lan_option = { ip: lan.ip, token: Token::Source.new(token_path) } if lan

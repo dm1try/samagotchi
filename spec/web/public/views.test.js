@@ -9,23 +9,30 @@ import { createViews } from "../../../lib/samagotchi/web/public/views.js";
 const ID = "d4c5c3af-a814-48dd-a59c-fffa4bc0b094";
 const OTHER = "0a1b2c3d-1111-2222-3333-444455556666";
 
-function harness({ hash = "", participant = null, selected = null, events = true, pages = undefined } = {}) {
+function harness({ hash = "", participant = null, selected = null, events = true, pages = undefined, list = false } = {}) {
   const calls = [];
   const listeners = {};
   const location = { pathname: "/", search: "?dir=x", hash };
   const win = {
     location,
     history: {
+      state: null,
       back: () => calls.push(["back"]),
-      replaceState: (_s, _t, url) => {
+      pushState: (state, _t, url) => {
+        calls.push(["push", url]);
+        win.history.state = state;
+        location.hash = url.slice(url.indexOf("#") >= 0 ? url.indexOf("#") : url.length);
+      },
+      replaceState: (state, _t, url) => {
         calls.push(["replace", url]);
+        win.history.state = state;
         location.hash = url.slice(url.indexOf("#") >= 0 ? url.indexOf("#") : url.length);
       },
     },
     addEventListener: (name, fn) => { listeners[name] = fn; },
   };
   document.body.className = "";
-  document.body.innerHTML = '<button id="stripStatus"></button><input id="filter"><div id="topStrip"></div>';
+  document.body.innerHTML = '<button id="stripStatus"></button><button id="pagesBtn"></button><input id="filter"><div id="topStrip"></div>';
   const store = {
     selected,
     sessions: [{ id: "b", updated_at: "1" }, { id: "a", updated_at: "2" }],
@@ -41,6 +48,8 @@ function harness({ hash = "", participant = null, selected = null, events = true
   const pageView = pages === null ? null : {
     open: (name) => pageCalls.push(["open", name]), close: () => pageCalls.push(["close"]),
   };
+  const listCalls = [];
+  const pagesList = list ? { open: () => listCalls.push("open"), close: () => listCalls.push("close") } : null;
   const claims = { pending: (c) => calls.push(["claim.pending", c]), showPending: () => calls.push(["claim.show"]) };
   const views = createViews({
     win, doc: document, participant, store, lists,
@@ -53,8 +62,9 @@ function harness({ hash = "", participant = null, selected = null, events = true
     clearSelection: () => calls.push(["clear"]),
     ownerClaim: () => claims,
     pages: pageView,
+    pagesList,
   });
-  return { views, calls, location, listeners, store, lists, pageCalls };
+  return { views, calls, location, listeners, store, lists, pageCalls, listCalls };
 }
 
 test("All sessions is open at #/sessions, never on a participant's page", () => {
@@ -164,7 +174,7 @@ test("while a page is open the session's hash isn't written; a session picked le
   assert.equal(location.hash, `#/s/${OTHER}`);
 });
 
-test("Back: history.back() when this page opened it, else All sessions in its entry; the label says where", () => {
+test("Back (no Pages list given: an older cached app.js): history.back() when this page opened it, else All sessions in its entry; the label says where", () => {
   const pushed = harness({ hash: `#/s/${ID}`, selected: ID });
   pushed.views.openPage("usage");
   assert.equal(pushed.location.hash, "#/p/usage");
@@ -200,4 +210,200 @@ test("Back from a page returns to All sessions; Esc then goes back to the sessio
   listeners.hashchange();
   views.closeAllView();
   assert.deepEqual(calls.filter(([kind]) => kind === "back"), [["back"], ["back"]]);
+});
+
+// The Pages list, #/pages (the pages pill).
+const pressed = () => document.querySelector("#pagesBtn").getAttribute("aria-pressed");
+const go = (h, hash) => { h.location.hash = hash; h.listeners.hashchange(); };
+
+test("#/pages opens the list in place of the session area, selects nothing, and presses the pages pill", () => {
+  const h = harness({ hash: "", selected: ID, list: true });
+  go(h, "#/pages");
+  assert.equal(h.views.listOpen(), true);
+  assert.equal(document.body.classList.contains("pages-list"), true);
+  assert.equal(document.body.classList.contains("page-view"), false);
+  assert.deepEqual(h.listCalls, ["open"]);
+  assert.equal(pressed(), "true");
+  assert.equal(h.calls.some((c) => c[0] === "select" || c[0] === "clear"), false);
+  go(h, `#/s/${ID}`);
+  assert.equal(document.body.classList.contains("pages-list"), false);
+  assert.equal(h.listCalls.at(-1), "close");
+  assert.equal(pressed(), "false");
+});
+
+test("no list without the capability, and none on a participant's page", () => {
+  const none = harness({ hash: "#/pages", list: false });
+  none.views.applyView();
+  assert.equal(none.views.listOpen(), false);
+  assert.equal(document.body.classList.contains("pages-list"), false);
+  const own = harness({ hash: "#/pages", participant: { sessionId: ID }, list: true });
+  own.views.applyView();
+  assert.equal(own.views.listOpen(), false);
+});
+
+test("the pill: from a session pushes #/pages; on the list already, nothing; a page is pressed too", () => {
+  const h = harness({ hash: `#/s/${ID}`, selected: ID, list: true });
+  h.views.openPagesList();
+  assert.equal(h.location.hash, "#/pages");
+  h.listeners.hashchange();
+  h.views.openPagesList();
+  assert.equal(h.calls.some((c) => c[0] === "replace" || c[0] === "back"), false);
+  h.views.openPage("usage");
+  go(h, "#/p/usage");
+  assert.equal(pressed(), "true");
+  assert.equal(h.views.pageBackLabel(), "Pages");
+});
+
+test("a list or page with nowhere to go back to: the list leaves for the session's hash, a page for the list", () => {
+  const list = harness({ hash: "#/pages", selected: ID, list: true });
+  list.views.applyView();
+  list.views.closePagesList();
+  assert.deepEqual(list.calls.find((c) => c[0] === "replace"), ["replace", `/?dir=x#/s/${ID}`]);
+
+  const loaded = harness({ hash: "#/p/usage", list: true });
+  assert.equal(loaded.views.pageBackLabel(), "Pages");
+  loaded.views.closePage();
+  assert.equal(loaded.location.hash, "#/pages");
+
+  const gone = harness({ hash: "#/p/usage", list: true });
+  gone.views.leavePage();
+  assert.equal(gone.location.hash, "#/pages");
+
+  const fromAnswer = harness({ hash: `#/s/${ID}`, selected: ID, list: true });
+  fromAnswer.views.openPage("usage");
+  assert.equal(fromAnswer.views.pageBackLabel(), "Back");
+});
+
+test("while the list is open the session's hash isn't written; a session picked leaves the list for it", () => {
+  const h = harness({ hash: "#/pages", selected: ID, list: true });
+  h.views.setSessionHash(null);
+  assert.equal(h.calls.some((c) => c[0] === "replace"), false);
+  assert.equal(h.location.hash, "#/pages");
+  assert.equal(h.views.pagesAreaOpen(), true);
+  h.views.setSessionHash(OTHER);
+  assert.equal(h.location.hash, `#/s/${OTHER}`);
+  assert.equal(h.views.pagesAreaOpen(), false);
+});
+
+// A browser's history as a stack: push, back, forward, replace, each entry
+// with its own state (history.state); a hash change by back or forward calls
+// the hashchange listener, as the browser does (pushState fires none).
+function stack(start, { selected = ID } = {}) {
+  const entries = [{ hash: start, state: null }];
+  let at = 0;
+  const listeners = {};
+  const location = {
+    pathname: "/", search: "",
+    get hash() { return entries[at].hash; },
+    set hash(h) {
+      if (h === entries[at].hash) return;
+      entries.splice(at + 1, Infinity, { hash: h, state: null });
+      at += 1;
+      listeners.hashchange?.();
+    },
+  };
+  const urlHash = (url) => (url.indexOf("#") >= 0 ? url.slice(url.indexOf("#")) : "");
+  const move = (to) => {
+    if (to < 0 || to >= entries.length) return;
+    const before = entries[at].hash;
+    at = to;
+    if (entries[at].hash !== before) listeners.hashchange?.();
+  };
+  const history = {
+    get state() { return entries[at].state; },
+    pushState: (state, _t, url) => { entries.splice(at + 1, Infinity, { hash: urlHash(url), state }); at += 1; },
+    replaceState: (state, _t, url) => { entries[at] = { hash: urlHash(url), state }; },
+    back: () => move(at - 1),
+    forward: () => move(at + 1),
+  };
+  const win = { location, history, addEventListener: (name, fn) => { listeners[name] = fn; } };
+  document.body.innerHTML = '<button id="stripStatus"></button><button id="pagesBtn"></button><input id="filter"><div id="topStrip"></div>';
+  const store = { selected, sessions: [], update() {} };
+  const lists = { selecting: { on: false }, leaveSelect() {}, chainPop: { close() {} }, familyPop: { close() {} } };
+  const views = createViews({
+    win, doc: document, participant: null, store, lists, topStripEl: document.querySelector("#topStrip"),
+    pictures: { close() {} }, eventsLive: () => true, refresh() {}, updateSessionTitle() {}, select() {}, clearSelection() {},
+    ownerClaim: () => ({}), pages: { open() {}, close() {} }, pagesList: { open() {}, close() {} },
+  });
+  return { views, history, hashes: () => entries.map((e) => e.hash), at: () => at };
+}
+const S = `#/s/${ID}`;
+
+test("history: pill -> list -> card -> Back -> list Back: two backs, back on the session, no entry added", () => {
+  const h = stack(S);
+  h.views.openPagesList();
+  h.views.openPage("usage");
+  assert.equal(h.views.pageBackLabel(), "Pages");
+  h.views.closePage();
+  assert.equal(h.views.listOpen(), true);
+  h.views.closePagesList();
+  assert.deepEqual(h.hashes(), [S, "#/pages", "#/p/usage"]);
+  assert.equal(h.at(), 0);
+});
+
+test("history: an answer's link -> page -> pill -> list Back -> page Back: the page keeps \"Back\" and goes to the session", () => {
+  const h = stack(S);
+  h.views.openPage("usage");
+  assert.equal(h.views.pageBackLabel(), "Back");
+  h.views.openPagesList();
+  h.views.closePagesList();
+  assert.equal(h.views.pageOpen(), "usage");
+  assert.equal(h.views.pageBackLabel(), "Back", "the label survives the trip to the list");
+  h.views.closePage();
+  assert.equal(h.at(), 0);
+  assert.deepEqual(h.hashes(), [S, "#/p/usage", "#/pages"], "no duplicate entry");
+});
+
+test("history: list -> sessions pill -> All sessions' Back -> list Back: back on the session, no duplicate", () => {
+  const h = stack(S);
+  h.views.openPagesList();
+  h.views.openAllView();
+  h.views.closeAllView();
+  assert.equal(h.views.listOpen(), true);
+  h.views.closePagesList();
+  assert.equal(h.at(), 0);
+  assert.deepEqual(h.hashes(), [S, "#/pages", "#/sessions"]);
+});
+
+test("history: list -> card -> browser Back -> Forward -> pill -> list Back -> page Back: no stale entries pile up", () => {
+  const h = stack(S);
+  h.views.openPagesList();
+  h.views.openPage("usage");
+  h.history.back();
+  h.history.forward();
+  assert.equal(h.views.pageOpen(), "usage");
+  assert.equal(h.views.pageBackLabel(), "Pages");
+  h.views.openPagesList(); // the page came from the list: back to it
+  assert.equal(h.views.listOpen(), true);
+  assert.equal(h.at(), 1);
+  h.views.closePagesList();
+  assert.equal(h.at(), 0);
+  assert.deepEqual(h.hashes(), [S, "#/pages", "#/p/usage"]);
+});
+
+test("history: a page gone (Delete) after it was opened from the list goes back to that list, no second #/pages", () => {
+  const h = stack(S);
+  h.views.openPagesList();
+  h.views.openPage("usage");
+  h.views.leavePage();
+  assert.equal(h.views.listOpen(), true);
+  assert.equal(h.at(), 1);
+  h.views.closePagesList();
+  assert.equal(h.at(), 0);
+  assert.deepEqual(h.hashes(), [S, "#/pages", "#/p/usage"]);
+});
+
+test("history: a page typed in (no state): Back and a Delete put the list in its entry, whose Back leaves for the session", () => {
+  for (const leave of ["closePage", "leavePage"]) {
+    const h = stack(S);
+    h.views.openPagesList();
+    // A typed hash: a new entry with no state.
+    h.history.pushState(null, "", "/#/p/usage");
+    h.views.applyView();
+    assert.equal(h.views.pageBackLabel(), "Pages");
+    h.views[leave]();
+    assert.deepEqual(h.hashes(), [S, "#/pages", "#/pages"], leave);
+    h.views.closePagesList();
+    assert.deepEqual(h.hashes(), [S, "#/pages", S], leave);
+  }
 });
