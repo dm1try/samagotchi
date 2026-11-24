@@ -72,6 +72,50 @@ RSpec.describe Samagotchi::WorkerWakes do
     end
   end
 
+  # Today's log lines of the context gates, word for word. A peer's line
+  # (reason peer_turns) is pinned where WorkerInbound asks the peer gate
+  # (worker_inbound_spec, "the wake gates' log lines").
+  describe "the context gates' log lines" do
+    let(:held) { [] }
+    let(:max_wakes_line) { [:worker, "context_wake_held", { reason: "max_wakes", names: "ci,docs" }] }
+
+    before do
+      allow(Samagotchi::Log).to receive(:info) { |tag, event, **fields| held << [tag, event, fields] if event == "context_wake_held" }
+    end
+
+    it "context_open? logs the sources the spent budget holds past the grace, nothing within it" do
+      3.times { wakes.count! }
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([])
+      pass(2.0)
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([max_wakes_line])
+    end
+
+    it "context_ready? logs the spent budget within the grace too" do
+      3.times { wakes.count! }
+      expect(wakes.context_ready?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([max_wakes_line])
+    end
+
+    it "logs nothing while a continue offer or a pause holds, the budget spent" do
+      pass(2.0)
+      3.times { wakes.count! }
+      expect(wakes.context_open?(awaiting_continue: true, names: %w[ci docs])).to be(false)
+      expect(wakes.context_ready?(awaiting_continue: true, names: %w[ci docs])).to be(false)
+      wakes.pause!
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(wakes.context_ready?(awaiting_continue: false, names: %w[ci docs])).to be(false)
+      expect(held).to eq([])
+    end
+
+    it "logs nothing when the gate is open" do
+      pass(2.0)
+      expect(wakes.context_open?(awaiting_continue: false, names: %w[ci docs])).to be(true)
+      expect(held).to eq([])
+    end
+  end
+
   describe "#task_open?" do
     it "opens past the grace, with no offer, unpaused and under the budget" do
       expect(wakes.task_open?(awaiting_continue: false)).to be(false)
