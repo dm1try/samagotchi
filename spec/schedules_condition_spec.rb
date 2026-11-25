@@ -166,6 +166,27 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
     expect(raw_entry(schedules, entry.id)).to include("next_due" => nil, "condition" => "exit 0")
   end
 
+  # Review M4: a gate the model can edit is unattended shell for it.
+  describe ".gate_warning" do
+    def warning(cmd, folder: "/nowhere-chi/proj") = described_class.gate_warning(cmd, folder: folder)
+
+    it "warns about a relative script, one in the session's folder or in a git work tree, not a command on PATH" do
+      expect(warning("coord-pane gate")).to be_nil
+      expect(warning("test -f /tmp/x")).to be_nil
+      expect(warning("./gate.sh")).to eq(described_class::GATE_IN_REACH)
+      expect(warning("FOO=1 bin/gate --quiet")).to eq(described_class::GATE_IN_REACH)
+      expect(warning("/nowhere-chi/proj/bin/gate")).to eq(described_class::GATE_IN_REACH)
+      expect(warning("/nowhere-chi/proj")).to eq(described_class::GATE_IN_REACH)
+      expect(warning("/nowhere-chi/project-b/gate")).to be_nil
+      expect(warning("'unclosed")).to be_nil
+      Dir.mktmpdir("gate-repo") do |repo|
+        system(Samagotchi::GitEnv::UNSET, "git", "init", "-q", repo, exception: true)
+        expect(warning("#{repo}/scripts/gate.sh", folder: nil)).to eq(described_class::GATE_IN_REACH)
+        expect(warning("#{File.dirname(repo)}/elsewhere-gate.sh", folder: nil)).to be_nil
+      end
+    end
+  end
+
   describe "the tick" do
     # A runner that answers each CMD with +answers+ (cmd → exit code, or a
     # Run), and records what it was asked.

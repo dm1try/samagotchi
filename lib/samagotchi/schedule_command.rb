@@ -179,7 +179,10 @@ module Samagotchi
 
       @stdout.puts("#{entry.id} added: #{entry.target_words} · #{entry.recurrence_words}#{condition_words(entry)} · " \
                    "next #{clock(entry.next_due)}")
-      @stdout.puts(CONDITION_TICKERS) if entry.condition
+      if entry.condition
+        @stdout.puts(CONDITION_TICKERS)
+        print_gate_warning(entry)
+      end
       print_tick_warning
       CLI::Exit::OK
     end
@@ -200,7 +203,10 @@ module Samagotchi
       return failed("no schedule #{id}") if entry.nil?
 
       @stdout.puts(entry_line(entry))
-      @stdout.puts(CONDITION_TICKERS) if @opts.key?(:condition)
+      if @opts.key?(:condition)
+        @stdout.puts(CONDITION_TICKERS)
+        print_gate_warning(entry)
+      end
       CLI::Exit::OK
     rescue Schedules::EditPart::InFlight => e
       failed(e.message)
@@ -343,6 +349,21 @@ module Samagotchi
       note += " last: #{entry.last_result}" if entry.last_result
       "#{entry.id}  #{ScheduleDisplay.name(entry, width: name_width)}  #{entry.mode}  #{entry.recurrence_words}  " \
         "#{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
+    end
+
+    # Schedules::ConditionPart.gate_warning for the folder CMD runs in (the
+    # target session's), when CMD is a script the model can edit.
+    def print_gate_warning(entry)
+      cmd = entry.condition.is_a?(Hash) ? entry.condition[:cmd] : nil
+      return unless cmd.is_a?(String)
+
+      folder = begin
+        Session.load(entry.head, state_dir: @schedules.state_dir).working_directory
+      rescue Session::NotFound
+        nil
+      end
+      warning = Schedules::ConditionPart.gate_warning(cmd, folder: folder)
+      @stdout.puts(warning) if warning
     end
 
     # " · if CMD" for add's line, "" without a condition.

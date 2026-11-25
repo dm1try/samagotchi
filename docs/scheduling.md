@@ -349,8 +349,12 @@ without running CMD, until its budget turns it off.
   (`chi-schedules`), and a shell command naming it asks (`shell-touches-chi`).
 These are an accident guard, not a sandbox: a script that edits the file without
 naming it gets through. Keep CMD itself out of the model's reach too: a gate script
-inside a project the model edits is one it can change, so point `--if` at a file
-outside the session's folder (`~/.local/bin/…`) when that matters.
+inside a project the model edits is one it can change, and the tick then runs what the
+model wrote. `add` and `edit --if` warn when CMD's first word is a relative path (it
+resolves in the session's folder) or a script inside the session's folder or any git
+work tree: "warning: the model can edit this script; keep a gate outside your projects
+(an absolute path, e.g. under ~/.local/bin)". It is a warning, not a refusal; a command
+on PATH (`test -f …`, `gh …`) gets none.
 
 **Every ticker must be new enough.** A chi of 0.189.0 or older (0.189.0 shipped without them) doesn't know
 conditions and would fire such a schedule unasked, so chi stores a schedule with a

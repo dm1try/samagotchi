@@ -81,6 +81,10 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(lines.first).to match(/\A\h{16} added: chain · #{id[0, 8]} · every 5m · if coord-pane gate · next /)
       expect(lines[1]).to eq(described_class::CONDITION_TICKERS)
       expect(described_class::CONDITION_TICKERS).to include("newer than 0.189.0")
+      expect(printed).not_to include("the model can edit")
+
+      _, gated, = run("add", "--session", id, "--every", "1h", "-m", "Other", "--if", "./gate.sh")
+      expect(gated.lines[2]).to eq("#{Samagotchi::Schedules::ConditionPart::GATE_IN_REACH}\n")
       expect(schedules.entries.first.condition).to include(cmd: "coord-pane gate", by: "cli")
     end
 

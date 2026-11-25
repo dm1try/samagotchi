@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require "shellwords"
 require "time"
 require_relative "../config"
+require_relative "../git_env"
 require_relative "../log"
 require_relative "../session"
 require_relative "../spawn_env"
@@ -75,6 +77,45 @@ module Samagotchi
         hidden = extra.delete(CONDITION_NEXT_DUE)
         fields[:next_due] = hidden if fields[:next_due].nil? && hidden.is_a?(String)
         fields.merge(extra: extra)
+      end
+
+      # The warning `add` / `edit --if` print when CMD's first word is a
+      # script the model can edit (review M4): a relative path (it resolves
+      # in the session's folder, where CMD runs), or one inside the target
+      # session's folder or any git work tree. nil for a command on PATH or
+      # a script outside every project. A warning, not a refusal: chi's
+      # guardrails are an accident guard.
+      GATE_IN_REACH = "warning: the model can edit this script; keep a gate outside your projects " \
+                      "(an absolute path, e.g. under ~/.local/bin)"
+
+      # @param cmd [String] @param folder [String, nil] the target session's
+      # @return [String, nil] GATE_IN_REACH or nil
+      def self.gate_warning(cmd, folder:)
+        word = first_word(cmd)
+        return nil if word.nil? || !word.include?("/")
+
+        expanded = word.sub(%r{\A(~|\$HOME|\$\{HOME\})(?=/)}) { Dir.home }
+        return GATE_IN_REACH unless expanded.start_with?("/")
+
+        path = File.expand_path(expanded)
+        inside = folder && !folder.to_s.empty? && (path == File.expand_path(folder) || path.start_with?(File.join(File.expand_path(folder), "")))
+        inside || in_work_tree?(path) ? GATE_IN_REACH : nil
+      end
+
+      # CMD's first word, past VAR=value assignments; nil when it doesn't split.
+      def self.first_word(cmd)
+        Shellwords.split(cmd.to_s).find { |word| !word.match?(/\A[A-Za-z_][A-Za-z0-9_]*=/) }
+      rescue ArgumentError
+        nil
+      end
+
+      def self.in_work_tree?(path)
+        dir = File.directory?(path) ? path : File.dirname(path)
+        dir = File.dirname(dir) until File.directory?(dir) || dir == "/"
+        out = IO.popen(GitEnv::UNSET, ["git", "-C", dir, "rev-parse", "--is-inside-work-tree"], err: File::NULL, &:read)
+        out.to_s.strip == "true"
+      rescue SystemCallError
+        false
       end
 
       # How long a condition may run (schedule.condition_timeout_seconds,
