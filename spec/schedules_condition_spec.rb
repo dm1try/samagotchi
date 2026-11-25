@@ -301,7 +301,6 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
     # one occurrence; failed() keeps next_due, so both counted it.
     it "counts one occurrence's condition error once when two tickers overlap" do
       other = ticking({ "broken" => 127 })
-      nil
       answers = { "broken" => lambda { |_options|
         other.tick(now: now + 300) # the other ticker's whole tick lands while this CMD runs
         Samagotchi::ContextFetch::Run.new(output: "", error: "exit 127", stderr: "", cancelled: false, status: ConditionSpecStatus.new(127))
@@ -400,8 +399,14 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
       one = schedules.add(target: session.id, prompt: "One", recurrence: every("5m"), condition: "gate")
       schedules.add(target: session.id, prompt: "Two", recurrence: every("5m"), condition: "gate")
 
+      plain = schedules.add(target: session.id, prompt: "Plain", recurrence: every("5m"))
+      allow(Samagotchi::SessionContinue).to receive(:run)
+
       expect(schedules.tick(now: now + 300, cancelled: -> { stop.first }).outcomes).to eq([])
       expect(calls.size).to eq(1)
+      # Review L2: nor does the main pass fire the rest while chi web stops.
+      expect(Samagotchi::SessionContinue).not_to have_received(:run)
+      expect(schedules.lookup(plain.id).next_due).to eq(plain.next_due)
       expect(schedules.lookup(one.id)).to have_attributes(next_due: one.next_due, failures: 0)
     end
 

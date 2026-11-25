@@ -352,6 +352,8 @@ module Samagotchi
         started_at = @monotonic.call
         conditions = condition_results(now, cancelled)
         now += @monotonic.call - started_at if conditions
+        # chi web stopping: no firing now, which its stop would cut short.
+        return Tick.new(locked: false, outcomes: []) if cancelled.call
       end
       outcomes = []
       pending = []
