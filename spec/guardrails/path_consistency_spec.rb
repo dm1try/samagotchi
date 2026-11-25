@@ -115,6 +115,7 @@ module GuardrailsPathConsistency
       case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/hooks/h.rb
       store               @state/guardrails/approvals.json             y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/guardrails/approvals.json
       context             @state/context/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/context/src.yml
+      schedules           @state/schedules.json                        y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/schedules.json
       case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/CONTEXT/src.yml
       state-session       @state/sessions/x.json                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     -    -       -      @state/sessions/x.json
       ssh-key             ~/.ssh/id_rsa                                y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     -    -       -      @home/.ssh/id_rsa
@@ -450,7 +451,7 @@ module GuardrailsPathConsistency
       state = dir("state")
       G::ProtectedPaths.new(store_dir: File.join(state, "guardrails"), bundles_dir: File.join(config, "memories", ".bundles"),
                             config_path: File.join(config, "config.yml"), hooks_dir: File.join(config, "hooks"),
-                            context_dir: File.join(state, "context"))
+                            context_dir: File.join(state, "context"), schedules_path: File.join(state, "schedules.json"))
     end
 
     def scratch = G::ScratchWrites.new(memories_dir: -> { File.join(dir("config"), "memories") })

@@ -273,6 +273,7 @@ module Samagotchi
         require_relative "chi_home"
         require_relative "chi_shim"
         require_relative "paths"
+        require_relative "guardrails/chi_dirs"
         Guardrails::ProtectedPaths.new(
           store_dir: File.dirname(@approvals.path),
           bundles_dir: InstalledBundles.dir,
@@ -283,7 +284,8 @@ module Samagotchi
           runs_dir: File.join(File.dirname(@approvals.path, 2), "system_one"),
           home_path: ChiHome.path,
           shim_path: ChiShim.path,
-          plugins_dir: File.join(Paths.state_dir, "plugins")
+          plugins_dir: File.join(Paths.state_dir, "plugins"),
+          schedules_path: Guardrails::ChiDirs.schedules_file
         )
       end
     end

@@ -15,8 +15,10 @@ module Samagotchi
     #         hooks, rules, manifests), attached context (a source's
     #         command runs later, outside the gate; chi context writes
     #         it), the peer mailbox (a message there speaks as a peer
-    #         agent; chi peer writes it) and System 1's saved runs (a
-    #         label there may train a model); nothing legitimate writes there through a tool
+    #         agent; chi peer writes it), System 1's saved runs (a
+    #         label there may train a model) and schedules.json (a
+    #         schedule's prompt and condition run unattended; chi schedule
+    #         writes it); nothing legitimate writes there through a tool
     #         that says it writes.
     #   ask (once / session): config.yml, home.json (the chi home: the
     #         Ruby every chi launch boots), the chi shim (ChiShim: the
@@ -53,8 +55,9 @@ module Samagotchi
       # @param home_path [String, nil] home.json (ChiHome.path)
       # @param shim_path [String, nil] the chi shim (ChiShim.path)
       # @param plugins_dir [String, nil] <state dir>/plugins (the bundles' data, their secrets/ in it)
+      # @param schedules_path [String, nil] <state dir>/schedules.json (ChiDirs.schedules_file)
       def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, runs_dir: nil, home_path: nil, shim_path: nil,
-                     plugins_dir: nil, mailbox_dir: nil)
+                     plugins_dir: nil, mailbox_dir: nil, schedules_path: nil)
         @plugins_dir = plugins_dir
         # The same, spelled out: this state dir's own plugins/<x>/secrets.
         @secrets_text = plugins_dir && Regexp.union(SECRETS_TEXT, *([plugins_dir.to_s.chomp("/")] | PathResolve.reals(plugins_dir.to_s.chomp("/"))).map do |dir|
@@ -65,7 +68,8 @@ module Samagotchi
           ["installed-bundles", bundles_dir, "installed bundles (hooks, rules, manifests) are changed by chi bundle install"],
           ["chi-context", context_dir, "attached context sources run commands; change them with chi context"],
           ["chi-mailbox", mailbox_dir, "a message there speaks as a peer agent; chi peer writes the peer mailbox"],
-          ["system-one-runs", runs_dir, "System 1's saved runs are chi's own record"]
+          ["system-one-runs", runs_dir, "System 1's saved runs are chi's own record"],
+          ["chi-schedules", schedules_path, "schedules run commands and prompts unattended; change them with chi schedule"]
         ]
         @ask = [
           ["chi-config", config_path, "changes chi's config.yml"],

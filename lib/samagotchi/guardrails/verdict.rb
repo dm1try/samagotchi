@@ -20,13 +20,15 @@ module Samagotchi
       # parent model would be writing a model's prompt); and the bundle's
       # asks before answering chi's questions around chi answer (a parent
       # allowing one would answer a grandchild's question as the user); and
-      # a shell command that names a bundle's secrets (ProtectedPaths).
+      # a shell command that names a bundle's secrets (ProtectedPaths); and
+      # a schedule's condition set from the shell (chi-schedule-if: a shell
+      # command chi's tick runs later, ungated).
       # A parent agent may never allow them (ParentApprovals.protected?,
       # ParentPolicy's user_only); System 1 may, only if the user lists the
       # rule by name in guardrails.system_one.rules, and never for the
-      # chi-answer/chi-broadcast ones (SystemOne::SelfProtect::NEVER_AUTO).
+      # chi-answer/chi-broadcast/chi-schedule-if ones (SystemOne::SelfProtect::NEVER_AUTO).
       PROTECTED_RULES = %w[chi-config chi-home chi-shim chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
-                           model-overlay-write chi-answer-piped chi-answer-http bundle-secrets-shell].freeze
+                           model-overlay-write chi-answer-piped chi-answer-http bundle-secrets-shell chi-schedule-if].freeze
       SCOPES = %w[once session repo rule].freeze
       # Who answered an ask when it was a parent agent, not the user.
       PARENT_AGENT = "parent agent"

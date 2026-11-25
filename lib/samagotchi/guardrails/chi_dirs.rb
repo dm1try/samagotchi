@@ -13,7 +13,8 @@ module Samagotchi
     # (read each call). Each surface keeps its set:
     #   .protected     the config dir, the hooks dir, the approval store's
     #                  dir, the installed bundles' dir, attached context,
-    #                  the peer mailbox, System 1's saved runs: an ask only the user may answer
+    #                  the peer mailbox, System 1's saved runs, and one file,
+    #                  schedules.json: an ask only the user may answer
     #                  (ParentApprovals.chi_files?)
     #   .touches       .protected and the session repo's git hooks dir: a
     #                  rule's touches: chi_dirs (Targets#touches_chi?)
@@ -29,15 +30,22 @@ module Samagotchi
 
       # chi's config dir, the hooks dir, the approval store's dir, the
       # installed bundles' dir, attached context, the peer mailbox (a message
-      # there speaks as a peer) and System 1's saved runs
-      # (labels there may train a model: no agent writes them).
+      # there speaks as a peer), System 1's saved runs
+      # (labels there may train a model: no agent writes them), and
+      # schedules.json, a file (#schedules_file: a schedule's prompt and its
+      # condition run unattended). The readers match a file root as a dir
+      # one: the path itself or under it (PathResolve.under?).
       def protected
         hooks = begin Hooks::Loader.hooks_dir rescue nil end
         bundles = begin MemoryPaths.bundles_dir rescue nil end
         [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles, File.join(Paths.state_dir, "context"),
-         File.join(Paths.state_dir, "mailbox"), File.join(Paths.state_dir, "system_one")]
+         File.join(Paths.state_dir, "mailbox"), File.join(Paths.state_dir, "system_one"), schedules_file]
           .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
       end
+
+      # The schedules file, where Schedules#path has it for the default
+      # sessions dir: the state root above <state dir>/sessions.
+      def schedules_file = File.join(Paths.state_dir, "schedules.json")
 
       # .protected (as ParentApprovals.chi_dirs, the name its callers and
       # specs know) and the git hooks dir of +base+'s repo (+context+).
