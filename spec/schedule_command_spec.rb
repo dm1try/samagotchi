@@ -80,7 +80,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       lines = printed.lines.map(&:chomp)
       expect(lines.first).to match(/\A\h{16} added: chain · #{id[0, 8]} · every 5m · if coord-pane gate · next /)
       expect(lines[1]).to eq(described_class::CONDITION_TICKERS)
-      expect(described_class::CONDITION_TICKERS).to include("newer than 0.188.0")
+      expect(described_class::CONDITION_TICKERS).to include("newer than 0.189.0")
       expect(schedules.entries.first.condition).to include(cmd: "coord-pane gate", by: "cli")
     end
 

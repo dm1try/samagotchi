@@ -14,7 +14,7 @@ module Samagotchi
     # and the guardrails keep the model's shell and file tools from setting
     # it (the chi-schedule-if rule, schedules.json a protected path).
     #
-    # An older chi (0.188.0 and before) doesn't know the member and would
+    # An older chi (0.189.0 and before) doesn't know the member and would
     # fire the entry whatever CMD says. So an entry with a condition is
     # stored with `next_due: null` and the real moment under
     # CONDITION_NEXT_DUE (#hide_next_due, on every #write; Entry.from_record

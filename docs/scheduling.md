@@ -350,13 +350,13 @@ naming it gets through. Keep CMD itself out of the model's reach too: a gate scr
 inside a project the model edits is one it can change, so point `--if` at a file
 outside the session's folder (`~/.local/bin/…`) when that matters.
 
-**Every ticker must be new enough.** A chi of 0.188.0 or older doesn't know
+**Every ticker must be new enough.** A chi of 0.189.0 or older (0.189.0 shipped without them) doesn't know
 conditions and would fire such a schedule unasked, so chi stores a schedule with a
 condition with `next_due: null` and the real time under `condition_next_due`: an older
 chi never finds it due (it reads it, lists it with no next time, keeps its sessions
 from retention, and enables, disables and cancels it), and a newer one reads the real
 time back. `add` and `edit --if` say so: "every chi that ticks (chi web, cron) must be
-newer than 0.188.0; an older one leaves this schedule alone". After updating chi,
+newer than 0.189.0; an older one leaves this schedule alone". After updating chi,
 restart chi web and point cron at the new chi, or the schedule waits. One leak remains:
 an older chi's `run-now`, or its `edit` of the recurrence, writes a real `next_due`,
 and an older ticker then fires the schedule unconditionally until a newer chi writes

@@ -493,7 +493,7 @@ firing on a shell command run in the session's folder first: exit 0 fires, 1 to 
 a quiet "not needed" (the next occurrence, nothing counted), anything else a failure
 ([Conditions](scheduling.md#conditions---if)); it is yours alone: inside a chi session
 `--if` and `--no-if` exit 2, and the line after `add`'s says every ticker must be newer
-than 0.188.0. A blank or over-16-KiB
+than 0.189.0. A blank or over-16-KiB
 prompt, two recurrence kinds, a `scratch` target, a `--weekday` without
 `--time`, and `--if` on a `--date` one-off (or a blank, multi-line or over-1-KiB
 CMD) are all refused with exit 2.

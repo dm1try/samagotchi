@@ -104,7 +104,7 @@ module Samagotchi
                            "not from inside a chi session"
     # The older chis that would fire a condition entry unchecked hide it
     # instead (Schedules::ConditionPart): the line add and edit print.
-    CONDITION_TICKERS = "every chi that ticks (chi web, cron) must be newer than 0.188.0; " \
+    CONDITION_TICKERS = "every chi that ticks (chi web, cron) must be newer than 0.189.0; " \
                         "an older one leaves this schedule alone"
 
     # @param schedules [Schedules, nil] the store; default this machine's
