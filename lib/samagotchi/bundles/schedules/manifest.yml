@@ -1,11 +1,12 @@
 ---
 name: schedules
-version: 0.1.0
+version: 0.1.1
 scope: system
 description: "A Schedules page in chi web (#/p/schedules, chi page run schedules): every durable schedule, why one is off and how to turn it on, and the recent runs; read-only"
 trust_level: reviewed
-# pages: and runtime.schedules are new in the next chi (release:bump sets the floor)
+# runtime.schedules' condition (the If column) is new in the next chi (release:bump sets the floor)
 requires_chi: ">= 0.189.0"
+requires_chi_next: true
 scripts:
   schedules.rb: sha256:ac1bf79cb3df54511c0263cd7dde7e671f853a66c932606c8e2a235835afb44d
 pages: [schedules.rb]
