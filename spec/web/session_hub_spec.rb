@@ -946,6 +946,32 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(disabled_events.map { |event| event.data[:id] }).to eq([entry.id])
     end
 
+    # schedules-s1.code-review.md L2: a claim that found the lock held (a
+    # tick at work) waited a whole interval for the next one.
+    it "tries a claim that found the lock held again at the next scan, and one that found no notice an interval later" do
+      clock = [0.0]
+      hub, schedules = hub_with(false, now: -> { clock.first })
+      hub.subscribe(->(event) { events << event })
+      entry, = disabled_by_cron
+
+      File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        hub.send(:schedule_tick)
+        expect(disabled_events).to eq([])
+      end
+      clock[0] += 1
+      hub.send(:schedule_tick)
+      expect(disabled_events.map { |event| event.data[:id] }).to eq([entry.id])
+
+      allow(schedules).to receive(:claim_disabled_notices).and_call_original
+      clock[0] += 1
+      hub.send(:schedule_tick)
+      expect(schedules).not_to have_received(:claim_disabled_notices)
+      clock[0] += 300
+      hub.send(:schedule_tick)
+      expect(schedules).to have_received(:claim_disabled_notices).once
+    end
+
     it "logs an unreadable schedules.json and goes on" do
       hub, schedules = hub_with(false)
       hub.subscribe(->(event) { events << event })

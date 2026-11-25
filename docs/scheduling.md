@@ -240,7 +240,8 @@ disabled: Heartbeat", "skipped 12 times: <the last reason>" and the `chi schedul
 enable <id>` that turns it back on; a tap opens its session. The tick leaves a notice
 on the entry in `schedules.json` (`disabled_notice`) and a running chi web pushes it:
 right after its own tick, and within `schedule.tick_interval_minutes` for another
-ticker's, with `schedule.auto_tick` off too. Only chi web pushes, so with no chi web
+ticker's, with `schedule.auto_tick` off too (a look that finds a tick holding the lock
+tries again at the next scan, not an interval later). Only chi web pushes, so with no chi web
 running the notice waits for one; a notice more than a day old, or one whose schedule
 you enabled again, is dropped unpushed, and `chi schedule enable` clears it. It shows
 even with a chi web page in front and waits a day for a phone that is offline. Two chi
