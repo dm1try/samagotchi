@@ -363,7 +363,11 @@
         "session_id": "11111111-aaaa-4aaa-8aaa-000000000002"
       }
     ],
-    "condition": null,
+    "condition": {
+      "cmd": "$HOME/.local/bin/coord-pane gate",
+      "by": "cli",
+      "set_at": "2026-11-24T09:00:00Z"
+    },
     "recurrence_words": "every 1h",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Heartbeat",

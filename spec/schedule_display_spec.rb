@@ -59,4 +59,16 @@ RSpec.describe Samagotchi::ScheduleDisplay do
     expect(json.values_at("name", "state", "off_reason")).to eq(["Heartbeat", "on", nil])
     expect(json["future_key"]).to eq({ "from" => "a newer chi" })
   end
+
+  it "names a condition by its command, cut when asked, and gives it to the JSON with string keys" do
+    heartbeat = entries.fetch("Heartbeat")
+    expect(described_class.condition_words(heartbeat)).to eq("$HOME/.local/bin/coord-pane gate")
+    expect(described_class.condition_words(heartbeat, chars: 5)).to eq("$HOME…")
+    expect(described_class.condition_words(heartbeat.with(condition: "exit 0"))).to eq("(doesn't read: the tick fails it)")
+    expect(described_class.condition_words(entries.fetch("Inbox"))).to be_nil
+    json = described_class.json(heartbeat)
+    expect(json.values_at("condition", "next_due"))
+      .to eq([{ "cmd" => "$HOME/.local/bin/coord-pane gate", "by" => "cli", "set_at" => "2026-11-24T09:00:00Z" }, "2026-11-25T13:00:00Z"])
+    expect(json).not_to have_key("condition_next_due")
+  end
 end

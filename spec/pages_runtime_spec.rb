@@ -48,6 +48,8 @@ RSpec.describe Samagotchi::Pages::Runtime do
       expect(heartbeat.to_h.slice(:name, :state, :off_reason, :skips, :max_skips, :recurrence_words, :skip_window))
         .to eq(name: "Heartbeat", state: "on", off_reason: nil, skips: 2, max_skips: 12, recurrence_words: "every 1h",
                skip_window: "≈1 h at a 5 min tick")
+      expect([heartbeat.next_due, heartbeat.condition])
+        .to eq(["2026-11-25T13:00:00Z", { "cmd" => "$HOME/.local/bin/coord-pane gate", "by" => "cli", "set_at" => "2026-11-24T09:00:00Z" }])
       expect(heartbeat.history.map(&:status)).to eq(%w[skipped fired])
       expect(heartbeat.history.last).to eq(described_class::Run.new(at: "2026-11-25T11:00:00Z", status: "fired",
                                                                     detail: "continued as 11111111",
@@ -68,7 +70,7 @@ RSpec.describe Samagotchi::Pages::Runtime do
         end
       end
       bookkeeping = %w[recurrence busy catch_up keep_links due_was firing_since firing_token pending_session_id pending_turn_id
-                       disabled_notice condition]
+                       disabled_notice]
       expect(cli.flat_map(&:keys).uniq - described_class::SCHEDULE_MEMBERS.map(&:to_s) - ["future_key"]).to match_array(bookkeeping)
     end
 

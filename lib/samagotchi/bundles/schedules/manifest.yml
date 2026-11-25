@@ -7,5 +7,5 @@ trust_level: reviewed
 # pages: and runtime.schedules are new in the next chi (release:bump sets the floor)
 requires_chi: ">= 0.189.0"
 scripts:
-  schedules.rb: sha256:95d3623bd112a88b49975b45a32d16781eb069eeebb7e5c4bf62ad82ac949ec3
+  schedules.rb: sha256:ac1bf79cb3df54511c0263cd7dde7e671f853a66c932606c8e2a235835afb44d
 pages: [schedules.rb]

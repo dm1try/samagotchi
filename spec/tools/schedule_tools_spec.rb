@@ -43,6 +43,24 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
     end
   end
 
+  # A condition (`--if CMD`) runs unattended, outside the guardrails: only
+  # the owner's CLI sets one (Schedules::ConditionPart).
+  it "can't set a condition: not declared, not taken, and a call naming one stores none" do
+    require "samagotchi/tool_declarations"
+    require "samagotchi/tools/builtins"
+    declared = Samagotchi::ToolDeclarations::TOOL_SCHEMAS.find { |tool| tool[:name] == "schedule_task" }
+    expect(declared[:parameters][:properties].keys.map(&:to_s)).not_to include("condition", "if", "if_cmd")
+    expect(described_class.method(:call).parameters.map(&:last)).not_to include(:condition, :if)
+
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      handler = Samagotchi::Tools::Builtins::HANDLERS.fetch(described_class::NAME)
+      handler.call({ content: nil, prompt: "Audit", every: "30m", condition: "exit 0", if: "exit 0" }, double(peers: peers(dir, id)))
+      expect(store(dir).entries.map(&:condition)).to eq([nil])
+    end
+  end
+
   it "takes the prompt from the tool's content when prompt: is not given" do
     Dir.mktmpdir("schedule-task") do |root|
       dir = File.join(root, "sessions")
@@ -169,6 +187,16 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
 
   def peers(state_dir)
     Struct.new(:session_id, :state_dir).new(nil, state_dir)
+  end
+
+  it "names a schedule's condition" do
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session_here(dir).id
+      Samagotchi::Schedules.new(state_dir: dir).add(target: anchor, prompt: "Audit", condition: "./gate.sh",
+                                                    recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      expect(described_class.call(nil, peers: peers(dir))).to include("if: ./gate.sh")
+    end
   end
 
   it "says when there are none" do

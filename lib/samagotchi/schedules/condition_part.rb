@@ -76,6 +76,13 @@ module Samagotchi
         fields.merge(extra: extra)
       end
 
+      # How long a condition may run (schedule.condition_timeout_seconds,
+      # 1..CONDITION_TIMEOUT_MAX), for `chi schedule show` too.
+      def condition_timeout_seconds
+        value = Config.get("schedule.condition_timeout_seconds").to_i
+        value.positive? ? value.clamp(1, CONDITION_TIMEOUT_MAX) : CONDITION_TIMEOUT
+      end
+
       private
 
       # The condition +cmd+ stores as, checked: one line, not blank, at most
@@ -137,7 +144,7 @@ module Samagotchi
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         run = @condition_runner.call(cmd, cwd: condition_cwd(target), env: condition_env(entry, target),
-                                          timeout: condition_timeout, cancelled: cancelled)
+                                          timeout: condition_timeout_seconds, cancelled: cancelled)
         return nil if run.cancelled
 
         kind, detail = condition_verdict(run)
@@ -217,11 +224,6 @@ module Samagotchi
       def condition_env(entry, target)
         SpawnEnv.sanitized_spawn_env.merge("SAMAGOTCHI_SCHEDULE_ID" => entry.id, "SAMAGOTCHI_SCHEDULE_TITLE" => entry.title.to_s,
                                            "SAMAGOTCHI_SCHEDULE_SESSION" => target, "SAMAGOTCHI_PARENT_SESSION" => nil)
-      end
-
-      def condition_timeout
-        value = Config.get("schedule.condition_timeout_seconds").to_i
-        value.positive? ? value.clamp(1, CONDITION_TIMEOUT_MAX) : CONDITION_TIMEOUT
       end
 
       def first_line(text) = text_lines(text).first
