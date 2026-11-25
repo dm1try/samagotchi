@@ -358,7 +358,7 @@ with `writes: true` (symlinks resolved; see
   write a peer's messages or pairing, `chi-mailbox`; `chi peer` does),
   [System 1's saved runs](system-one.md) (`<state dir>/system_one/`)
   and the [schedules](scheduling.md) file (`<state dir>/schedules.json`,
-  `chi-schedules`: a schedule's prompt and its [condition](scheduling.md)
+  `chi-schedules`: a schedule's prompt and its [condition](scheduling.md#conditions---if)
   run unattended, the condition outside the guardrails; `chi schedule` changes it);
 - ask (once or for the session): `config.yml`, `home.json` (the [chi home](configuration.md#the-chi-home): the Ruby every chi launch boots), the chi shim (`$XDG_STATE_HOME/samagotchi/bin/chi`, the `chi` every tool runs: `chi-shim`) and the plain hooks dir.
 
@@ -1384,7 +1384,7 @@ System 1's saved runs or `schedules.json`, or a `.git/hooks`
 tick runs CMD later, unattended and outside the guardrails, and `chi schedule`
 refuses the flag inside a session; the rule also sees `chi --remote NAME
 schedule`, quoted words, continuations and `xargs chi schedule add|edit`; see
-[Conditions](scheduling.md)); `chi context add … --cmd` (`chi-context-cmd`, once at a
+[Conditions](scheduling.md#conditions---if)); `chi context add … --cmd` (`chi-context-cmd`, once at a
 time: a command chi will run every few minutes outside the guardrails; see
 [Attached context](context.md#safety); the rule also sees `chi --remote NAME context add`, and a remote's `context push`
 reaches its session with the trust of its chi web token, as your own `chi context push` does there); `chi broadcast` (`chi-broadcast`,

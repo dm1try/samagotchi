@@ -2323,7 +2323,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `schedule.default_catch_up` | `once` | | An overdue schedule fires once at the next tick (`once`) or moves to its next occurrence (`none`). |
 | `schedule.max_per_session` | `10` | | Enabled schedules one chain may hold. `schedule_task` (and `chi schedule add`) refuse past it, so a routine that re-schedules itself cannot pile up entries. |
 | `schedule.max_total` | `50` | | Enabled schedules this machine may hold, across every chain. |
-| `schedule.condition_timeout_seconds` | `30` | | How long a schedule's condition (`chi schedule add --if CMD`) may run, 1 to 300 seconds; one that runs longer is killed and counts as a failure. See [Scheduling](scheduling.md). |
+| `schedule.condition_timeout_seconds` | `30` | | How long a schedule's condition (`chi schedule add --if CMD`) may run, 1 to 300 seconds; one that runs longer is killed and counts as a failure. See [Conditions](scheduling.md#conditions---if). |
 | `image.max_side` | `1568` | | See "Images". |
 | `image.max_bytes` | `3750000` | | See "Images". |
 | `image.max_per_request` | `20` | | See "Images". |

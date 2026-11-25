@@ -87,7 +87,10 @@ cancel kills the group), cwd the session's folder (a project source: the project
 the arbiter between workers and the CLI: the loser gets `:busy`, and `fresh_within` is checked again under the lock,
 so a project source shared by several workers is fetched once per interval. The `Outcome` status says what happened
 (`:new :same :error :busy :fresh :cancelled :gone`); a cancelled fetch records nothing (a leaving worker isn't the
-source failing). `chi context refresh` and the candidates' first fetch use the same entry.
+source failing). `chi context refresh` and the candidates' first fetch use the same entry. `ContextFetch.run_command`
+is also a schedule condition's runner (`Schedules::ConditionPart`, [scheduling.md](../scheduling.md#conditions---if)):
+its `Run#status` is the command's `Process::Status` only when it ended on its own within the cap (nil after a
+timeout, the cap or a cancel), so a TERM trap's exit 0 is never read as a pass.
 
 A pushed source has no poller. `chi context push` writes the snapshot from its own process; the worker finds it
 through `ContextAbsorber#store_signature` (names and mtimes of the files in the two folders, `subscriptions.json`

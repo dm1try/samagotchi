@@ -466,6 +466,8 @@ chi schedule enable 4b7e9a
 chi schedule cancel 4b7e9a       # delete it (by id, a unique prefix, or its title)
 chi schedule edit 4b7e9a --weekday 2 --time 08:30   # change it in place: only the flags given
 chi schedule edit "Monday audit" -m "Audit the open PRs and the queue" --max-skips 24
+chi schedule add --session 3f9a1c2e --every 5m -m "Check in" --if "$HOME/.local/bin/coord-pane gate"
+chi schedule edit 4b7e9a --no-if     # fire at every occurrence again
 ```
 
 Every `list` row names its schedule: the `--title` it was given, or, when it has
@@ -483,13 +485,19 @@ and exactly one recurrence kind — `--every 45m|2h|1d`, `--weekday 1..7` with
 `--title` names it, `--mode chain|same` picks the mode (chain by default),
 `--catch-up once|none` what an overdue entry does, `--keep-links N` how many chain
 links stay behind the head (`0` keeps all), and `--max-failures` / `--max-skips`
-how many consecutive failures or busy targets disable it. A blank or over-16-KiB
-prompt, two recurrence kinds, a `scratch` target and a `--weekday` without
-`--time` are all refused with exit 2.
+how many consecutive failures or busy targets disable it. `--if CMD` gates each
+firing on a shell command run in the session's folder first: exit 0 fires, 1 to 125 is
+a quiet "not needed" (the next occurrence, nothing counted), anything else a failure
+([Conditions](scheduling.md#conditions---if)); it is yours alone: inside a chi session
+`--if` and `--no-if` exit 2, and the line after `add`'s says every ticker must be newer
+than 0.188.0. A blank or over-16-KiB
+prompt, two recurrence kinds, a `scratch` target, a `--weekday` without
+`--time`, and `--if` on a `--date` one-off (or a blank, multi-line or over-1-KiB
+CMD) are all refused with exit 2.
 
 `edit ID` changes a schedule in place and prints its updated `list` row: `--title`,
 `-m|--prompt`, one whole recurrence (as `add`'s: `--time` alone is refused),
-`--catch-up` and the three budgets, checked as `add` checks them; only the flags given
+`--catch-up`, the three budgets and `--if CMD` / `--no-if` (not both), checked as `add` checks them; only the flags given
 change, and the skip and failure counters, `enabled` and the history stay (it adds one
 `edited` row naming the fields). The session and the mode don't change: `--session`,
 `--continues` and `--mode` are refused ("cancel it and add a new one"). A new
@@ -502,7 +510,7 @@ say what another schedule of the chain says (its new title, or its new prompt an
 recurrence); a missing id exits 1.
 
 `tick` prints one line per entry it touched (`fired`, `skipped`, `missed`,
-`failed`, or `would fire` under `--dry-run`), with the reason; nothing due prints
+`failed`, `not-needed` for a condition that said no, or `would fire` under `--dry-run`), with the reason; nothing due prints
 `no schedules due`, and a tick that finds the lock held by another prints `no
 schedules due (another tick holds the lock)` — both exit 0, so a crontab line
 that runs every five minutes is quiet. `run-now`, `enable`, `disable` and `cancel`
