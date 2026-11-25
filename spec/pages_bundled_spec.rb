@@ -84,6 +84,17 @@ RSpec.describe Samagotchi::Pages::Bundled do
     expect(pages.exists?("nope")).to be(false)
   end
 
+  it "ships no page when the bundle's kept manifest.yml was edited, and says so in the log once" do
+    install_page_bundle
+    described_class.reset_warnings!
+    kept = File.join(Samagotchi::InstalledBundles::Dir.new(name: "pager").scripts_dir, "..", "manifest.yml")
+    File.write(kept, "#{File.read(kept)}# edited\n")
+    allow(Samagotchi::Log).to receive(:warn).and_call_original
+    expect(store.list).to eq([])
+    expect(described_class.all).to eq([])
+    expect(Samagotchi::Log).to have_received(:warn).with(:web, "bundle_pages_unread", hash_including(bundle: "pager", why: "edited")).once
+  end
+
   it "lists none from a bundle this chi is too old for" do
     install_page_bundle(requires_chi: ">= 999.0.0", force: true)
     expect(described_class.all).to eq([])

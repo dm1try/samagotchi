@@ -115,6 +115,8 @@ A bundle can ship pages: its manifest's `pages:` names scripts in its `scripts/`
 - **It can't be removed**: `chi page rm schedules` exits 1 with `page schedules comes with the schedules bundle:
   uninstall the bundle or write your own ~/.config/samagotchi/pages/schedules.rb`, and chi web has no Delete for it.
   Uninstalling the bundle takes the page away (its stored result stays on disk, unused).
+- A bundle's page lasts as its installed `manifest.yml` does: one edited since lists no page (chi's debug log says
+  `bundle_pages_unread`; `chi bundle status NAME` says the file is edited): reinstall the bundle.
 - A bundle's script runs only as installed: one edited since (or missing) runs nothing, and the run fails with
   `bundle schedules's scripts/schedules.rb differs from the installed one (reinstall the bundle)`.
 - When a chi upgrade changes a bundle's script, the page says "The script changed" until a Refresh.

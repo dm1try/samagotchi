@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require "yaml"
 require_relative "../pages"
 require_relative "../installed_bundles"
+require_relative "../log"
 
 module Samagotchi
   module Pages
@@ -30,6 +32,10 @@ module Samagotchi
         end
       end
 
+      # What .unread has logged in this process: [bundle, why] pairs.
+      WARNED = Set.new
+      WARNED_LOCK = Mutex.new
+
       module_function
 
       # @return [Array<Page>] by name
@@ -38,6 +44,7 @@ module Samagotchi
         InstalledBundles.standings do |standing|
           next unless standing.usable?
 
+          unread(standing.name, standing.record)
           scripts_dir = InstalledBundles::Dir.new(name: standing.name).scripts_dir
           standing.record.manifest.pages.each do |file|
             name = file.delete_suffix(".rb")
@@ -49,6 +56,28 @@ module Samagotchi
 
       # @return [Page, nil]
       def find(name) = all.find { |page| page.name == name }
+
+      # pages: is read from the kept manifest.yml only (never mirrored in the
+      # record): a kept file that is edited, stale or missing, or a pages:
+      # that doesn't parse, ships no page. Said once per process per bundle
+      # and why, when the kept file (as far as it reads) names pages.
+      def unread(bundle, record)
+        manifest = record.manifest
+        why = manifest.problems["pages"] || (manifest.standing && names_pages?(record.kept_manifest_path) && manifest.standing.to_s)
+        return unless why && WARNED_LOCK.synchronize { WARNED.add?([bundle, why]) }
+
+        Log.warn(:web, "bundle_pages_unread", bundle: bundle, why: why,
+                                              msg: "its kept manifest.yml isn't as installed: reinstall the bundle for its pages")
+      end
+
+      def names_pages?(path)
+        path && File.file?(path) && YAML.safe_load_file(path).then { |raw| raw.is_a?(Hash) && raw.key?("pages") }
+      rescue StandardError # degrade-ok: a kept file that does not read names no pages (the standing already says why)
+        false
+      end
+
+      # Forget what was logged (specs).
+      def reset_warnings! = WARNED_LOCK.synchronize { WARNED.clear }
     end
   end
 end

@@ -35,7 +35,10 @@ so a shadowing copy reads as the user's) and `Stored#script` its path.
 **Bundle pages** (`Bundled`, from the install records like `BlockRenderers.for_installed`, so chi web loads no plugin):
 each usable `InstalledBundles.standings` record's `manifest.pages` (`InstalledBundles::Manifest#pages`: the kept
 `manifest.yml` only, never the record's mirror, since a key a later manifest gains is never mirrored), the first
-bundle by name winning a name; an unreadable or too-new bundle ships none. `Page#refusal` is
+bundle by name winning a name; an unreadable or too-new bundle ships none. Since `pages:` isn't mirrored, a kept
+`manifest.yml` that is edited, stale or missing (`InstalledBundles::Manifest#standing`), or a `pages:` that doesn't
+parse, ships no page either: `Bundled.unread` logs `bundle_pages_unread` (bundle, why) once per process when the kept
+file names `pages:` (or the key failed), and `chi bundle status NAME` says the file is edited. `Page#refusal` is
 `InstalledBundles::Dir#file_refusal(:scripts, …)` against the recorded sha: `Launch.run` checks it under the lock and,
 on one, records it as the run's failure and starts nothing. A bundle page whose installed script is gone is still
 a page (`Pages.exists?`, which `Launch.run` and `GET /api/pages/NAME` ask): its run fails with the `file_missing`
