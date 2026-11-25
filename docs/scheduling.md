@@ -385,7 +385,7 @@ tick): busy", "failed 3 times: …", "one-off, done") with the `chi schedule ena
 that turns it back on (for a spent one-off, which has no next time, a `chi schedule
 edit ID --date …` first); each entry of `schedules.json` that can't be read with the
 `chi schedule cancel ID` that removes it; a table of every schedule (on and firing
-first by next due, then off; times in this machine's zone) and the recent runs, newest
+first by next due, those with none last, then off; times in this machine's zone) and the recent runs, newest
 first. It is read-only: ask chi, or use `chi schedule`, to change one. What it shows is
 as of its last run: Refresh to update. A `schedules.json` that isn't JSON fails the
 run with the store's own words, and the last good result stays.

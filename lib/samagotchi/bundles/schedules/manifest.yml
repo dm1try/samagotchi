@@ -8,5 +8,5 @@ trust_level: reviewed
 requires_chi: ">= 0.188.0"
 requires_chi_next: true
 scripts:
-  schedules.rb: sha256:406ea2684d222fdc6c763d7cba0a8b07663b94d181f2c9d7a80103dbe397204f
+  schedules.rb: sha256:95d3623bd112a88b49975b45a32d16781eb069eeebb7e5c4bf62ad82ac949ec3
 pages: [schedules.rb]

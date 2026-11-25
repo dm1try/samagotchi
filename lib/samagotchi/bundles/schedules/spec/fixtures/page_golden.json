@@ -63,18 +63,6 @@
     ],
     "rows": [
       [
-        "Standup",
-        "firing",
-        "2026-11-25 11:50",
-        null,
-        "2026-11-25 11:50",
-        "waiting for turn t-1",
-        "0/12",
-        "0/3",
-        "same",
-        "c9d0e1f2"
-      ],
-      [
         "Heartbeat",
         "on",
         "every 1h",
@@ -97,6 +85,18 @@
         "0/3",
         "chain",
         "d0e1f2a3"
+      ],
+      [
+        "Standup",
+        "firing",
+        "2026-11-25 11:50",
+        null,
+        "2026-11-25 11:50",
+        "waiting for turn t-1",
+        "0/12",
+        "0/3",
+        "same",
+        "c9d0e1f2"
       ],
       [
         "Dentist",

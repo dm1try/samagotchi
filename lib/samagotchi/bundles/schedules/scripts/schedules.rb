@@ -125,8 +125,9 @@ page "Schedules" do |ui|
 
   next if list.entries.empty?
 
-  # On (and firing) first by next due, then off.
-  ordered = list.entries.reject { |schedule| schedule.state == "off" } + off
+  # On (and firing) first by next due (a firing one-off has none: last of them), then off.
+  by_next = ->(schedule) { [schedule.next_due ? 0 : 1, schedule.next_due.to_s, schedule.id.to_s] }
+  ordered = list.entries.reject { |schedule| schedule.state == "off" }.sort_by(&by_next) + off
   rows = ordered.first(SCHEDULE_ROWS).map do |schedule|
     { "name" => schedule.name, "state" => state_words(schedule), "when" => schedule.recurrence_words,
       "next" => clock(schedule.next_due), "last_run" => clock(schedule.last_fired), "last_result" => schedule.last_result,
