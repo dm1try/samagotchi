@@ -140,6 +140,11 @@ module Samagotchi
           return condition_result(entry, :error, "set by #{by.to_s.empty? ? "no one" : by}: this chi runs only one set with chi schedule")
         end
 
+        # A one-off takes none (#refuse_dated_condition!), but an older chi's
+        # `edit --date` can make one: a not needed would leave it due at the
+        # same moment forever. A failure instead, so its budget ends it.
+        return condition_result(entry, :error, "conditions don't apply to a one-off (--date)") if entry.recurrence[:kind] == "date"
+
         target, = target_of(entry, links)
         return nil if target.nil?
 

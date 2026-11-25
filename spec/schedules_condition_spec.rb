@@ -313,6 +313,23 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
       expect(first.lookup(entry.id).failures).to eq(1)
     end
 
+    # Review L1: an older chi's `edit --date` (it knows no condition) makes a
+    # dated entry with one; not needed would keep it due at that moment.
+    it "fails a dated entry's condition without running it, and its budget turns it off" do
+      calls = []
+      schedules = ticking({}, calls)
+      entry = schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"), condition: "gate")
+      data = raw(schedules)
+      data["schedules"].first["recurrence"] = { "kind" => "date", "at" => (now + 60).utc.iso8601 }
+      File.write(schedules.path, JSON.generate(data))
+
+      details = Array.new(3) { |step| schedules.tick(now: now + 300 + step).outcomes.first.detail }
+      expect(details.uniq).to eq(["condition: conditions don't apply to a one-off (--date)"])
+      expect(schedules.lookup(entry.id)).to have_attributes(enabled: false, failures: 3)
+      expect(schedules.tick(now: now + 400).outcomes).to eq([])
+      expect(calls).to be_empty
+    end
+
     it "fails a condition set by anyone but the CLI, or one that doesn't read, without running it" do
       calls = []
       schedules = ticking({}, calls)

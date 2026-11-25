@@ -333,7 +333,9 @@ runs CMD at every tick until it fires.
 (`would fire  every 5m · if CMD (not run)`). `chi schedule show` has it as `if: CMD
 (set from the CLI <time>; timeout 30 s; run-now skips it)`, `list` adds ` if: CMD`, and
 `list --format json` gives `condition` as `{cmd, by, set_at}`. A `--date` one-off takes
-none (it fires once; edit it to `--every` or `--weekday` first).
+none (it fires once; edit it to `--every` or `--weekday` first); one that has one anyway
+(an older chi's `edit --date`) fails each tick, "conditions don't apply to a one-off",
+without running CMD, until its budget turns it off.
 
 **Only you set one.** CMD runs unattended and outside the
 [guardrails](guardrails.md), so a condition is the owner's alone:
