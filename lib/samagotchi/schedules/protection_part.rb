@@ -42,6 +42,16 @@ module Samagotchi
         entry && SessionProtection::Hold.new(session_id: session_id, reason: :chain_scheduled, ref: entry.id)
       end
 
+      # The stored fields of the record #read keeps but can't read whose id
+      # is exactly +id+ (lenient read: what chi schedule cancel ID drops,
+      # #cancel_unreadable), for a caller that must look before it cancels
+      # (the cancel_schedule tool's chain check). nil when there is none.
+      # @return [Hash, nil]
+      def unreadable_record(id)
+        record = read.entries.find { |entry| !entry.is_a?(Entry) && entry.raw.is_a?(Hash) && entry.raw["id"] == id }
+        record&.raw
+      end
+
       private
 
       def protecting(session_id, list)

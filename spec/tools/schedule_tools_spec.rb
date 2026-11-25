@@ -339,6 +339,45 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
     end
   end
 
+  # An entry that doesn't read (list leaves it out; chi schedule cancel ID
+  # drops it): by its exact id, still chain-scoped.
+  describe "an entry of schedules.json that doesn't read" do
+    def planted(schedules, records)
+      data = File.exist?(schedules.path) ? JSON.parse(File.read(schedules.path)) : { "version" => 1, "schedules" => [] }
+      data["schedules"].concat(records)
+      FileUtils.mkdir_p(File.dirname(schedules.path))
+      File.write(schedules.path, JSON.generate(data))
+    end
+
+    def chain_peers(dir, id) = Struct.new(:session_id, :state_dir).new(id, dir)
+    def ids(schedules) = JSON.parse(File.read(schedules.path))["schedules"].map { |record| record["id"] }
+
+    it "cancels one of this chain by its anchor or head, refuses another chain's, and one whose chain can't be told" do
+      Dir.mktmpdir("schedule-cancel") do |root|
+        dir = File.join(root, "sessions")
+        mine = session_here(dir).id
+        theirs = session_here(dir).id
+        schedules = Samagotchi::Schedules.new(state_dir: dir)
+        planted(schedules, [{ "id" => "own1", "anchor" => mine }, { "id" => "own2", "head" => mine },
+                            { "id" => "other1", "anchor" => theirs }, { "id" => "bare1" }])
+
+        expect(described_class.call("own1", peers: chain_peers(dir, mine))).to eq("Cancelled own1 (it couldn't be read).")
+        expect(described_class.call("own2", peers: chain_peers(dir, mine))).to eq("Cancelled own2 (it couldn't be read).")
+        expect(described_class.call("other1", peers: chain_peers(dir, mine)))
+          .to eq("Error: other1 belongs to another session's chain. chi schedule cancel other1 cancels it, or say all: true if you meant it.")
+        expect(described_class.call("bare1", peers: chain_peers(dir, mine)))
+          .to eq("Error: schedule bare1 can't be read, so its chain can't be told. chi schedule cancel bare1 removes it, " \
+                 "or say all: true if you meant it.")
+        expect(described_class.call("bare", peers: chain_peers(dir, mine))).to eq("No schedule named bare.")
+        expect(ids(schedules)).to eq(%w[other1 bare1])
+
+        expect(described_class.call("bare1", all: true, peers: chain_peers(dir, mine))).to eq("Cancelled bare1 (it couldn't be read).")
+        expect(described_class.call("other1", peers: peers(dir))).to eq("Cancelled other1 (it couldn't be read).")
+        expect(ids(schedules)).to eq([])
+      end
+    end
+  end
+
   it "says no schedule named when the entry is gone by the time the lock is held" do
     Dir.mktmpdir("schedule-cancel") do |root|
       dir = File.join(root, "sessions")

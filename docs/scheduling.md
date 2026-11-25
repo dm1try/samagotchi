@@ -267,7 +267,10 @@ and recurrence, or the same title — is refused too, naming its id, so a routin
 tells each of its links to "make sure the Monday audit is scheduled" cannot multiply
 itself. `schedule_task`, `list_schedules` and `cancel_schedule` see only schedules of
 the calling session's chain (`all: true` steps outside it); `chi schedule list` is
-always the machine-wide view. An id, prefix or title that matches more than one entry
+always the machine-wide view. An entry that doesn't read (`list` counts it, "chi schedule
+cancel ID removes one") is cancelled by its exact id with `chi schedule cancel ID`, and by
+`cancel_schedule` when its stored `anchor` or `head` is a link of the chain; one with
+neither (its chain can't be told) only with `all: true`. An id, prefix or title that matches more than one entry
 is refused with exit 2, naming the matches.
 
 The tick's lock covers the file only, never the action: the clock advances before
