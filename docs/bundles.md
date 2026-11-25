@@ -421,7 +421,7 @@ its one script ([plugins.md](plugins.md#pages)), and the script reads the schedu
 ([pages.md](pages.md#reading-chis-data-runtime)).
 
 - **Read-only.** It changes nothing; for each schedule that is off it prints the `chi schedule enable ID` that turns it
-  on.
+  on (a spent one-off gets a new moment first: `chi schedule edit ID --date …`).
 - **Your own version.** Copy the script (`chi page list --format json` gives its path as `script`) to
   `~/.config/samagotchi/pages/schedules.rb` and change it: yours runs instead. Remove your copy to get the bundle's back.
 - **Removing it.** `chi page rm schedules` refuses (the page comes with the bundle); uninstall the bundle instead.

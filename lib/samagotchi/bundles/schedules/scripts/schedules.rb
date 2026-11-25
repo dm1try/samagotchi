@@ -80,9 +80,17 @@ def off_line(schedule)
   line = "- #{cut(schedule.name.to_s, NAME_CHARS)} — #{why_off(schedule)}"
   reason = %w[skips failures].include?(schedule.off_reason) ? cut(last_reason(schedule), REASON_CHARS) : ""
   line += ": #{reason}" unless reason.empty?
-  # A one-off that ran or was missed is over: nothing to turn on.
-  line += " · `chi schedule enable #{schedule.id}`" unless %w[done missed].include?(schedule.off_reason)
-  line
+  line + " · #{turn_on(schedule)}"
+end
+
+# How to turn it on again. Enable alone brings back only a schedule with a
+# next time: a spent one-off (fired, failed, missed) has none, and enabled it
+# would read "on" and never fire. It gets a new moment first (edit keeps it
+# off), then enable.
+def turn_on(schedule)
+  return "`chi schedule enable #{schedule.id}`" if schedule.next_due
+
+  "to run it again: `chi schedule edit #{schedule.id} --date YYYY-MM-DDTHH:MM`, then `chi schedule enable #{schedule.id}`"
 end
 
 def unreadable_lines(ids)

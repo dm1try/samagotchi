@@ -5,7 +5,7 @@
   },
   {
     "type": "text",
-    "text": "Turned off:\n\n- Dentist — one-off, missed\n- Quarterly — one-off, done\n- Release notes — one-off, done\n- Demo prep — one-off, failed: no outcome · `chi schedule enable f6a7b8c9`\n- Nightly build — failed 3 times: the session is archived · `chi schedule enable d4e5f6a7`\n- Pod logs — skipped 12 times (≈1 h at a 5 min tick): busy · `chi schedule enable c3d4e5f6`\n- \"Write the weekly recap of the …\" — turned off by you · `chi schedule enable b2c3d4e5`"
+    "text": "Turned off:\n\n- Dentist — one-off, missed · to run it again: `chi schedule edit a7b8c9d0 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable a7b8c9d0`\n- Quarterly — one-off, done · to run it again: `chi schedule edit b8c9d0e1 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable b8c9d0e1`\n- Release notes — one-off, done · to run it again: `chi schedule edit e5f6a7b8 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable e5f6a7b8`\n- Demo prep — one-off, failed: no outcome · to run it again: `chi schedule edit f6a7b8c9 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable f6a7b8c9`\n- Nightly build — failed 3 times: the session is archived · `chi schedule enable d4e5f6a7`\n- Pod logs — skipped 12 times (≈1 h at a 5 min tick): busy · `chi schedule enable c3d4e5f6`\n- \"Write the weekly recap of the …\" — turned off by you · `chi schedule enable b2c3d4e5`"
   },
   {
     "type": "text",

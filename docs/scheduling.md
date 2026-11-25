@@ -382,7 +382,8 @@ schedules bundle ([bundles.md](bundles.md#the-schedules-bundle)). It shows how m
 schedules there are and in which state, with the tick warning when nothing ticks; each
 schedule that is off and why ("turned off by you", "skipped 12 times (≈1 h at a 5 min
 tick): busy", "failed 3 times: …", "one-off, done") with the `chi schedule enable ID`
-that turns it back on; each entry of `schedules.json` that can't be read with the
+that turns it back on (for a spent one-off, which has no next time, a `chi schedule
+edit ID --date …` first); each entry of `schedules.json` that can't be read with the
 `chi schedule cancel ID` that removes it; a table of every schedule (on and firing
 first by next due, then off; times in this machine's zone) and the recent runs, newest
 first. It is read-only: ask chi, or use `chi schedule`, to change one. What it shows is
