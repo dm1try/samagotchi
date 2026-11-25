@@ -37,7 +37,7 @@ module Samagotchi
       # what only looks like one). samagotchi/context and samagotchi/mailbox
       # stop before a word character or a dot, so chi's own
       # lib/samagotchi/context_*.rb isn't one.
-      CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|samagotchi/context(?![\w.])|samagotchi/mailbox(?![\w.])|memories/\.bundles}
+      CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|samagotchi/context(?![\w.])|samagotchi/mailbox(?![\w.])|samagotchi/schedules\.json(?![\w.])|memories/\.bundles}
       # The guardrails bundle's ask before a memory removal: its paths are in
       # the config dir, yet a parent may answer it.
       MEMORY_REMOVE_RULE = "memory-remove"

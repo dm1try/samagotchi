@@ -8,6 +8,21 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi schedule add|edit --if CMD` (and `edit --no-if`): the tick runs CMD in the session's folder before a firing;
+  exit 0 fires as before, any other exit is a quiet "not needed" that uses no budget; a condition that can't run or
+  times out counts as a failure (`schedule.condition_timeout_seconds`, default 30). Only from your own terminal:
+  chi's tools can't set it, and every chi that ticks must be this one or newer (an older one leaves such a schedule
+  alone) ([docs/scheduling.md](docs/scheduling.md#conditions---if)).
+
+### Changed
+
+- `schedules.json` is a protected path for chi's file tools, and a shell command naming it asks (shell-touches-chi).
+  With the guardrails bundle (0.9.4), `chi schedule add|edit … --if` from chi's shell asks you every time
+  (`chi-schedule-if`: no parent agent or System 1 may allow it). Run `chi update`.
+- The schedules bundle (0.1.1): the Schedules page has an If column (a schedule's `--if` command).
+
 ## [0.189.0] - 2026-11-25
 
 ### Added

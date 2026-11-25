@@ -93,6 +93,16 @@ def turn_on(schedule)
   "to run it again: `chi schedule edit #{schedule.id} --date YYYY-MM-DDTHH:MM`, then `chi schedule enable #{schedule.id}`"
 end
 
+# The If column: the owner's `--if CMD` (chi runs it before each firing;
+# a "not needed" moves the schedule to its next time), cut; nil for none.
+def if_words(schedule)
+  condition = schedule.condition
+  return nil if condition.nil?
+
+  cmd = condition.is_a?(Hash) ? condition["cmd"] : nil
+  cmd.is_a?(String) ? cut(cmd, NAME_CHARS) : "(can't be read)"
+end
+
 def unreadable_lines(ids)
   lines = ids.compact.map do |id|
     # An id too long to show can't be given to cancel either.
@@ -132,13 +142,13 @@ page "Schedules" do |ui|
     { "name" => schedule.name, "state" => state_words(schedule), "when" => schedule.recurrence_words,
       "next" => clock(schedule.next_due), "last_run" => clock(schedule.last_fired), "last_result" => schedule.last_result,
       "skips" => "#{schedule.skips}/#{schedule.max_skips}", "failures" => "#{schedule.failures}/#{schedule.max_failures}",
-      "mode" => schedule.mode, "id" => schedule.id.to_s[0, 8] }
+      "if" => if_words(schedule), "mode" => schedule.mode, "id" => schedule.id.to_s[0, 8] }
   end
   more = ordered.size - rows.size
   ui.text "Schedules#{"\n\nThe first #{SCHEDULE_ROWS}; #{more} more in `chi schedule list --all`." if more.positive?}"
   ui.table rows, columns: { "name" => "Name", "state" => "State", "when" => "When", "next" => "Next", "last_run" => "Last run",
-                            "last_result" => "Last result", "skips" => "Skips", "failures" => "Failures", "mode" => "Mode",
-                            "id" => "ID" },
+                            "last_result" => "Last result", "skips" => "Skips", "failures" => "Failures", "if" => "If",
+                            "mode" => "Mode", "id" => "ID" },
                  key: %w[state next]
 
   runs = list.entries.flat_map { |schedule| schedule.history.map { |run| [schedule, run] } }

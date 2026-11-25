@@ -64,10 +64,84 @@ RSpec.describe Samagotchi::ScheduleCommand do
     end
   end
 
-  def run(*argv, store: schedules)
+  def run(*argv, store: schedules, env: {})
     out = StringIO.new
     err = StringIO.new
-    [described_class.new(argv, stdout: out, stderr: err, schedules: store).run, out.string, err.string]
+    [described_class.new(argv, stdout: out, stderr: err, schedules: store, env: env).run, out.string, err.string]
+  end
+
+  # A schedule's condition (Schedules::ConditionPart, docs/scheduling.md
+  # "Conditions (--if)"): the owner's, from their own terminal.
+  describe "a condition (--if)" do
+    it "adds one, saying it and which tickers run it" do
+      id = session
+      status, printed, error = run("add", "--session", id, "--every", "5m", "-m", "Check", "--if", "coord-pane gate")
+      expect([status, error]).to eq([0, ""])
+      lines = printed.lines.map(&:chomp)
+      expect(lines.first).to match(/\A\h{16} added: chain · #{id[0, 8]} · every 5m · if coord-pane gate · next /)
+      expect(lines[1]).to eq(described_class::CONDITION_TICKERS)
+      expect(described_class::CONDITION_TICKERS).to include("newer than 0.189.0")
+      expect(printed).not_to include("the model can edit")
+
+      _, gated, = run("add", "--session", id, "--every", "1h", "-m", "Other", "--if", "./gate.sh")
+      expect(gated.lines[2]).to eq("#{Samagotchi::Schedules::ConditionPart::GATE_IN_REACH}\n")
+      expect(schedules.entries.first.condition).to include(cmd: "coord-pane gate", by: "cli")
+    end
+
+    it "shows it with who set it, the timeout and run-now's exception, and lists it cut" do
+      entry = schedules.add(target: session, prompt: "Check", recurrence: every, condition: "#{"x" * 40} --flag")
+      _, shown, = run("show", entry.id)
+      expect(shown).to include("  if: #{"x" * 40} --flag  (set from the CLI #{@clock.localtime.strftime("%Y-%m-%d %H:%M")}; " \
+                               "timeout 30 s; run-now skips it)")
+      _, listed, = run("list")
+      expect(listed).to include(" if: #{"x" * 30}…\n")
+    end
+
+    it "sets, changes and drops one on edit; --if with --no-if is a usage error" do
+      entry = schedules.add(target: session, prompt: "Check", recurrence: every)
+      status, printed, = run("edit", entry.id, "--if=./gate.sh")
+      expect(status).to eq(0)
+      expect(printed).to include(" if: ./gate.sh", described_class::CONDITION_TICKERS)
+      expect(run("edit", entry.id, "--no-if")[0]).to eq(0)
+      expect(schedules.lookup(entry.id).condition).to be_nil
+
+      status, _, error = run("edit", entry.id, "--if", "x", "--no-if")
+      expect([status, error.lines.first]).to eq([2, "chi schedule edit: --if and --no-if together: give one\n"])
+    end
+
+    it "refuses --if with --date, and --no-if on add" do
+      date = (@clock + 3600).localtime.strftime("%Y-%m-%dT%H:%M")
+      status, _, error = run("add", "--session", session, "--date", date, "-m", "Once", "--if", "x")
+      expect([status, error.lines.first]).to eq([2, "chi schedule add: a --date one-off can't have --if: it fires once " \
+                                                    "(use --every or --weekday)\n"])
+      expect(run("add", "--session", session, "--every", "5m", "-m", "x", "--no-if")[0]).to eq(2)
+      expect(schedules.entries).to be_empty
+    end
+
+    # The tick runs CMD outside the guardrails: an agent (any session's
+    # shell, SAMAGOTCHI_PARENT_SESSION set, "chi" included) never sets one.
+    it "refuses --if and --no-if inside a chi session, exit 2, changing nothing" do
+      entry = schedules.add(target: session, prompt: "Check", recurrence: every, condition: "gate")
+      inside = { "SAMAGOTCHI_PARENT_SESSION" => "chi" }
+      status, _, error = run("add", "--session", session, "--every", "5m", "-m", "Other", "--if", "x", env: inside)
+      expect([status, error]).to eq([2, "chi schedule add: #{described_class::CONDITION_IN_SESSION}\n"])
+      expect(run("edit", entry.id, "--no-if", env: { "SAMAGOTCHI_PARENT_SESSION" => SecureRandom.uuid })[0]).to eq(2)
+      expect(run("edit", entry.id, "--if", "y", env: inside)[0]).to eq(2)
+      expect(schedules.entries.map { |stored| stored.condition[:cmd] }).to eq(["gate"])
+      expect(run("edit", entry.id, "--title", "Gate", env: inside)[0]).to eq(0)
+    end
+
+    it "prints a not-needed tick as such" do
+      runner = lambda { |*, **|
+        Samagotchi::ContextFetch::Run.new(output: "busy\n", error: "exit 1", stderr: "", cancelled: false,
+                                          status: Struct.new(:exitstatus).new(1))
+      }
+      store = Samagotchi::Schedules.new(state_dir: @dir, clock: -> { @clock }, condition_runner: runner)
+      entry = store.add(target: session, prompt: "Check", recurrence: every, condition: "gate")
+      due
+      require "samagotchi/context_fetch"
+      expect(run("tick", store: store)[1]).to eq("#{entry.id}  not-needed  exit 1: busy\n")
+    end
   end
 
   describe "add" do
@@ -297,6 +371,11 @@ RSpec.describe Samagotchi::ScheduleCommand do
       Samagotchi::Schedules.new(state_dir: @dir, clock: -> { Time.utc(2026, 11, 25, 12, 0, 0) })
     end
 
+    let(:unreadable) do
+      "1 schedule can't be read (e1f2a3b4): chi schedule cancel ID removes one; " \
+        "1 schedule with no id can't be read: fix or remove it in schedules.json"
+    end
+
     def golden(name, actual)
       path = File.join(File.expand_path("fixtures/schedules", __dir__), name)
       File.write(path, actual) if ENV["UPDATE_GOLDENS"]
@@ -309,11 +388,37 @@ RSpec.describe Samagotchi::ScheduleCommand do
       golden("list_all.txt", printed)
     end
 
-    it "prints the JSON listing as before, the tick warning on stderr" do
+    it "prints the JSON listing as before, the unreadable entries' line and the tick warning on stderr" do
       status, printed, error = run("list", "--all", "--format", "json", store: store)
       expect(status).to eq(0)
-      expect(error).to eq("#{tick_warning}\n")
+      expect(error).to eq("#{unreadable}\n#{tick_warning}\n")
       golden("list_all.json", printed)
+    end
+  end
+
+  describe "list with entries that don't read" do
+    def store_with(ids)
+      entry = schedules.add(target: session, prompt: "Check", recurrence: hourly)
+      data = JSON.parse(File.read(schedules.path))
+      ids.each { |id| data["schedules"] << { "id" => id, "anchor" => entry.anchor }.compact }
+      File.write(schedules.path, JSON.generate(data))
+    end
+
+    it "names them, the first five, in one line after the rows, and says nothing when all read" do
+      expect(run("list")[1]).not_to include("can't be read")
+      store_with(%w[a1 a2 a3 a4 a5 a6])
+      printed = run("list")[1]
+      expect(printed.lines[1]).to eq("6 schedules can't be read (a1, a2, a3, a4, a5, …): chi schedule cancel ID removes one\n")
+      expect(run("cancel", "a6")[0]).to eq(0)
+      expect(run("list")[1]).to include("5 schedules can't be read (a1, a2, a3, a4, a5): ")
+    end
+
+    it "says it under no schedules too, and lists a file that isn't JSON as no schedules, as before" do
+      store_with(["a1"])
+      schedules.cancel(schedules.entries.first.id)
+      expect(run("list")[1].lines.first(2)).to eq(["no schedules\n", "1 schedule can't be read (a1): chi schedule cancel ID removes one\n"])
+      File.write(schedules.path, "{not json")
+      expect(run("list")[1].lines.first).to eq("no schedules\n")
     end
   end
 

@@ -43,6 +43,24 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
     end
   end
 
+  # A condition (`--if CMD`) runs unattended, outside the guardrails: only
+  # the owner's CLI sets one (Schedules::ConditionPart).
+  it "can't set a condition: not declared, not taken, and a call naming one stores none" do
+    require "samagotchi/tool_declarations"
+    require "samagotchi/tools/builtins"
+    declared = Samagotchi::ToolDeclarations::TOOL_SCHEMAS.find { |tool| tool[:name] == "schedule_task" }
+    expect(declared[:parameters][:properties].keys.map(&:to_s)).not_to include("condition", "if", "if_cmd")
+    expect(described_class.method(:call).parameters.map(&:last)).not_to include(:condition, :if)
+
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      handler = Samagotchi::Tools::Builtins::HANDLERS.fetch(described_class::NAME)
+      handler.call({ content: nil, prompt: "Audit", every: "30m", condition: "exit 0", if: "exit 0" }, double(peers: peers(dir, id)))
+      expect(store(dir).entries.map(&:condition)).to eq([nil])
+    end
+  end
+
   it "takes the prompt from the tool's content when prompt: is not given" do
     Dir.mktmpdir("schedule-task") do |root|
       dir = File.join(root, "sessions")
@@ -169,6 +187,16 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
 
   def peers(state_dir)
     Struct.new(:session_id, :state_dir).new(nil, state_dir)
+  end
+
+  it "names a schedule's condition" do
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session_here(dir).id
+      Samagotchi::Schedules.new(state_dir: dir).add(target: anchor, prompt: "Audit", condition: "./gate.sh",
+                                                    recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+      expect(described_class.call(nil, peers: peers(dir))).to include("if: ./gate.sh")
+    end
   end
 
   it "says when there are none" do
@@ -308,6 +336,45 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
       other = schedules.add(target: anchor, prompt: "Weekly", recurrence: Samagotchi::Schedules.recurrence(every: "1d"))
       expect(described_class.call(other.id[0, 6], peers: peers(dir))).to eq("Cancelled #{other.id} (every 1d).")
       expect(schedules.entries).to be_empty
+    end
+  end
+
+  # An entry that doesn't read (list leaves it out; chi schedule cancel ID
+  # drops it): by its exact id, still chain-scoped.
+  describe "an entry of schedules.json that doesn't read" do
+    def planted(schedules, records)
+      data = File.exist?(schedules.path) ? JSON.parse(File.read(schedules.path)) : { "version" => 1, "schedules" => [] }
+      data["schedules"].concat(records)
+      FileUtils.mkdir_p(File.dirname(schedules.path))
+      File.write(schedules.path, JSON.generate(data))
+    end
+
+    def chain_peers(dir, id) = Struct.new(:session_id, :state_dir).new(id, dir)
+    def ids(schedules) = JSON.parse(File.read(schedules.path))["schedules"].map { |record| record["id"] }
+
+    it "cancels one of this chain by its anchor or head, refuses another chain's, and one whose chain can't be told" do
+      Dir.mktmpdir("schedule-cancel") do |root|
+        dir = File.join(root, "sessions")
+        mine = session_here(dir).id
+        theirs = session_here(dir).id
+        schedules = Samagotchi::Schedules.new(state_dir: dir)
+        planted(schedules, [{ "id" => "own1", "anchor" => mine }, { "id" => "own2", "head" => mine },
+                            { "id" => "other1", "anchor" => theirs }, { "id" => "bare1" }])
+
+        expect(described_class.call("own1", peers: chain_peers(dir, mine))).to eq("Cancelled own1 (it couldn't be read).")
+        expect(described_class.call("own2", peers: chain_peers(dir, mine))).to eq("Cancelled own2 (it couldn't be read).")
+        expect(described_class.call("other1", peers: chain_peers(dir, mine)))
+          .to eq("Error: other1 belongs to another session's chain. chi schedule cancel other1 cancels it, or say all: true if you meant it.")
+        expect(described_class.call("bare1", peers: chain_peers(dir, mine)))
+          .to eq("Error: schedule bare1 can't be read, so its chain can't be told. chi schedule cancel bare1 removes it, " \
+                 "or say all: true if you meant it.")
+        expect(described_class.call("bare", peers: chain_peers(dir, mine))).to eq("No schedule named bare.")
+        expect(ids(schedules)).to eq(%w[other1 bare1])
+
+        expect(described_class.call("bare1", all: true, peers: chain_peers(dir, mine))).to eq("Cancelled bare1 (it couldn't be read).")
+        expect(described_class.call("other1", peers: peers(dir))).to eq("Cancelled other1 (it couldn't be read).")
+        expect(ids(schedules)).to eq([])
+      end
     end
   end
 

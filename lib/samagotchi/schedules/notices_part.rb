@@ -25,15 +25,21 @@ module Samagotchi
       # `enable` keeps the notice) and a notice older than NOTICE_MAX_AGE are
       # cleared without being returned.
       # @param now [Time]
+      # @param on_lock_held [#call, nil] called when there were notices but
+      #   the lock was held (the [] then is "not now", not "none": the hub
+      #   retries at its next scan, SessionHub#claim_disabled_if_due)
       # @return [Array<Hash>] {id:, title:, kind:, count:, reason:, session_id:, at:}
       # @raise [Corrupt] the file stopped being readable JSON
-      def claim_disabled_notices(now: @clock.call)
+      def claim_disabled_notices(now: @clock.call, on_lock_held: nil)
         return [] unless read.entries.any? { |entry| entry.is_a?(Entry) && entry.disabled_notice }
 
         claimed = []
         FileUtils.mkdir_p(@store_dir)
         File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
-          return [] unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+          unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+            on_lock_held&.call
+            return []
+          end
 
           file = read(strict: true)
           links = nil

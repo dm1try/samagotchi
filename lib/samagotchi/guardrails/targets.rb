@@ -510,7 +510,7 @@ module Samagotchi
           require_relative "parent_approvals"
           dirs = @chi_dirs ? @chi_dirs.call : ParentApprovals.chi_dirs
           shell_envs.any? do |home, env|
-            ShellPaths.touches?(@command, dirs: dirs, text: ParentApprovals::CHI_SHELL_TEXT, cwd: @cwd, home: home,
+            ShellPaths.touches?(@command, dirs: dirs, exact: ChiDirs.touches_exact, text: ParentApprovals::CHI_SHELL_TEXT, cwd: @cwd, home: home,
                                           env: env, tmp_roots: Outside.tmp_roots)
           end
         end

@@ -164,6 +164,21 @@ rules:
     scopes: [once]
     reason: attaches a command chi will run every few minutes, outside the guardrails
 
+  # ── a schedule's condition: a shell command the tick runs unattended ──
+  # chi schedule add|edit --if CMD (and --no-if) is the owner's: the tick
+  # runs CMD later, outside the guardrails, and chi schedule refuses the
+  # flag inside a session (SAMAGOTCHI_PARENT_SESSION), which an agent can
+  # unset. This asks every time, and only the user may allow it (core's
+  # PROTECTED_RULES; System 1 never: NEVER_AUTO). The same shapes as
+  # chi-context-cmd: quoted words, continuations, --if=…, --remote NAME
+  # before the word, and xargs chi schedule add|edit whatever it is fed.
+  - id: chi-schedule-if
+    tool: shell
+    command: '\bchi["'']?(?:[\s\\]+["'']?--remote(?:=|["'']?[\s\\]+["'']?)[^\s"''\\;&|]+["'']?)*[\s\\]+["'']?schedule["'']?[\s\\]+["'']?(?:add|edit)\b(?:[^\n]|\\\n)*[\s"''\\]--(?:no-)?if(?:[\s="''\\]|$)|\bxargs\b[^;&|\n]*\bchi["'']?(?:[\s\\]+["'']?--remote(?:=|["'']?[\s\\]+["'']?)[^\s"''\\;&|]+["'']?)*[\s\\]+["'']?schedule["'']?[\s\\]+["'']?(?:add|edit)\b'
+    verdict: ask
+    scopes: [once]
+    reason: sets a shell command chi's schedule tick runs unattended, outside the guardrails
+
   # ── chi broadcast: for the user, not an agent ─────────────────────────
   # chi broadcast refuses to run inside a session (SAMAGOTCHI_PARENT_SESSION
   # is set there), but an agent can unset that; this asks every time, and

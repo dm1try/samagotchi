@@ -18,7 +18,8 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
                         runs_dir: File.join(root, "state", "system_one"),
                         home_path: File.join(config_dir, "home.json"),
                         shim_path: File.join(root, "state", "bin", "chi"),
-                        plugins_dir: File.join(root, "state", "plugins"))
+                        plugins_dir: File.join(root, "state", "plugins"),
+                        schedules_path: File.join(root, "state", "schedules.json"))
   end
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: root) }
 
@@ -71,6 +72,28 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
       expect(verdict_for(name: "execute", content: "ls #{root}/state/plugins/mcp")).to be_allow
       expect(verdict_for(name: "execute", content: "cat config/secrets.yml")).to be_allow
     end
+  end
+
+  # A schedule's prompt and condition run unattended; chi schedule writes the file.
+  it "denies writes to schedules.json, and leaves a read of it and its neighbours alone" do
+    v = verdict_for(name: "write", path: "state/schedules.json", content: "{}")
+    expect([v.decision, v.rule, v.source]).to eq([:deny, "chi-schedules", "core"])
+    expect(verdict_for(name: "edit", path: "state/schedules.json", old_string: "a", new_string: "b")).to be_deny
+    expect(verdict_for(name: "read", content: "state/schedules.json")).to be_allow
+    expect(verdict_for(name: "write", path: "state/schedules.lock", content: "")).to be_allow
+    expect(verdict_for(name: "write", path: "state/schedules.json.bak", content: "")).to be_allow
+  end
+
+  it "is wired with this machine's schedules.json, where Schedules keeps it" do
+    require "samagotchi/guardrail_wiring"
+    require "samagotchi/schedules"
+    wiring = Samagotchi::GuardrailWiring.allocate
+    wiring.instance_variable_set(:@approvals, double(path: File.join(Samagotchi::Paths.state_dir, "guardrails", "approvals.json")))
+    call = { name: "write", path: Samagotchi::Schedules.new.path, content: "{}" }
+    v = Samagotchi::Guardrails::Verdict.new(call: call)
+    v.context = context
+    v.targets = Samagotchi::Guardrails::Targets.for(call, context)
+    expect(wiring.send(:protected_paths).check(v)).to have_attributes(decision: :deny, rule: "chi-schedules")
   end
 
   it "denies writes to System 1's saved runs: a label there may train a model" do

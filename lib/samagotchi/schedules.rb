@@ -25,11 +25,13 @@ require_relative "state_format"
 require_relative "turn_outcome"
 require_relative "worker_link"
 require_relative "schedules/busy_part"
+require_relative "schedules/condition_part"
 require_relative "schedules/edit_part"
 require_relative "schedules/history_part"
 require_relative "schedules/listing_part"
 require_relative "schedules/notices_part"
 require_relative "schedules/protection_part"
+require_relative "schedules/prune_part"
 require_relative "schedules/recurrence"
 
 module Samagotchi
@@ -58,11 +60,13 @@ module Samagotchi
   # 30 s for a recap and 5 s for an archive, and an `add` must not wait on it.
   class Schedules
     include BusyPart
+    include ConditionPart
     include EditPart
     include HistoryPart
     include ListingPart
     include NoticesPart
     include ProtectionPart
+    include PrunePart
 
     FILE = "schedules.json"
     LOCK = "schedules.lock"
@@ -104,14 +108,16 @@ module Samagotchi
     # the session a same-mode turn was queued into. That is what makes
     # keep_links pruning provably safe: everything deleted is behind it.
     # `due_was` is the occurrence the last tick attempted: a skip or a failure
-    # puts the clock back to it.
+    # puts the clock back to it. `condition` is the owner's `--if CMD`
+    # (ConditionPart), nil for none.
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
                         :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
                         :firing_since, :firing_token, :pending_session_id, :pending_turn_id, :failures, :skips, :enabled,
-                        :created_at, :disabled_notice, :history, :extra) do
+                        :created_at, :disabled_notice, :history, :condition, :extra) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once
-      # (the disabled notice too, whose fields the claim hands on as is).
+      # (the disabled notice too, whose fields the claim hands on as is; the
+      # condition and its hidden next_due: ConditionPart.stored).
       def self.from_record(record)
         fields = record.attributes
         recurrence = fields[:recurrence]
@@ -119,7 +125,7 @@ module Samagotchi
         notice = fields[:disabled_notice]
         fields[:disabled_notice] = notice.is_a?(Hash) ? notice.transform_keys(&:to_sym) : nil
         fields[:history] = HistoryPart.rows(fields[:history])
-        new(**fields, extra: record.extra)
+        new(**ConditionPart.stored(fields, record.extra))
       end
 
       def to_h
@@ -182,13 +188,16 @@ module Samagotchi
         StateFormat.added(:disabled_notice, in_version: VERSION, default: nil),
         # The last outcomes, newest last (HistoryPart).
         StateFormat.added(:history, in_version: VERSION, default: []),
+        # {cmd:, by: "cli", set_at:}: the owner's `--if CMD` (ConditionPart).
+        StateFormat.added(:condition, in_version: VERSION, default: nil),
         StateFormat.extra(:extra, in_version: VERSION)
       ],
       document_members: [StateFormat.added(:last_tick_at, in_version: VERSION, default: nil)]
     )
 
-    # What one entry did in a tick: "fired", "skipped", "missed", "failed" or
-    # "dry" (a --dry-run's "would fire"). +detail+ is the reason. +disabled+:
+    # What one entry did in a tick: "fired", "skipped", "missed", "failed",
+    # "not-needed" (its condition said no: ConditionPart) or "dry" (a
+    # --dry-run's "would fire"). +detail+ is the reason. +disabled+:
     # this skip or failure used up a recurring entry's budget (#mark_disabled).
     Outcome = Data.define(:id, :title, :status, :detail, :entry, :disabled, :session_id) do
       def initialize(id:, status:, title: nil, detail: nil, entry: nil, disabled: false, session_id: nil) = super
@@ -205,12 +214,17 @@ module Samagotchi
     #   its lock sit in the state root above it (docs/scheduling.md), so the
     #   session listing never mistakes it for a session
     # @param clock [#call] "now", as a Time
-    def initialize(state_dir: nil, clock: -> { Time.now })
+    # @param condition_runner [#call] runs a condition's CMD (ConditionPart::DEFAULT_RUNNER)
+    # @param monotonic [#call] seconds, for the time the condition pre-pass took
+    def initialize(state_dir: nil, clock: -> { Time.now }, condition_runner: ConditionPart::DEFAULT_RUNNER,
+                   monotonic: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @state_dir = state_dir || Session.default_state_dir
       # ~/.local/state/samagotchi for the default sessions dir; expand_path
       # first so a trailing slash does not make the parent the sessions dir.
       @store_dir = File.dirname(File.expand_path(@state_dir))
       @clock = clock
+      @condition_runner = condition_runner
+      @monotonic = monotonic
     end
 
     attr_reader :state_dir, :store_dir
@@ -255,10 +269,14 @@ module Samagotchi
     # @return [Entry]
     # @raise [Usage] the add is wrong
     # @raise [Session::NotFound, Session::AmbiguousId] no such session
+    # +condition+ is the owner's `--if CMD` (ConditionPart): the CLI's only,
+    # never a tool's.
     def add(target:, prompt:, recurrence:, title: nil, mode: CHAIN, catch_up: nil, keep_links: nil,
-            max_failures: nil, max_skips: nil)
+            max_failures: nil, max_skips: nil, condition: nil)
       raise Usage, "a schedule needs a session to run against" if target.to_s.strip.empty?
       raise Usage, "mode must be one of #{MODES.join(", ")}" unless MODES.include?(mode)
+
+      condition = condition.nil? ? nil : condition_for(condition, recurrence)
 
       given_catch_up = catch_up.nil? || catch_up.to_s.strip.empty? ? Config.get("schedule.default_catch_up") : catch_up.to_s.strip
       validate_catch_up!(given_catch_up)
@@ -294,7 +312,7 @@ module Samagotchi
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
         last_fired: nil, last_result: nil, firing_since: nil, firing_token: nil, pending_session_id: nil,
         pending_turn_id: nil, failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601,
-        disabled_notice: nil, history: [], extra: {}
+        disabled_notice: nil, history: [], condition: condition, extra: {}
       )
       write_under_lock { |file| file.entries << entry }
       entry
@@ -323,11 +341,20 @@ module Samagotchi
     def total_limit = positive_config("schedule.max_total", 50)
 
     # One pass over the file: the entries due now, each checked for busy, then
-    # advanced and (outside the lock) fired.
-    # @param dry_run [Boolean] report what would fire, change nothing
+    # advanced and (outside the lock) fired. The due conditions run first,
+    # before the lock (ConditionPart); `now` moves on by the time they took.
+    # @param dry_run [Boolean] report what would fire, change nothing (no CMD runs)
     # @param now [Time] "now"
+    # @param cancelled [#call] true: stop the conditions (chi web stopping)
     # @return [Tick]
-    def tick(dry_run: false, now: @clock.call)
+    def tick(dry_run: false, now: @clock.call, cancelled: -> { false })
+      unless dry_run
+        started_at = @monotonic.call
+        conditions = condition_results(now, cancelled)
+        now += @monotonic.call - started_at if conditions
+        # chi web stopping: no firing now, which its stop would cut short.
+        return Tick.new(locked: false, outcomes: []) if cancelled.call
+      end
       outcomes = []
       pending = []
       prune_after = []
@@ -403,6 +430,12 @@ module Samagotchi
         pending_chains = in_flight.select { |entry| entry.mode == CHAIN }.map { |entry| chain_key(links, entry) }
         due.each do |entry|
           position = updated.index { |candidate| candidate.is_a?(Entry) && candidate.id == entry.id }
+          gated = condition_gate(entry, links, conditions, now) unless dry_run
+          if gated
+            updated[position], outcome = gated
+            outcomes << outcome if outcome
+            next
+          end
           verdict = check(entry, links)
           if verdict
             kind, reason = verdict
@@ -427,7 +460,8 @@ module Samagotchi
           end
           if dry_run
             fired_chains[chain_key(links, entry)] = true if entry.mode == CHAIN
-            outcomes << Outcome.new(id: entry.id, title: entry.title, status: "dry", detail: entry.recurrence_words, entry: entry)
+            detail = entry.condition.nil? ? entry.recurrence_words : "#{entry.recurrence_words} · if #{condition_cmd(entry)} (not run)"
+            outcomes << Outcome.new(id: entry.id, title: entry.title, status: "dry", detail: detail, entry: entry)
             next
           end
           if entry.catch_up == "none" && late?(entry, now)
@@ -524,7 +558,8 @@ module Samagotchi
     # @param strict [Boolean] a file that is not readable JSON raises rather
     #   than reading as empty: a write starting from an empty list would rewrite
     #   the file and lose every schedule on it. #entries stays lenient.
-    def read(strict: false)
+    # @param quiet [Boolean] no log lines (the tick's condition pre-pass: its main pass logs them)
+    def read(strict: false, quiet: false)
       return FORMAT.read({}, collection: "schedules") unless File.exist?(path)
 
       file = FORMAT.read(JSON.parse(File.read(path)), collection: "schedules")
@@ -532,14 +567,15 @@ module Samagotchi
         if record.readable?
           Entry.from_record(record)
         else
-          Log.warn(:worker, "schedule_entry_unreadable",
-                   id: record.raw.is_a?(Hash) ? record.raw["id"] : nil,
-                   missing: record.missing.map(&:to_s))
+          unless quiet
+            Log.warn(:worker, "schedule_entry_unreadable", id: record.raw.is_a?(Hash) ? record.raw["id"] : nil,
+                                                           missing: record.missing.map(&:to_s))
+          end
           record
         end
       end)
     rescue JSON::ParserError, StateFormat::InvalidDocument => e
-      Log.warn(:worker, "store_unreadable", error: e.class.name, msg: e.message)
+      Log.warn(:worker, "store_unreadable", error: e.class.name, msg: e.message) unless quiet
       raise Corrupt, "#{path} is not readable JSON (#{e.message}): fix or remove it before changing schedules" if strict
 
       FORMAT.read({}, collection: "schedules")
@@ -548,7 +584,9 @@ module Samagotchi
     def write(file:)
       FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
-      body = FORMAT.write(file, collection: "schedules", updated_at: Time.now.utc.iso8601)
+      # A copy (callers keep file.entries); ConditionPart#hide_next_due.
+      stored = file.with(entries: file.entries.map { |entry| entry.is_a?(Entry) ? hide_next_due(entry) : entry })
+      body = FORMAT.write(stored, collection: "schedules", updated_at: Time.now.utc.iso8601)
       AtomicFile.write(path, "#{JSON.pretty_generate(body)}\n")
     end
 
@@ -1039,69 +1077,6 @@ module Samagotchi
         updated = updated.with(next_due: stored.due_was) if %w[failed skipped].include?(outcome.status) && !stored.due_was.nil?
         file.entries[position] = updated
       end
-    end
-
-    # The links behind the kept window, with the delegates that hung under
-    # them: archiving a link archives its descendants, and archived sessions
-    # are outside the retention sweep, so the delegate pile is the bulk of the
-    # archived count. Oldest link first, and within a link its children first
-    # (deepest first) and the link last. The walk stops at a link that is not
-    # archived, one whose subtree has a live worker, or one with a descendant
-    # still unarchived: nothing is deleted in that case, and the next firing
-    # retries (a schedule failure it is not). The anchor is never pruned:
-    # `last:<anchor>` must keep resolving, and it is the id the user remembers.
-    def prune(entry, links)
-      chain = []
-      id = entry.head
-      seen = []
-      while id && !seen.include?(id)
-        seen << id
-        chain << id
-        # The walk stops at the anchor: the links before it are the user's own
-        # history, made before this schedule existed, and the anchor itself is
-        # the id `last:<anchor>` and the user remember.
-        break if id == entry.anchor
-
-        # The link a firing just made is not in the tick's listing; every
-        # older one is.
-        session = links.session(id) || (File.exist?(Session.session_file(id, state_dir: @state_dir)) ? Session.load(id, state_dir: @state_dir) : nil)
-        id = session&.continues
-      end
-      older = chain[entry.keep_links..] || []
-      return if older.empty?
-
-      older.reverse_each do |link|
-        next if link == entry.anchor
-        break unless ArchiveStore.archived?(Session.session_dir(link, state_dir: @state_dir))
-
-        tree = SessionManager.delete_tree_ids(link, @state_dir)
-        descendants = tree[0...-1]
-        # The whole subtree must be ready: a live worker anywhere in it, or a
-        # link's descendant that is not archived, stops the walk here rather
-        # than half-deleting a tree.
-        owned = tree.select { |sid| SessionManager.session_owner(sid, state_dir: @state_dir) }
-        unless owned.empty?
-          Log.warn(:worker, "prune_waiting", sid: link, id: entry.id, owned: owned.map { |sid| sid[0, 8] })
-          break
-        end
-
-        open = descendants.reject { |sid| ArchiveStore.archived?(Session.session_dir(sid, state_dir: @state_dir)) }
-        unless open.empty?
-          Log.warn(:worker, "prune_open_children", sid: link, id: entry.id, open: open.map { |sid| sid[0, 8] })
-          break
-        end
-
-        # Children first (deepest first), the link last: if a delete is
-        # refused partway, nothing above it has gone, so the next firing
-        # retries the same set instead of leaving children under a link that
-        # is already deleted.
-        SessionManager.delete_ids(tree, state_dir: @state_dir)
-        Log.info(:worker, "pruned_link", sid: link, id: entry.id, links: descendants.size + 1)
-      end
-    rescue SessionManager::DeleteRefused => e
-      Log.warn(:worker, "prune_stopped", sid: e.session_id, id: entry.id, msg: e.message)
-    rescue Session::NotFound => e
-      Log.warn(:worker, "prune_missing", id: entry.id, msg: e.message)
     end
   end
 end

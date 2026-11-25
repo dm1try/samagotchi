@@ -36,6 +36,7 @@ module Samagotchi
             flags = []
             flags << "skips #{entry.skips} of #{entry.max_skips}" if entry.skips.positive?
             flags << "disabled after #{entry.failures} failures" unless entry.enabled
+            flags << "if: #{ScheduleDisplay.condition_words(entry)}" unless entry.condition.nil?
             "#{entry.id}  #{ScheduleDisplay.name(entry)}  #{entry.target_words}  #{entry.recurrence_words}  " \
               "next #{entry.next_due}  #{flags.join(", ")}".rstrip
           end

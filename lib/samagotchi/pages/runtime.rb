@@ -28,14 +28,15 @@ module Samagotchi
       # firing's token, its pending turn, extra keys) are chi's bookkeeping.
       SCHEDULE_MEMBERS = %i[id name title mode prompt recurrence_words next_due last_fired last_result enabled state
                             off_reason skips max_skips failures max_failures skip_window anchor head created_at
-                            history].freeze
+                            history condition].freeze
 
       # One schedule as `chi schedule list --format json` says it: +name+ is
       # its title or the start of its prompt in quotes, +state+ "on",
       # "firing" or "off", +off_reason+ why it is off (ScheduleDisplay.off_reason:
       # "owner", "skips", "failures", "done", "missed", "off"; nil when it
-      # isn't), +history+ its Runs, oldest first. Times are ISO 8601 UTC
-      # strings, nil when there is none.
+      # isn't), +history+ its Runs, oldest first, +condition+ the owner's
+      # `--if CMD` ({"cmd", "by", "set_at"}; nil for none). Times are ISO
+      # 8601 UTC strings, nil when there is none.
       Schedule = Data.define(*SCHEDULE_MEMBERS) do
         # @param json [Hash{String => Object}] ScheduleDisplay.json's; a
         #   missing key reads as nil (history as none), an unknown one is

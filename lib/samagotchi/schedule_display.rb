@@ -26,6 +26,19 @@ module Samagotchi
       width ? given.ljust(width) : given
     end
 
+    # An entry's condition as it is listed: its command (cut at +chars+ with
+    # "…" when given), or what a condition that doesn't read is. nil without
+    # one.
+    def self.condition_words(entry, chars: nil)
+      condition = entry.condition
+      return nil if condition.nil?
+
+      cmd = condition.is_a?(Hash) ? condition[:cmd] : nil
+      return "(doesn't read: the tick fails it)" unless cmd.is_a?(String)
+
+      chars && cmd.length > chars ? "#{cmd[0, chars]}…" : cmd
+    end
+
     # The width of the name column for these entries.
     def self.name_width(entries)
       entries.map { |entry| name(entry) }.map(&:length).max
@@ -83,13 +96,16 @@ module Samagotchi
     end
 
     # One entry as `chi schedule list --format json` prints it (and
-    # Pages::Runtime reads it): every stored field with its extra keys, then
-    # what a reader needs and would otherwise compute: recurrence_words,
-    # skip_window, name, state, off_reason. Those come last, so an extra key
-    # of the same name (a newer chi's) never shadows them.
+    # Pages::Runtime reads it): every stored field with its extra keys (the
+    # real next_due: the file's hidden one is Schedules#write's), the
+    # condition with string keys, then what a reader needs and would
+    # otherwise compute: recurrence_words, skip_window, name, state,
+    # off_reason. Those come last, so an extra key of the same name (a newer
+    # chi's) never shadows them.
     # @return [Hash{String => Object}]
     def self.json(entry)
-      entry.to_h.transform_keys(&:to_s).merge(
+      condition = entry.condition.is_a?(Hash) ? entry.condition.transform_keys(&:to_s) : entry.condition
+      entry.to_h.transform_keys(&:to_s).merge("condition" => condition).merge(
         "recurrence_words" => entry.recurrence_words,
         "skip_window" => skip_window(entry),
         "name" => name(entry),

@@ -46,8 +46,10 @@ module Samagotchi
     module SelfProtect
       # The rules that let one agent answer chi's questions: an auto-allow
       # there is one agent approving another's, so the user decides them even
-      # when they are listed in `guardrails.system_one.rules`.
-      NEVER_AUTO = %w[chi-answer-piped chi-answer-http chi-broadcast].freeze
+      # when they are listed in `guardrails.system_one.rules`; and a
+      # schedule's condition (chi-schedule-if), a shell command chi's tick
+      # runs later, outside every gate, which only the owner sets.
+      NEVER_AUTO = %w[chi-answer-piped chi-answer-http chi-broadcast chi-schedule-if].freeze
       # chi's default state dir as a shell command may spell it when the
       # settings point elsewhere (the sessions and the guardrails store live
       # there).

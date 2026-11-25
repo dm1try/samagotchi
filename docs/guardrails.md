@@ -6,7 +6,7 @@ loops (native and chat hosts). The verdict is **allow**, **ask** or
 voter. Of two asks the first one names the rule, except a rule only the
 user may allow (`chi-config`, `chi-home`, `chi-shim`, `chi-hooks`, `shell-touches-chi`,
 `chi-context-cmd`, `chi-broadcast`, `prompt-memory-write`, `model-overlay-write`,
-`chi-answer-piped`, `chi-answer-http`, `bundle-secrets-shell`): it takes over, and only the
+`chi-answer-piped`, `chi-answer-http`, `bundle-secrets-shell`, `chi-schedule-if`): it takes over, and only the
 scopes both asks offer are offered. When a second YAML rule with another id asks about the same call (`git merge y && git push`), no
 [rule grant](#approvals) answers it and none is offered.
 
@@ -253,7 +253,8 @@ the user's alone (`user_only`): `chi answer` and the worker refuse the allow
 with `only the user can allow it`. The same holds for the guardrails bundle's
 other user-only rules (`chi-context-cmd`, `chi-broadcast`,
 `prompt-memory-write`, `model-overlay-write`, and `chi-answer-piped` /
-`chi-answer-http`, which answer a grandchild's question as the user), and core's
+`chi-answer-http`, which answer a grandchild's question as the user,
+`chi-schedule-if`, a schedule's condition the tick runs unattended), and core's
 `bundle-secrets-shell` (a command naming a bundle's secrets).
 
 `child-boundary` isn't one of them: an ask before a delegate child acts outside
@@ -354,8 +355,11 @@ with `writes: true` (symlinks resolved; see
   [attached context](context.md) sources (`<state dir>/context/`: a
   source's command runs later, outside the gate; `chi context` changes them),
   a peer's [mailbox](peers.md) (`<state dir>/mailbox/`: chi's own tools never
-  write a peer's messages or pairing, `chi-mailbox`; `chi peer` does)
-  and [System 1's saved runs](system-one.md) (`<state dir>/system_one/`);
+  write a peer's messages or pairing, `chi-mailbox`; `chi peer` does),
+  [System 1's saved runs](system-one.md) (`<state dir>/system_one/`)
+  and the [schedules](scheduling.md) file (`<state dir>/schedules.json`,
+  `chi-schedules`: a schedule's prompt and its [condition](scheduling.md#conditions---if)
+  run unattended, the condition outside the guardrails; `chi schedule` changes it);
 - ask (once or for the session): `config.yml`, `home.json` (the [chi home](configuration.md#the-chi-home): the Ruby every chi launch boots), the chi shim (`$XDG_STATE_HOME/samagotchi/bin/chi`, the `chi` every tool runs: `chi-shim`) and the plain hooks dir.
 
 `execute` can still reach them; the guardrails bundle asks about shell
@@ -1231,8 +1235,9 @@ ask](#approvals) on the call, is judged and logged but always goes to the user):
    or a YAML list, read like `guardrails.small_models`. Nothing is auto-allowed
    by default: the user names the rules they want;
 3. the rule is not one of the three that let an agent answer chi's own
-   questions — `chi-answer-piped`, `chi-answer-http`, `chi-broadcast` — which
-   are never auto-allowed, even when listed
+   questions — `chi-answer-piped`, `chi-answer-http`, `chi-broadcast` — nor
+   `chi-schedule-if` (a schedule's condition, which the tick runs unattended,
+   is the owner's): these are never auto-allowed, even when listed
    (`SystemOne::SelfProtect::NEVER_AUTO`);
 4. the call does not change chi itself (`SystemOne::SelfProtect.refuse?`), by
    its own set of chi's dirs (`Guardrails::ChiDirs.self_protect`: the dirs whose
@@ -1371,9 +1376,16 @@ route around a deny. In both modes it asks before `git push`, `reset --hard`,
 `clean -f`, `branch -D`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
 `$HOME` or `..` paths, unless every target is inside a tmp folder; `curl … |
 sh` and `base64 -d … | sh`; shell commands that name a path in chi's config,
-hooks, approvals, bundles or attached context sources, or a `.git/hooks`
+hooks, approvals, bundles, attached context sources, the peer mailbox,
+System 1's saved runs or `schedules.json`, or chi's state dir itself (a
+`cp`/`mv`/`rsync` naming only the dir lands a file there), or a `.git/hooks`
 (`shell-touches-chi`, `touches: chi_dirs`), unless they only read
-(`skip_read_only`); `chi context add … --cmd` (`chi-context-cmd`, once at a
+(`skip_read_only`); `chi schedule add|edit … --if CMD` and `--no-if`
+(`chi-schedule-if`, once at a time and only by the user, never System 1: the
+tick runs CMD later, unattended and outside the guardrails, and `chi schedule`
+refuses the flag inside a session; the rule also sees `chi --remote NAME
+schedule`, quoted words, continuations and `xargs chi schedule add|edit`; see
+[Conditions](scheduling.md#conditions---if)); `chi context add … --cmd` (`chi-context-cmd`, once at a
 time: a command chi will run every few minutes outside the guardrails; see
 [Attached context](context.md#safety); the rule also sees `chi --remote NAME context add`, and a remote's `context push`
 reaches its session with the trust of its chi web token, as your own `chi context push` does there); `chi broadcast` (`chi-broadcast`,

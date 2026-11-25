@@ -35,8 +35,13 @@ module Samagotchi
     # replaced while it ran: nothing recorded for it).
     Outcome = Data.define(:status, :snapshot, :error)
     # What the command did: +output+ its stdout, +error+ nil or why it
-    # failed, +cancelled+ the caller stopped it.
-    Run = Data.define(:output, :error, :stderr, :cancelled)
+    # failed, +cancelled+ the caller stopped it, +status+ its
+    # Process::Status when it ended on its own within the cap (nil when it
+    # was stopped: a timeout, the cap, a cancel; or never ran), so a caller
+    # telling exit codes apart never reads a TERM trap's exit 0 as a pass.
+    Run = Data.define(:output, :error, :stderr, :cancelled, :status) do
+      def initialize(output:, error:, stderr:, cancelled:, status: nil) = super
+    end
 
     module_function
 
@@ -137,9 +142,10 @@ module Samagotchi
 
       # Checked again once the reader is done: a command that exits before
       # wait's next tick never gets an over from it.
+      ended = error.nil? && !out_reader.over?
       error = OVER_CAP if out_reader.over?
       error ||= exit_error(status, stderr_text)
-      Run.new(output: out_reader.text, error: error, stderr: stderr_text, cancelled: false)
+      Run.new(output: out_reader.text, error: error, stderr: stderr_text, cancelled: false, status: ended ? status : nil)
     rescue SystemCallError => e
       Run.new(output: nil, error: "couldn't run it: #{e.message}", stderr: "", cancelled: false)
     ensure

@@ -1224,7 +1224,7 @@ RSpec.describe Samagotchi::Schedules do
       end
     end
 
-    it "returns [] and keeps the notice while another holds the lock" do
+    it "returns [] and keeps the notice while another holds the lock, telling the caller so" do
       Dir.mktmpdir("schedules-notice-locked") do |root|
         dir = File.join(root, "sessions")
         anchor = session(dir).id
@@ -1235,10 +1235,13 @@ RSpec.describe Samagotchi::Schedules do
 
         File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
-          expect(schedules.claim_disabled_notices).to eq([])
+          held = []
+          expect(schedules.claim_disabled_notices(on_lock_held: -> { held << true })).to eq([])
+          expect(held).to eq([true])
         end
         expect(stored_notice(schedules, entry.id)).not_to be_nil
-        expect(schedules.claim_disabled_notices.map { |notice| notice[:id] }).to eq([entry.id])
+        expect(schedules.claim_disabled_notices(on_lock_held: -> { raise "not held" }).map { |notice| notice[:id] }).to eq([entry.id])
+        expect(schedules.claim_disabled_notices(on_lock_held: -> { raise "no notice: not held" })).to eq([])
       end
     end
 

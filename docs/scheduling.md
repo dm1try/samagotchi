@@ -19,8 +19,9 @@ against, never rewritten: the chain's root and the id you remember), `head` (the
 chain's current link, re-anchored after every firing: the link a chain continue
 made, or the session a `same` turn was queued into), `mode`,
 `prompt`, `recurrence`, `catch_up`, `keep_links`, `max_failures`, `max_skips`,
-`next_due` (UTC ISO), `last_fired`, `last_result`, `failures`, `skips` and
-`enabled`.
+`next_due` (UTC ISO), `last_fired`, `last_result`, `failures`, `skips`,
+`enabled` and `condition` (your `--if CMD`, [Conditions](#conditions---if); `null` for
+none).
 
 <a id="reminder-vs-schedule"></a>## Reminder or schedule?
 
@@ -239,7 +240,8 @@ disabled: Heartbeat", "skipped 12 times: <the last reason>" and the `chi schedul
 enable <id>` that turns it back on; a tap opens its session. The tick leaves a notice
 on the entry in `schedules.json` (`disabled_notice`) and a running chi web pushes it:
 right after its own tick, and within `schedule.tick_interval_minutes` for another
-ticker's, with `schedule.auto_tick` off too. Only chi web pushes, so with no chi web
+ticker's, with `schedule.auto_tick` off too (a look that finds a tick holding the lock
+tries again at the next scan, not an interval later). Only chi web pushes, so with no chi web
 running the notice waits for one; a notice more than a day old, or one whose schedule
 you enabled again, is dropped unpushed, and `chi schedule enable` clears it. It shows
 even with a chi web page in front and waits a day for a phone that is offline. Two chi
@@ -266,7 +268,10 @@ and recurrence, or the same title — is refused too, naming its id, so a routin
 tells each of its links to "make sure the Monday audit is scheduled" cannot multiply
 itself. `schedule_task`, `list_schedules` and `cancel_schedule` see only schedules of
 the calling session's chain (`all: true` steps outside it); `chi schedule list` is
-always the machine-wide view. An id, prefix or title that matches more than one entry
+always the machine-wide view. An entry that doesn't read (`list` counts it, "chi schedule
+cancel ID removes one") is cancelled by its exact id with `chi schedule cancel ID`, and by
+`cancel_schedule` when its stored `anchor` or `head` is a link of the chain; one with
+neither (its chain can't be told) only with `all: true`. An id, prefix or title that matches more than one entry
 is refused with exit 2, naming the matches.
 
 The tick's lock covers the file only, never the action: the clock advances before
@@ -282,6 +287,95 @@ outcome is known or its hard limit is reached.
 And a `chi schedule add` from a terminal never waits on an archive or a recap wait. Chain mode targets `last:<head>`, so `SessionContinue.run`'s
 own retry loop follows a continue a human made between our resolve and its lock
 instead of racing it.
+
+## Conditions (`--if`)
+
+`chi schedule add … --if CMD` (and `chi schedule edit ID --if CMD`, `--no-if` to drop
+it) gates a schedule on a shell command: at each due tick chi runs CMD first, and the
+firing happens only when CMD says it is needed. A heartbeat, say, a chain firing every
+few minutes, can ask "is there anything to do?" first, so that most ticks cost no model
+turn.
+
+```
+chi schedule add --session ab12 --every 5m -m "Check in" --if "$HOME/.local/bin/anything-to-do"
+```
+
+What the exit status means:
+
+| CMD | the tick |
+|---|---|
+| exits 0 | goes on as without a condition: the busy check, then the firing |
+| exits 1 to 125 | **not needed**: `next_due` moves to the next occurrence, `last_result` is `not needed: exit N: <its first line of stdout, else its last of stderr>`, the tick prints `not-needed`; nothing else changes (no skip or failure counted, no history row, the chain's one firing per tick left to its other schedules) |
+| exits 126 or 127 (not executable, not found), dies by a signal, runs past `schedule.condition_timeout_seconds` (default 30, at most 300), prints more than 1 MiB, or can't start (the session's folder is gone) | a **failure** (`condition: <why>`), counted toward `max_failures` like any other, the occurrence kept for the next tick: a broken condition turns the schedule off after 3 ticks (about 15 minutes at a 5 minute tick), with the phone notification. Failures reset only when the schedule fires (or you enable it): a gate that seldom says yes adds up errors that come days apart, and three of them turn it off |
+
+The order, per due schedule with a condition: its target resolves (a gone or archived
+one fails as without a condition), then `catch_up: none` a whole cycle late is
+`missed`, then the condition's answer, then the busy check. So a busy target spends no
+skip on an occurrence that wasn't needed.
+
+How it runs: `sh -c CMD` in the target session's folder, in its own process group
+(a timeout kills the whole group), stdin closed, with the ticker's environment
+scrubbed of Ruby's and Bundler's variables (`SpawnEnv`), plus
+`SAMAGOTCHI_SCHEDULE_ID`, `SAMAGOTCHI_SCHEDULE_TITLE` and `SAMAGOTCHI_SCHEDULE_SESSION`
+(the session it acts on) and never `SAMAGOTCHI_PARENT_SESSION`. Treat the title (and the
+session id) as untrusted input in a gate script: the model may change a schedule's title
+(`chi schedule edit --title` isn't owner-only), so quote it and never `eval` it. It gets the ticker's
+environment: cron's PATH is thin, so name commands by absolute path, and the project's
+mise tools aren't set up (wrap CMD in `mise exec --` when it needs them). It inherits
+what the ticker's environment holds, secrets included. Each due condition runs once, in
+turn, before the tick takes the schedule lock (a slow CMD never holds `chi schedule
+add` or a firing's record up), and the tick's clock moves on by the time they took.
+When the lock is taken, an answer counts only for the condition, the `next_due` and the
+failure count it ran for (so two tickers count one occurrence's error once): an edit, a run-now or another ticker in between leaves the schedule as it is
+and the next tick asks again. So CMD should be cheap, read-only and safe to run twice
+(cron and chi web ticking at once may both run it). A schedule whose target is busy
+runs CMD at every tick until it fires.
+
+`chi schedule run-now` fires without asking CMD; `tick --dry-run` doesn't run it
+(`would fire  every 5m · if CMD (not run)`). `chi schedule show` has it as `if: CMD
+(set from the CLI <time>; timeout 30 s; run-now skips it)`, `list` adds ` if: CMD`, and
+`list --format json` gives `condition` as `{cmd, by, set_at}`. A `--date` one-off takes
+none (it fires once; edit it to `--every` or `--weekday` first); one that has one anyway
+(an older chi's `edit --date`) fails each tick, "conditions don't apply to a one-off",
+without running CMD, until its budget turns it off.
+
+**Only you set one.** CMD runs unattended and outside the
+[guardrails](guardrails.md), so a condition is the owner's alone:
+- `chi schedule … --if` / `--no-if` inside a chi session (any agent's shell:
+  `SAMAGOTCHI_PARENT_SESSION` is set) exits 2: "a schedule's condition is set only
+  from your own terminal";
+- the `schedule_task` tool has no condition (and `list_schedules` only shows it);
+- with the guardrails bundle, a shell command that runs `chi schedule add|edit … --if`
+  asks you every time (`chi-schedule-if`: no parent agent and no System 1 may allow
+  it), and `schedules.json` is a protected path: chi's file tools can't write it
+  (`chi-schedules`), and a shell command naming it asks (`shell-touches-chi`).
+These are an accident guard, not a sandbox (chi's guardrails are for a model you trust
+not to try): the in-session refusal and the user-only rule stop an accidental or casual
+set, not a determined evasion. A command that unsets the session marker (`env -u
+SAMAGOTCHI_PARENT_SESSION`) and spells the flag so the rule's text doesn't see it (quoting
+or a backslash inside `--if`, a variable) gets through, as it does for `chi context add
+--cmd`; so does a script that edits the file without naming it. A page script runs
+without the session markers too ([pages.md](pages.md): a page is code you trust), so a
+model-written page that runs `chi schedule … --if` sets one when you open it. Keep CMD itself out of the model's reach too: a gate script
+inside a project the model edits is one it can change, and the tick then runs what the
+model wrote. `add` and `edit --if` warn when CMD's first word is a relative path (it
+resolves in the session's folder) or a script inside the session's folder or any git
+work tree: "warning: the model can edit this script; keep a gate outside your projects
+(an absolute path, e.g. under ~/.local/bin)". It is a warning, not a refusal; a command
+on PATH (`test -f …`, `gh …`) gets none.
+
+**Every ticker must be new enough.** A chi of 0.189.0 or older (0.189.0 shipped without them) doesn't know
+conditions and would fire such a schedule unasked, so chi stores a schedule with a
+condition with `next_due: null` and the real time under `condition_next_due`: an older
+chi never finds it due (it reads it, lists it with no next time, keeps its sessions
+from retention, and enables, disables and cancels it), and a newer one reads the real
+time back. `add` and `edit --if` say so: "every chi that ticks (chi web, cron) must be
+newer than 0.189.0; an older one leaves this schedule alone". After updating chi,
+restart chi web and point cron at the new chi, or the schedule waits. One leak remains:
+an older chi's `run-now`, or its `edit` of the recurrence, writes a real `next_due`,
+and an older ticker then fires the schedule unconditionally until a newer chi writes
+the file again (one tick in a mixed setup). A condition set by anything but the CLI
+(`by` other than `cli`, a later chi's) fails closed: counted as a failure, never run.
 
 ## Keeping the chain short
 
@@ -384,7 +478,7 @@ schedule that is off and why ("turned off by you", "skipped 12 times (≈1 h at 
 tick): busy", "failed 3 times: …", "one-off, done") with the `chi schedule enable ID`
 that turns it back on (for a spent one-off, which has no next time, a `chi schedule
 edit ID --date …` first); each entry of `schedules.json` that can't be read with the
-`chi schedule cancel ID` that removes it; a table of every schedule (on and firing
+`chi schedule cancel ID` that removes it; a table of every schedule (its If column the `--if` command; on and firing
 first by next due, those with none last, then off; times in this machine's zone) and the recent runs, newest
 first. It is read-only: ask chi, or use `chi schedule`, to change one. What it shows is
 as of its last run: Refresh to update. A `schedules.json` that isn't JSON fails the

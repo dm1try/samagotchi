@@ -7,6 +7,7 @@ require "samagotchi/guardrails/parent_policy"
 require "samagotchi/model_overlay"
 require "samagotchi/guardrails/parent_approvals"
 require "samagotchi/pending_question"
+require "samagotchi/system_one/self_protect"
 
 # The optional guardrails bundle's rules (lib/samagotchi/bundles/guardrails):
 # what each one catches and what it lets through, in auto mode (the
@@ -71,7 +72,16 @@ RSpec.describe "The guardrails bundle's rules" do
                             "echo '{}' > #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/context/projects/app_1/pr-1.json",
                             "rm -r $XDG_STATE_HOME/samagotchi/context/sessions/abc",
                             "echo '{}' > #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/mailbox/abc/claude/in/9.json",
-                            "rm -r $XDG_STATE_HOME/samagotchi/mailbox/abc"],
+                            "rm -r $XDG_STATE_HOME/samagotchi/mailbox/abc",
+                            "echo '{}' > #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/schedules.json",
+                            "jq . x > /tmp/s.json && mv /tmp/s.json $XDG_STATE_HOME/samagotchi/schedules.json",
+                            # a copy that names only the state dir lands schedules.json there (review H1)
+                            "cp /tmp/schedules.json $XDG_STATE_HOME/samagotchi/",
+                            "mv /tmp/schedules.json $XDG_STATE_HOME/samagotchi",
+                            "cd /tmp && cp schedules.json #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/",
+                            "rsync /tmp/schedules.json #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/",
+                            "python3 -c \"open('#{ENV.fetch("XDG_STATE_HOME")}/samagotchi/schedules.json','w')\"",
+                            "cp /tmp/x.yml $XDG_STATE_HOME/samagotchi/context"],
     "chi-answer-piped" => ["printf '3\\n' | chi --attach abc", "(sleep 3; printf 'y\\n') | chi --attach abc",
                            "echo y | chi -p go", "yes | bundle exec bin/chi --prompt go",
                            "chi --attach abc < answers.txt", "chi -p go <<< 1", "chi --attach abc <<EOF",
@@ -89,6 +99,17 @@ RSpec.describe "The guardrails bundle's rules" do
                           "chi --remote=studio context add x --cmd=./x.sh abc", "chi --remote a --remote b context add x --cmd y",
                           "chi \"--remote\" 'x' \"context\" add x --cmd y", "chi --remote \\\n  x context add x --cmd y",
                           "CHI_REMOTE=studio chi context add x --cmd y", "xargs chi --remote x context add"],
+    "chi-schedule-if" => ["chi schedule add --session abc --every 5m -m go --if 'coord-pane gate'",
+                          "bin/chi schedule edit ab12 --if=./gate.sh", "chi schedule edit ab12 --no-if",
+                          "chi schedule add --session abc -m go --every 5m \\\n  --if ./gate.sh", "chi \\\nschedule edit x --if y",
+                          "chi schedule edit x \"--if\" ./gate.sh", "chi schedule edit x '--if=./gate.sh'",
+                          "chi \"schedule\" edit x --if y", "chi 'schedule' 'add' --session x -m go --every 1h --if y",
+                          "env -u SAMAGOTCHI_PARENT_SESSION chi schedule edit x --if y",
+                          "SAMAGOTCHI_PARENT_SESSION= bin/chi schedule add --session x -m go --every 1h --if y",
+                          "echo x --if ./y.sh | xargs chi schedule edit", "xargs -a args.txt bin/chi schedule add",
+                          "chi --remote x schedule edit ab12 --if y", "chi --remote=studio schedule add --if=./x.sh",
+                          "chi \"--remote\" 'x' \"schedule\" edit x --if y", "CHI_REMOTE=studio chi schedule edit x --if y",
+                          "xargs chi --remote x schedule edit"],
     "chi-broadcast" => ["chi broadcast -m 'api down'", "pbpaste | chi broadcast --all",
                         "env -u SAMAGOTCHI_PARENT_SESSION bin/chi broadcast -m x", "SAMAGOTCHI_PARENT_SESSION= chi broadcast",
                         "chi \"broadcast\" -m x", "chi \\\n  broadcast --dry-run", "chi --remote studio broadcast -m x",
@@ -114,6 +135,9 @@ RSpec.describe "The guardrails bundle's rules" do
     "chi --remote x context add notes --push abc", "chi --remote x context push notes -m 'cmd done'",
     "chi send -m 'context add --cmd' abc", "chi --remote studio note -m 'see the broadcast' abc",
     "xargs chi context ls", "chi context push notes -m 'cmd done'", "chi context ls --project",
+    "chi schedule add --session abc --every 5m -m go", "chi schedule edit ab12 --title Gate", "chi schedule list",
+    "chi schedule show ab12", "chi schedule tick --dry-run", "cat $XDG_STATE_HOME/samagotchi/schedules.json",
+    "ls $XDG_STATE_HOME/samagotchi", "cp /tmp/a $XDG_STATE_HOME/samagotchi-backup/", "xargs chi schedule cancel", "chi schedule edit ab12 --iffy x",
     "sed -i s/a/b/ lib/samagotchi/context_sources.rb", "ls $XDG_STATE_HOME/samagotchi/context/sessions", "printf x | chi-tool --attach", "curl https://api.example.com/answers/1",
     # a look-alike of chi's dirs (approval-noise-log.md): scratch under /tmp,
     # chi's own source tree, and ~/.config/samagotchi when XDG_CONFIG_HOME
@@ -230,6 +254,14 @@ RSpec.describe "The guardrails bundle's rules" do
       pending = pending_of(v)
       expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only), command
     end
+  end
+
+  it "asks for chi schedule --if once at a time, a parent may not allow it and System 1 never does" do
+    v = shell("chi schedule edit ab12 --if 'coord-pane gate'")
+    expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-schedule-if", %w[once]])
+    pending = pending_of(v)
+    expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only)
+    expect(Samagotchi::SystemOne::SelfProtect::NEVER_AUTO).to include("chi-schedule-if")
   end
 
   it "asks for chi broadcast once at a time, and a parent may not allow it" do

@@ -25,8 +25,9 @@ module Samagotchi
         add --session ID (--continues ID) (-m|--message|--prompt TEXT) [--title TEXT]
             one of: --every 30m | --weekday 1 --time 09:00 | --date 2026-11-20T09:00
             [--mode chain|same] [--catch-up once|none] [--keep-links N] [--max-failures N] [--max-skips N]
+            [--if CMD]
         edit ID [--title TEXT] [-m|--prompt TEXT] [one recurrence, whole, as add's]
-            [--catch-up once|none] [--keep-links N] [--max-failures N] [--max-skips N]
+            [--catch-up once|none] [--keep-links N] [--max-failures N] [--max-skips N] [--if CMD | --no-if]
             only the flags given change; the session and mode stay (cancel and add for those);
             a spent --date one-off stays disabled (enable it)
         list [--all] [--format text|json]
@@ -43,6 +44,9 @@ module Samagotchi
       same queues it as a turn in the session itself.
       A busy target is skipped and retried at the next tick; after max_skips skips
       (default 12) or max_failures failures (default 3) the schedule is disabled.
+      --if CMD: the tick runs CMD in the session's folder first; exit 0 fires, 1..125
+      skips this occurrence quietly ("not needed"), anything else is a failure. From
+      your own terminal only (not inside a chi session); run-now doesn't run it.
     TEXT
 
     SUBCOMMANDS = %w[add edit list show tick run-now enable disable cancel].freeze
@@ -70,9 +74,12 @@ module Samagotchi
         f.value "--session", "--continues", key: :target
         f.value "--mode"
         FIELD_FLAGS.call(f)
+        f.value "--if", key: :condition
       end,
       "edit" => CLI::Flags.new(args: true) do |f|
         FIELD_FLAGS.call(f)
+        f.value "--if", key: :condition
+        f.switch "--no-if"
         f.refuse "--session", "--continues", "--mode", "edit can't change the session or mode: cancel it and add a new one"
       end,
       "list" => CLI::Flags.new(args: false) do |f|
@@ -91,12 +98,23 @@ module Samagotchi
     }.freeze
 
     # @param argv [Array<String>] the arguments after "schedule"
+    # A condition runs unattended, outside the guardrails: never set from
+    # inside a chi session (an agent), as chi broadcast refuses there too.
+    CONDITION_IN_SESSION = "a schedule's condition is set only from your own terminal (chi schedule … --if), " \
+                           "not from inside a chi session"
+    # The older chis that would fire a condition entry unchecked hide it
+    # instead (Schedules::ConditionPart): the line add and edit print.
+    CONDITION_TICKERS = "every chi that ticks (chi web, cron) must be newer than 0.189.0; " \
+                        "an older one leaves this schedule alone"
+
     # @param schedules [Schedules, nil] the store; default this machine's
-    def initialize(argv, stdout: $stdout, stderr: $stderr, schedules: nil)
+    # @param env [Hash] SAMAGOTCHI_PARENT_SESSION set: run inside a session
+    def initialize(argv, stdout: $stdout, stderr: $stderr, schedules: nil, env: ENV)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
       @schedules = schedules || Schedules.new
+      @env = env
     end
 
     # @return [Integer] exit status: 0 ok, 1 a missing session or schedule,
@@ -114,6 +132,13 @@ module Samagotchi
 
       @opts = parsed.options
       @args = parsed.args
+      if @opts.key?(:condition) || @opts[:no_if]
+        unless @env["SAMAGOTCHI_PARENT_SESSION"].to_s.empty?
+          error_line("#{command_name}: #{CONDITION_IN_SESSION}")
+          return CLI::Exit::USAGE
+        end
+        return usage_error("--if and --no-if together: give one") if @opts.key?(:condition) && @opts[:no_if]
+      end
 
       case sub
       when "add" then add
@@ -142,7 +167,8 @@ module Samagotchi
         entry = @schedules.add(target: @opts[:target], prompt: @opts[:prompt], recurrence: recurrence,
                                title: @opts[:title], mode: @opts[:mode] || Schedules::CHAIN,
                                catch_up: @opts[:catch_up], keep_links: @opts[:keep_links],
-                               max_failures: @opts[:max_failures], max_skips: @opts[:max_skips])
+                               max_failures: @opts[:max_failures], max_skips: @opts[:max_skips],
+                               condition: @opts[:condition])
       rescue Schedules::Usage => e
         return usage_error(e.message)
       rescue Session::AmbiguousId => e
@@ -151,7 +177,12 @@ module Samagotchi
         return failed("no session #{@opts[:target]}")
       end
 
-      @stdout.puts("#{entry.id} added: #{entry.target_words} · #{entry.recurrence_words} · next #{clock(entry.next_due)}")
+      @stdout.puts("#{entry.id} added: #{entry.target_words} · #{entry.recurrence_words}#{condition_words(entry)} · " \
+                   "next #{clock(entry.next_due)}")
+      if entry.condition
+        @stdout.puts(CONDITION_TICKERS)
+        print_gate_warning(entry)
+      end
       print_tick_warning
       CLI::Exit::OK
     end
@@ -165,12 +196,17 @@ module Samagotchi
       recurrence = if %i[every weekday time date].any? { |key| @opts.key?(key) }
                      Schedules.recurrence(every: @opts[:every], weekday: @opts[:weekday], time: @opts[:time], date: @opts[:date])
                    end
+      condition = @opts[:no_if] ? :none : @opts[:condition]
       entry = @schedules.edit(id, title: @opts[:title], prompt: @opts[:prompt], recurrence: recurrence,
                                   catch_up: @opts[:catch_up], keep_links: @opts[:keep_links],
-                                  max_failures: @opts[:max_failures], max_skips: @opts[:max_skips])
+                                  max_failures: @opts[:max_failures], max_skips: @opts[:max_skips], condition: condition)
       return failed("no schedule #{id}") if entry.nil?
 
       @stdout.puts(entry_line(entry))
+      if @opts.key?(:condition)
+        @stdout.puts(CONDITION_TICKERS)
+        print_gate_warning(entry)
+      end
       CLI::Exit::OK
     rescue Schedules::EditPart::InFlight => e
       failed(e.message)
@@ -183,18 +219,22 @@ module Samagotchi
       return refused if refused
 
       entries = @schedules.entries(include_disabled: @opts[:include_disabled] ? true : false)
+      unreadable = unreadable_line
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate(entries.map { |entry| entry_line_json(entry) }))
+        @stderr.puts(unreadable) if unreadable
         print_tick_warning(@stderr)
         return CLI::Exit::OK
       end
       if entries.empty?
         @stdout.puts("no schedules")
+        @stdout.puts(unreadable) if unreadable
         print_tick_warning
         return CLI::Exit::OK
       end
       name_width = ScheduleDisplay.name_width(entries)
       entries.each { |entry| @stdout.puts(entry_line(entry, name_width: name_width)) }
+      @stdout.puts(unreadable) if unreadable
       print_tick_warning
       CLI::Exit::OK
     end
@@ -212,6 +252,7 @@ module Samagotchi
       @stdout.puts("  last fired: #{clock(entry.last_fired)}  last result: #{entry.last_result || "-"}")
       @stdout.puts("  skips: #{entry.skips} of #{entry.max_skips}  failures: #{entry.failures} of #{entry.max_failures}")
       @stdout.puts("  keep_links: #{entry.keep_links}  enabled: #{entry.enabled}")
+      @stdout.puts("  if: #{condition_show(entry)}") unless entry.condition.nil?
       @stdout.puts("  prompt: #{entry.prompt}")
       print_history(entry)
       CLI::Exit::OK
@@ -304,9 +345,38 @@ module Samagotchi
       note = ""
       note += " skips #{entry.skips} of #{entry.max_skips} (#{ScheduleDisplay.skip_window(entry)})" if entry.skips.positive?
       note += off_note(entry) unless entry.enabled
+      note += " if: #{ScheduleDisplay.condition_words(entry, chars: ScheduleDisplay::PROMPT_CHARS)}" unless entry.condition.nil?
       note += " last: #{entry.last_result}" if entry.last_result
       "#{entry.id}  #{ScheduleDisplay.name(entry, width: name_width)}  #{entry.mode}  #{entry.recurrence_words}  " \
         "#{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
+    end
+
+    # Schedules::ConditionPart.gate_warning for the folder CMD runs in (the
+    # target session's), when CMD is a script the model can edit.
+    def print_gate_warning(entry)
+      cmd = entry.condition.is_a?(Hash) ? entry.condition[:cmd] : nil
+      return unless cmd.is_a?(String)
+
+      folder = begin
+        Session.load(entry.head, state_dir: @schedules.state_dir).working_directory
+      rescue Session::NotFound
+        nil
+      end
+      warning = Schedules::ConditionPart.gate_warning(cmd, folder: folder)
+      @stdout.puts(warning) if warning
+    end
+
+    # " · if CMD" for add's line, "" without a condition.
+    def condition_words(entry) = entry.condition.nil? ? "" : " · if #{ScheduleDisplay.condition_words(entry)}"
+
+    # show's: the command, who set it and when, and what holds for it.
+    def condition_show(entry)
+      condition = entry.condition
+      return ScheduleDisplay.condition_words(entry) unless condition.is_a?(Hash) && condition[:cmd].is_a?(String)
+
+      by = condition[:by] == Schedules::ConditionPart::CONDITION_BY ? "the CLI" : condition[:by].inspect
+      "#{condition[:cmd]}  (set from #{by} #{clock(condition[:set_at])}; timeout #{@schedules.condition_timeout_seconds} s; " \
+        "run-now skips it)"
     end
 
     def off_note(entry)
@@ -324,6 +394,30 @@ module Samagotchi
     end
 
     def entry_line_json(entry) = ScheduleDisplay.json(entry)
+
+    # The entries of schedules.json that don't read, which list leaves out:
+    # one line naming them and the way out (Schedules#cancel takes one by its
+    # id, #cancel_unreadable), nil when there are none. A file that isn't
+    # JSON lists as no schedules, as before.
+    UNREADABLE_IDS_SHOWN = 5
+
+    def unreadable_line
+      ids = @schedules.listing.unreadable_ids
+      named = ids.compact
+      nameless = ids.size - named.size
+      parts = []
+      unless named.empty?
+        shown = named.first(UNREADABLE_IDS_SHOWN).join(", ")
+        shown += ", …" if named.size > UNREADABLE_IDS_SHOWN
+        parts << "#{plural(named.size, "schedule")} can't be read (#{shown}): chi schedule cancel ID removes one"
+      end
+      parts << "#{plural(nameless, "schedule")} with no id can't be read: fix or remove it in schedules.json" if nameless.positive?
+      parts.empty? ? nil : parts.join("; ")
+    rescue Schedules::Corrupt
+      nil
+    end
+
+    def plural(count, word) = "#{count} #{word}#{"s" unless count == 1}"
 
     def print_tick_warning(stream = @stdout)
       warning = @schedules.tick_warning

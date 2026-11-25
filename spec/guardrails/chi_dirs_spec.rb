@@ -3,6 +3,7 @@
 require "samagotchi/guardrails"
 require "samagotchi/guardrails/chi_dirs"
 require "samagotchi/system_one/self_protect"
+require "samagotchi/schedules"
 
 # chi's dir sets; what each surface answers with them is pinned in
 # path_consistency_spec.rb.
@@ -18,6 +19,15 @@ RSpec.describe Samagotchi::Guardrails::ChiDirs do
     expect(described_class.self_protect).to include(Samagotchi::Guardrails::PathResolve.real(state))
     expect(Samagotchi::Guardrails::ReviewPaths.chi_dirs).to eq(described_class.review)
     expect(described_class.review).to eq([state, File.join(Samagotchi::Paths.config_home, "samagotchi")])
+  end
+
+  # A file among the dirs: the readers match a file root as the path itself.
+  it "holds schedules.json, where Schedules keeps it for the default sessions dir" do
+    expect(described_class.schedules_file).to eq(Samagotchi::Schedules.new.path)
+    expect(described_class.protected).to include(Samagotchi::Schedules.new.path)
+    facts = { paths: [Samagotchi::Schedules.new.path], command: nil }
+    expect(Samagotchi::Guardrails::ParentApprovals.chi_files?(facts)).to be(true)
+    expect(Samagotchi::Guardrails::ParentApprovals.chi_files?(paths: ["#{Samagotchi::Schedules.new.path}.bak"], command: nil)).to be(false)
   end
 
   it "adds a hooks dir configured outside the config dir for review" do

@@ -88,8 +88,9 @@ it. On an older chi `runtime` is a `NameError`, and the run fails with it (the l
   of its prompt in quotes), `title`, `mode`, `prompt`, `recurrence_words`, `next_due`, `last_fired`, `last_result`,
   `enabled`, `state` (`on`, `firing` or `off`), `off_reason` (`owner`, `skips`, `failures`, `done`, `missed` or
   `off`; nil unless off), `skips`, `max_skips`, `failures`, `max_failures`, `skip_window`, `anchor`, `head`,
-  `created_at`, and `history`: its runs, oldest first, each with `at`, `status`, `detail` and `session_id`. Times are
-  ISO 8601 UTC strings, nil when there is none.
+  `created_at`, `history`: its runs, oldest first, each with `at`, `status`, `detail` and `session_id`, and
+  `condition`: its `--if CMD` as `{"cmd", "by", "set_at"}`, nil for none ([Conditions](scheduling.md#conditions---if)).
+  Times are ISO 8601 UTC strings, nil when there is none.
   - `runtime.schedules.rows`: every schedule as a table row (all but `history`): `ui.table runtime.schedules.rows,
     columns: { "name" => "Name", "state" => "State" }`.
   - `.warning`: `chi schedule list`'s warning when nothing ticks the schedules, else nil; `.unreadable_ids`: the id of

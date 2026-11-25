@@ -404,9 +404,10 @@ module Samagotchi
 
       def run_schedule_tick
         schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
-        schedules.tick(now: Time.now)
+        # Stopping kills a condition's CMD (its process group) and runs no more.
+        schedules.tick(now: Time.now, cancelled: -> { stopped? })
         # Right after the tick, so a turn-off of this tick is pushed now.
-        publish_disabled(schedules)
+        retry_notices_next_scan if publish_disabled(schedules)
       rescue StandardError => e
         Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
       ensure
@@ -418,7 +419,9 @@ module Samagotchi
 
       # Once per schedule.tick_interval_minutes: a lock-free read of
       # schedules.json (Schedules#claim_disabled_notices), so a cron tick's or
-      # a run-now's turn-off reaches the phone within one interval.
+      # a run-now's turn-off reaches the phone within one interval. A claim
+      # that found notices but the lock held (a tick at work) is tried again
+      # at the next scan, not a whole interval later.
       def claim_disabled_if_due
         now = @now.call
         due = @monitor.synchronize do
@@ -427,7 +430,11 @@ module Samagotchi
           @next_notice_claim = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
           true
         end
-        publish_disabled(Samagotchi::Schedules.new(state_dir: @state_dir)) if due
+        retry_notices_next_scan if due && publish_disabled(Samagotchi::Schedules.new(state_dir: @state_dir))
+      end
+
+      def retry_notices_next_scan
+        @monitor.synchronize { @next_notice_claim = nil }
       end
 
       # A recurring schedule a ticker turned off by its budget (any ticker: the
@@ -438,14 +445,18 @@ module Samagotchi
       # session the schedule acts on. The claim clears each notice before it
       # is emitted: the Notifier's dedupe is per process, so two chi webs on
       # one state dir would otherwise both push it.
+      # @return [Boolean] true: there were notices but the lock was held
       def publish_disabled(schedules)
-        schedules.claim_disabled_notices(now: Time.now).each do |data|
+        held = false
+        schedules.claim_disabled_notices(now: Time.now, on_lock_held: -> { held = true }).each do |data|
           @monitor.synchronize { emit("schedule_disabled", data) }
         rescue StandardError => e
           Log.warn(:web, "schedule_disabled_failed", id: data[:id], error: e.class.name, msg: e.message)
         end
+        held
       rescue StandardError => e
         Log.warn(:web, "schedule_notices_failed", error: e.class.name, msg: e.message)
+        false
       end
 
       # A change (the first look too, unless it finds nothing) is a `chi`
