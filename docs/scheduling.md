@@ -292,12 +292,12 @@ instead of racing it.
 
 `chi schedule add … --if CMD` (and `chi schedule edit ID --if CMD`, `--no-if` to drop
 it) gates a schedule on a shell command: at each due tick chi runs CMD first, and the
-firing happens only when CMD says it is needed. The first caller is the coordinator's
-heartbeat, a chain firing every few minutes whose `--if` asks "is there anything to
-do?" so that most ticks cost no model turn.
+firing happens only when CMD says it is needed. A heartbeat, say, a chain firing every
+few minutes, can ask "is there anything to do?" first, so that most ticks cost no model
+turn.
 
 ```
-chi schedule add --session ab12 --every 5m -m "Check in" --if "$HOME/.local/bin/coord-pane gate"
+chi schedule add --session ab12 --every 5m -m "Check in" --if "$HOME/.local/bin/anything-to-do"
 ```
 
 What the exit status means:
@@ -306,7 +306,7 @@ What the exit status means:
 |---|---|
 | exits 0 | goes on as without a condition: the busy check, then the firing |
 | exits 1 to 125 | **not needed**: `next_due` moves to the next occurrence, `last_result` is `not needed: exit N: <its first line of stdout, else its last of stderr>`, the tick prints `not-needed`; nothing else changes (no skip or failure counted, no history row, the chain's one firing per tick left to its other schedules) |
-| exits 126 or 127 (not executable, not found), dies by a signal, runs past `schedule.condition_timeout_seconds` (default 30, at most 300), prints more than 1 MiB, or can't start (the session's folder is gone) | a **failure** (`condition: <why>`), counted toward `max_failures` like any other, the occurrence kept for the next tick: a broken condition turns the schedule off after 3 ticks (about 15 minutes at a 5 minute tick), with the phone notification |
+| exits 126 or 127 (not executable, not found), dies by a signal, runs past `schedule.condition_timeout_seconds` (default 30, at most 300), prints more than 1 MiB, or can't start (the session's folder is gone) | a **failure** (`condition: <why>`), counted toward `max_failures` like any other, the occurrence kept for the next tick: a broken condition turns the schedule off after 3 ticks (about 15 minutes at a 5 minute tick), with the phone notification. Failures reset only when the schedule fires (or you enable it): a gate that seldom says yes adds up errors that come days apart, and three of them turn it off |
 
 The order, per due schedule with a condition: its target resolves (a gone or archived
 one fails as without a condition), then `catch_up: none` a whole cycle late is
@@ -317,7 +317,9 @@ How it runs: `sh -c CMD` in the target session's folder, in its own process grou
 (a timeout kills the whole group), stdin closed, with the ticker's environment
 scrubbed of Ruby's and Bundler's variables (`SpawnEnv`), plus
 `SAMAGOTCHI_SCHEDULE_ID`, `SAMAGOTCHI_SCHEDULE_TITLE` and `SAMAGOTCHI_SCHEDULE_SESSION`
-(the session it acts on) and never `SAMAGOTCHI_PARENT_SESSION`. It gets the ticker's
+(the session it acts on) and never `SAMAGOTCHI_PARENT_SESSION`. Treat the title (and the
+session id) as untrusted input in a gate script: the model may change a schedule's title
+(`chi schedule edit --title` isn't owner-only), so quote it and never `eval` it. It gets the ticker's
 environment: cron's PATH is thin, so name commands by absolute path, and the project's
 mise tools aren't set up (wrap CMD in `mise exec --` when it needs them). It inherits
 what the ticker's environment holds, secrets included. Each due condition runs once, in
@@ -347,8 +349,14 @@ without running CMD, until its budget turns it off.
   asks you every time (`chi-schedule-if`: no parent agent and no System 1 may allow
   it), and `schedules.json` is a protected path: chi's file tools can't write it
   (`chi-schedules`), and a shell command naming it asks (`shell-touches-chi`).
-These are an accident guard, not a sandbox: a script that edits the file without
-naming it gets through. Keep CMD itself out of the model's reach too: a gate script
+These are an accident guard, not a sandbox (chi's guardrails are for a model you trust
+not to try): the in-session refusal and the user-only rule stop an accidental or casual
+set, not a determined evasion. A command that unsets the session marker (`env -u
+SAMAGOTCHI_PARENT_SESSION`) and spells the flag so the rule's text doesn't see it (quoting
+or a backslash inside `--if`, a variable) gets through, as it does for `chi context add
+--cmd`; so does a script that edits the file without naming it. A page script runs
+without the session markers too ([pages.md](pages.md): a page is code you trust), so a
+model-written page that runs `chi schedule … --if` sets one when you open it. Keep CMD itself out of the model's reach too: a gate script
 inside a project the model edits is one it can change, and the tick then runs what the
 model wrote. `add` and `edit --if` warn when CMD's first word is a relative path (it
 resolves in the session's folder) or a script inside the session's folder or any git

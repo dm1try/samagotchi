@@ -466,7 +466,7 @@ chi schedule enable 4b7e9a
 chi schedule cancel 4b7e9a       # delete it (by id, a unique prefix, or its title)
 chi schedule edit 4b7e9a --weekday 2 --time 08:30   # change it in place: only the flags given
 chi schedule edit "Monday audit" -m "Audit the open PRs and the queue" --max-skips 24
-chi schedule add --session 3f9a1c2e --every 5m -m "Check in" --if "$HOME/.local/bin/coord-pane gate"
+chi schedule add --session 3f9a1c2e --every 5m -m "Check in" --if "$HOME/.local/bin/anything-to-do"
 chi schedule edit 4b7e9a --no-if     # fire at every occurrence again
 ```
 
