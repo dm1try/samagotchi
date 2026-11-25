@@ -5,8 +5,9 @@ loops (native and chat hosts). The verdict is **allow**, **ask** or
 **deny**; the strictest vote wins, and a deny can't be undone by a later
 voter. Of two asks the first one names the rule, except a rule only the
 user may allow (`chi-config`, `chi-home`, `chi-shim`, `chi-hooks`, `shell-touches-chi`,
-`chi-context-cmd`, `chi-broadcast`): it takes over, and only the scopes both asks offer
-are offered. When a second YAML rule with another id asks about the same call (`git merge y && git push`), no
+`chi-context-cmd`, `chi-broadcast`, `prompt-memory-write`, `model-overlay-write`,
+`chi-answer-piped`, `chi-answer-http`, `bundle-secrets-shell`): it takes over, and only the
+scopes both asks offer are offered. When a second YAML rule with another id asks about the same call (`git merge y && git push`), no
 [rule grant](#approvals) answers it and none is offered.
 
 Who votes, in order:
