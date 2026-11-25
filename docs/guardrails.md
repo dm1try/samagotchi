@@ -1377,7 +1377,8 @@ route around a deny. In both modes it asks before `git push`, `reset --hard`,
 `$HOME` or `..` paths, unless every target is inside a tmp folder; `curl … |
 sh` and `base64 -d … | sh`; shell commands that name a path in chi's config,
 hooks, approvals, bundles, attached context sources, the peer mailbox,
-System 1's saved runs or `schedules.json`, or a `.git/hooks`
+System 1's saved runs or `schedules.json`, or chi's state dir itself (a
+`cp`/`mv`/`rsync` naming only the dir lands a file there), or a `.git/hooks`
 (`shell-touches-chi`, `touches: chi_dirs`), unless they only read
 (`skip_read_only`); `chi schedule add|edit … --if CMD` and `--no-if`
 (`chi-schedule-if`, once at a time and only by the user, never System 1: the

@@ -17,7 +17,8 @@ module Samagotchi
     #                  schedules.json: an ask only the user may answer
     #                  (ParentApprovals.chi_files?)
     #   .touches       .protected and the session repo's git hooks dir: a
-    #                  rule's touches: chi_dirs (Targets#touches_chi?)
+    #                  rule's touches: chi_dirs (Targets#touches_chi?), with
+    #                  .touches_exact (the state dir itself, as a word)
     #   .self_protect  .protected and the whole state dir, resolved: what
     #                  System 1 never answers for (SelfProtect)
     #   .review        the state dir, the config dir and a hooks dir
@@ -53,6 +54,12 @@ module Samagotchi
         require_relative "parent_approvals"
         ParentApprovals.chi_dirs + [context.hooks_dir(base)].compact
       end
+
+      # The dirs a shell word touches chi by naming exactly (not what is
+      # under them): the state dir, where a copy that names only the dir
+      # (`cp /tmp/schedules.json <state>/`, `mv`, `rsync`) lands a file root
+      # of .protected. Targets#touches_chi? reads it beside #touches.
+      def touches_exact = [Paths.state_dir]
 
       # .protected (as ParentApprovals.chi_dirs) and the whole state dir,
       # resolved.

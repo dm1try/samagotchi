@@ -39,9 +39,23 @@ module Samagotchi
       # @param text [Regexp] the fallback for a word that can't be resolved
       # @param cwd [String, nil] where the command starts
       # @param tmp_roots [Array<String>] where a .git/hooks part doesn't count
-      def touches?(command, dirs:, text:, cwd:, home: Dir.home, env: ENV, tmp_roots: [])
+      # @param exact [Array<String>] dirs that count only as themselves, not
+      #   what is under them (chi's state dir: `cp x <state>/` writes a file
+      #   root there, schedules.json, by naming only the dir)
+      def touches?(command, dirs:, text:, cwd:, home: Dir.home, env: ENV, tmp_roots: [], exact: [])
         roots = dirs.compact.map { |dir| PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
-        any_path?(command, text: text, cwd: cwd, home: home, env: env) { |path| names?(path, roots, tmp_roots) }
+        exact = exact.compact.map { |dir| PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
+        any_path?(command, text: text, cwd: cwd, home: home, env: env) do |path|
+          names?(path, roots, tmp_roots) || exactly?(path, exact)
+        end
+      end
+
+      def exactly?(path, exact)
+        return false if exact.empty?
+
+        PathResolve.reals(path.to_s.chomp("/")).any? do |real|
+          exact.any? { |dir| PathResolve.under?(real, dir) && PathResolve.under?(dir, real) }
+        end
       end
 
       # Whether a word of +command+ names a path the block holds for (each
