@@ -66,18 +66,38 @@ RSpec.describe Samagotchi::OwnerLock do
 
   it "waits out an owner's shared probe for a delete lock" do
     ready = Queue.new
+    go = Queue.new
+    go_sent = false
     probe = Thread.new do
       File.open(described_class.path(dir), File::RDWR | File::CREAT, 0o644) do |file|
         file.flock(File::LOCK_SH)
         ready << true
-        sleep(0.03) # sleep-ok: hold the shared probe for about 30 ms
+        # Hold the shared lock until the main thread is ready to release it:
+        # the check that follows must see the lock still held, deterministically.
+        go.pop
+        # Hold briefly: a real probe holds LOCK_SH for microseconds and the
+        # spec only needs acquire's FIRST try to fail, so the hold is a few ms
+        # (well under one RETRY_INTERVAL) that releases within the acquire
+        # window even with scheduler overshoot on a slow CI runner.
+        sleep(0.01) # sleep-ok: the brief shared-probe hold is the behaviour
       end
     end
     ready.pop
+    # The probe must still hold the shared lock when acquire starts: a second
+    # File object cannot take LOCK_EX while the probe holds LOCK_SH. That makes
+    # the spec's first acquire try fail for real, not by falling through.
+    File.open(described_class.path(dir), File::RDWR | File::CREAT, 0o644) do |probe_file|
+      expect(probe_file.flock(File::LOCK_EX | File::LOCK_NB)).to be_falsey
+    end
+    go << true
+    go_sent = true
     lock = described_class.acquire(dir, kind: described_class::DELETING, wait: described_class::PROBE_WAIT)
 
     expect(lock).not_to be_nil
   ensure
+    # An expectation may have failed before the probe was released: unblock it
+    # so the join! below never hangs.
+    go << true unless go_sent
     lock&.release
     join!(probe, "the owner probe") if probe
   end
