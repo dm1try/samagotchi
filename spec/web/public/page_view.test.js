@@ -1,6 +1,7 @@
 // The page view (page_view.js) over a stand-in api: what each state draws
 // (a page as stored, never ran, a failed run keeping its result, the script
-// changed, no such page), Refresh and its answers, Delete asked once, and
+// changed, no such page), Refresh and its answers, Delete asked once (none
+// for a bundle's page), and
 // an answer for a page no longer open dropped.
 import "./dom_shim.js";
 import test from "node:test";
@@ -257,6 +258,15 @@ test("Delete asks once in the menu, then removes the page and leaves", async () 
   assert.deepEqual(h.calls, ["GET /api/pages/usage", "DELETE /api/pages/usage"]);
   assert.deepEqual(h.toasts, ["Deleted the page Usage, last 7 days"]);
   assert.deepEqual(h.events, [["gone"]]);
+});
+
+test("a bundle's page has Refresh and no ⋯: it can't be deleted", async () => {
+  const h = harness({ "GET /api/pages/usage": page({ bundle: "schedules" }) });
+  h.view.open("usage");
+  await tick();
+  assert.ok(h.$(".pg-refresh"));
+  assert.equal(h.$(".pg-menu-btn"), null);
+  assert.equal(h.$(".pg-delete-ask"), null);
 });
 
 test("an answer for a page no longer open is dropped", async () => {

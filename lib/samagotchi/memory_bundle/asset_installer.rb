@@ -317,9 +317,10 @@ module Samagotchi
         end
       end
 
-      # A file only a block renderer's load names: the page loads it, nothing runs it.
+      # A file only a block renderer's load or pages: names: a page loads
+      # it (the browser's, or a page runner's Ruby), nothing execs it.
       def page_only?(file)
-        @manifest.block_renderers.any? { |renderer| renderer.load.include?(file) } &&
+        (@manifest.block_renderers.any? { |renderer| renderer.load.include?(file) } || @manifest.pages.include?(file)) &&
           @manifest.context_providers.none? { |provider| provider.cmd.include?(file) }
       end
 

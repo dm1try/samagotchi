@@ -131,6 +131,17 @@ RSpec.describe Samagotchi::InstalledBundles::Manifest do
       expect(manifest.block_renderers.map(&:to_h)).to eq([{ "lang" => "mermaid", "load" => ["draw.js"] }])
     end
 
+    it "reads pages: from the kept manifest only: the record never mirrors it" do
+      yml = "name: b\nversion: 1.0.0\nscripts:\n  schedules.rb: sha256:dd\npages: [schedules.rb]\n"
+      recorded = { "version" => "1.0.0", "scripts" => { "schedules.rb" => { "sha256" => "sha256:dd" } } }
+      expect(kept_bundle(recorded, yml).manifest).to have_attributes(origin: :kept, pages: ["schedules.rb"], problems: {})
+      expect(kept_bundle(recorded, yml).manifest).to be_pages
+      expect(kept_bundle(recorded.merge("pages" => ["schedules.rb"]), nil).manifest).to have_attributes(origin: :record, pages: [])
+      bad = kept_bundle(recorded, "name: b\nversion: 1.0.0\nscripts:\n  schedules.rb: sha256:dd\npages: [gone.rb]\n").manifest
+      expect(bad.pages).to eq([])
+      expect(bad.problems["pages"]).to eq("pages: gone.rb isn't under scripts:")
+    end
+
     it "reads the record's mirror when no manifest.yml is kept, when its sha isn't recorded, and when it changed" do
       none = kept_bundle(recorded, nil).manifest
       expect(none).to have_attributes(origin: :record, problems: {}, block_renderers: [])

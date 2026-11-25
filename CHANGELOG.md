@@ -14,6 +14,13 @@ and commands may change between minor versions. How releases are made:
   enable and disable), each with its reason and session; `list --format json` has them as `history`.
 - `chi schedule edit ID` changes a schedule in place: its title, prompt, recurrence, catch-up or budgets (only the
   flags given), keeping its id, session, mode and counters ([docs/cli.md](docs/cli.md#durable-schedules-chi-schedule)).
+- The schedules bundle (`chi bundle install schedules`): a Schedules page in chi web (`#/p/schedules`): every
+  schedule, why one is off and the `chi schedule enable ID` that turns it on, and the recent runs; read-only
+  ([docs/scheduling.md](docs/scheduling.md#the-schedules-page)).
+- Page scripts get `runtime.schedules`: the schedules read in chi itself, no `chi` command
+  ([docs/pages.md](docs/pages.md#reading-chis-data-runtime)). A bundle can ship pages (the manifest's `pages:`); your
+  own `NAME.rb` replaces a bundle's page, and `chi page rm` refuses one ([docs/pages.md](docs/pages.md#pages-from-a-bundle)).
+- `chi schedule list --format json` gives each schedule's `name`, `state` (on, firing, off) and `off_reason`.
 
 ### Changed
 

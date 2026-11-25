@@ -27,8 +27,9 @@ RSpec.describe "The shipped bundle profiles" do
     expect(metas["core"].includes).to eq(%w[loop-guard check-in guardrails slow-commands agents-md cost-cap work-cap])
   end
 
-  # Bundles no profile installs: they need a service the user runs (web-search: a SearXNG).
-  in_no_profile = %w[web-search]
+  # Bundles no profile installs: they need a service the user runs (web-search: a SearXNG), or
+  # they are a page the user opts into (schedules).
+  in_no_profile = %w[schedules web-search]
 
   it "puts every shipped bundle but the system bundle, the profiles and the ones in no profile in exactly one profile" do
     members = metas.values.flat_map(&:includes)

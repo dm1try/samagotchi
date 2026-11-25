@@ -228,6 +228,7 @@ module Samagotchi
           scripts: parts.scripts.transform_values { |src| InstalledBundles::FileDigest.sha256(src) },
           context_providers: parts.context_providers,
           block_renderers: parts.block_renderers,
+          pages: manifest&.pages || [],
           file_descriptions: manifest ? manifest.file_descriptions.slice(*files_map.keys) : {},
           session_settings: manifest&.session_settings || [],
           session_setting_types: manifest&.session_setting_types || {},

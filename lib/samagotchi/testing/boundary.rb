@@ -115,6 +115,19 @@ module Samagotchi
           "Samagotchi::ProjectEnv.respond_to?" => "checks the worker has ProjectEnv.spawn_env (an older chi doesn't)",
           "Samagotchi::ProjectEnv.spawn_env" => "starts a server in the session's project env: needs a ctx tools-env API"
         },
+        # The kit has no page runner: the page's spec runs it through chi's own (Pages::Launch).
+        "schedules" => {
+          'require "samagotchi/memory_bundle/installer"' => "spec: installs the bundle as chi does (the page is listed from the record)",
+          "Samagotchi::MemoryBundle::Installer.new" => "spec: installs the bundle as chi does",
+          'require "samagotchi/pages"' => "spec: for Pages",
+          'require "samagotchi/pages/launch"' => "spec: for Pages::Launch",
+          "Samagotchi::Pages::Launch.run" => "spec: a run as chi web's Refresh starts it: a kit page runner could replace it",
+          "Samagotchi::Pages::Store" => "spec: the page as listed and stored",
+          "Samagotchi::Pages.scripts_dir" => "spec: the owner's pages folder stays unmade",
+          "Samagotchi::Pages::MAX_OUTPUT_BYTES" => "spec: the output cap the page stays under",
+          "Samagotchi::Pages::MAX_TEXT_BYTES" => "spec: the text block cap the off and unreadable texts stay under",
+          "Samagotchi::Paths.state_dir" => "spec: where the fixture schedules.json goes"
+        },
         "slow-commands" => {
           'require "samagotchi/guardrails/shell_lex"' => "for ShellLex",
           "Samagotchi::Guardrails::ShellLex" => "splits a command into its parts: needs a stable shell-parsing helper",

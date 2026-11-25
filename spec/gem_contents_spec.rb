@@ -31,7 +31,8 @@ RSpec.describe "The built gem" do
 
   it "ships the code, the executable, the docs, README and LICENSE" do
     expect(files).to include("lib/samagotchi.rb", "bin/chi", "README.md", "LICENSE", "docs/configuration.md",
-                             "lib/samagotchi/bundles/system/manifest.yml", "lib/samagotchi/web/public/index.html")
+                             "lib/samagotchi/bundles/system/manifest.yml", "lib/samagotchi/web/public/index.html",
+                             "lib/samagotchi/bundles/schedules/manifest.yml", "lib/samagotchi/bundles/schedules/scripts/schedules.rb")
     expect(files).to include("CHANGELOG.md") if File.file?(File.join(root, "CHANGELOG.md"))
   end
 

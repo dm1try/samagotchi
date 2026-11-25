@@ -412,7 +412,10 @@ RSpec.describe Samagotchi::BundleManifest do
 
     it "has a floor for every key newer than the first release (v0.2.0, read from git)" do
       first_release = %w[name version scope description files hooks trust_level plugin requires_chi needs]
-      expect(described_class::KEYS - first_release - described_class::SINCE.keys - ["requires_chi_next"]).to eq([])
+      # A key not released yet waits in SINCE's `# Unreleased: "key".` comment (rake release:bump gives it its version).
+      source = File.read(described_class.instance_method(:initialize).source_location.first)
+      unreleased = source.scan(/^\s*# Unreleased\b[^"\n]*:(.*)$/).flatten.flat_map { |names| names.scan(/"([^"]+)"/) }.flatten
+      expect(described_class::KEYS - first_release - described_class::SINCE.keys - unreleased - ["requires_chi_next"]).to eq([])
       expect(described_class::SINCE.keys.reject { |key| described_class::KEYS.include?(key.split(".").first) }).to eq([])
     end
 
@@ -443,6 +446,7 @@ RSpec.describe Samagotchi::BundleManifest do
         "scripts" => { "draw.js" => "sha256:cc" },
         "context_providers" => [{ "match" => "x", "name" => "n", "cmd" => "c" }],
         "block_renderers" => [{ "lang" => "mermaid", "load" => ["draw.js"] }],
+        "pages" => [],
         "session_settings" => ["cap"],
         "settings" => ["greeting"]
       })
@@ -454,6 +458,36 @@ RSpec.describe Samagotchi::BundleManifest do
       expect(described_class.unknown_key_line("card_layouts")).to eq(
         "this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, so it ignores it"
       )
+    end
+
+    describe "pages:" do
+      it "lists page scripts, each a scripts: key named NAME.rb" do
+        manifest = manifest({ "scripts" => { "schedules.rb" => "sha256:aa" }, "pages" => ["schedules.rb"] })
+        expect(manifest.pages).to eq(["schedules.rb"])
+        expect(manifest({}).pages).to eq([])
+      end
+
+      it "refuses a page script that isn't under scripts:, isn't NAME.rb, or comes twice" do
+        scripts = { "schedules.rb" => "sha256:aa", "Bad.rb" => "sha256:bb", "draw.js" => "sha256:cc" }
+        expect { manifest({ "scripts" => scripts, "pages" => ["other.rb"] }) }
+          .to raise_error(described_class::ValidationError, "pages: other.rb isn't under scripts:")
+        expect { manifest({ "scripts" => scripts, "pages" => ["Bad.rb"] }) }
+          .to raise_error(described_class::ValidationError, /pages: "Bad.rb" isn't a page script \(NAME.rb/)
+        expect { manifest({ "scripts" => scripts, "pages" => ["draw.js"] }) }
+          .to raise_error(described_class::ValidationError, /pages: "draw.js" isn't a page script/)
+        expect { manifest({ "scripts" => scripts, "pages" => "schedules.rb" }) }
+          .to raise_error(described_class::ValidationError, /pages: must be a list/)
+        expect { manifest({ "scripts" => scripts, "pages" => ["schedules.rb", "schedules.rb"] }) }
+          .to raise_error(described_class::ValidationError, "pages: schedules.rb listed more than once")
+      end
+
+      it "writes the list back" do
+        Dir.mktmpdir do |dir|
+          described_class.write(dir: dir, name: "b", version: "1.0.0", files: {}, scripts: { "schedules.rb" => "sha256:aa" },
+                                pages: ["schedules.rb"])
+          expect(described_class.read(dir: dir).pages).to eq(["schedules.rb"])
+        end
+      end
     end
 
     describe "#floor_keys" do

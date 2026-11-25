@@ -263,7 +263,7 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(error).to eq("#{tick_warning}\n")
     end
 
-    it "--format json carries the title, and never the quoted prompt stand-in" do
+    it "--format json carries the title as given, the quoted prompt stand-in only as the name" do
       id = session
       titled = schedules.add(target: id, title: "Audit", prompt: "Audit the open PRs", recurrence: every)
       untitled = schedules.add(target: id, prompt: "Check the pod logs, then write a recap", recurrence: every)
@@ -275,7 +275,45 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(rows.find { |row| row["id"] == titled.id }["title"]).to eq("Audit")
       expect(rows.find { |row| row["id"] == untitled.id }["title"]).to be_nil
       expect(rows.find { |row| row["id"] == untitled.id }["prompt"]).to eq("Check the pod logs, then write a recap")
-      expect(rows.flat_map(&:values)).not_to include("\"Check the pod logs, then write…\"")
+      expect(rows.find { |row| row["id"] == untitled.id }["name"]).to eq("\"Check the pod logs, then write…\"")
+      expect(rows.find { |row| row["id"] == titled.id }["name"]).to eq("Audit")
+      expect(rows.flat_map { |row| row.except("name").values }).not_to include("\"Check the pod logs, then write…\"")
+    end
+  end
+
+  # The net under ScheduleDisplay: one store (spec/fixtures/schedules/listing_store.json) with a
+  # schedule in each state a listing tells apart, `list --all` and `list --all --format json`
+  # over it byte for byte, at a fixed clock in UTC. UPDATE_GOLDENS=1 rewrites them after an
+  # intended change; read the diff.
+  describe "list --all over the fixture store (goldens)" do
+    fixtures = File.expand_path("fixtures/schedules", __dir__)
+
+    around do |example|
+      with_env("TZ" => "UTC") { example.run }
+    end
+
+    let(:store) do
+      FileUtils.cp(File.join(fixtures, "listing_store.json"), File.join(File.dirname(@dir), "schedules.json"))
+      Samagotchi::Schedules.new(state_dir: @dir, clock: -> { Time.utc(2026, 11, 25, 12, 0, 0) })
+    end
+
+    def golden(name, actual)
+      path = File.join(File.expand_path("fixtures/schedules", __dir__), name)
+      File.write(path, actual) if ENV["UPDATE_GOLDENS"]
+      expect(actual).to eq(File.read(path)), "#{name} changed: UPDATE_GOLDENS=1 rewrites it after an intended change"
+    end
+
+    it "prints the text listing as before" do
+      status, printed, error = run("list", "--all", store: store)
+      expect([status, error]).to eq([0, ""])
+      golden("list_all.txt", printed)
+    end
+
+    it "prints the JSON listing as before, the tick warning on stderr" do
+      status, printed, error = run("list", "--all", "--format", "json", store: store)
+      expect(status).to eq(0)
+      expect(error).to eq("#{tick_warning}\n")
+      golden("list_all.json", printed)
     end
   end
 

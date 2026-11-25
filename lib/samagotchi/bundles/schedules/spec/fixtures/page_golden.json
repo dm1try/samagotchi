@@ -1,0 +1,313 @@
+[
+  {
+    "type": "text",
+    "text": "10 schedules: 1 on, 2 firing, 7 off. Refresh to update.\n\nWarning: no schedule tick in the last 10 minutes; set schedule.auto_tick: true or run `chi schedule tick` from cron."
+  },
+  {
+    "type": "text",
+    "text": "Turned off:\n\n- Dentist — one-off, missed · to run it again: `chi schedule edit a7b8c9d0 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable a7b8c9d0`\n- Quarterly — one-off, done · to run it again: `chi schedule edit b8c9d0e1 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable b8c9d0e1`\n- Release notes — one-off, done · to run it again: `chi schedule edit e5f6a7b8 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable e5f6a7b8`\n- Demo prep — one-off, failed: no outcome · to run it again: `chi schedule edit f6a7b8c9 --date YYYY-MM-DDTHH:MM`, then `chi schedule enable f6a7b8c9`\n- Nightly build — failed 3 times: the session is archived · `chi schedule enable d4e5f6a7`\n- Pod logs — skipped 12 times (≈1 h at a 5 min tick): busy · `chi schedule enable c3d4e5f6`\n- \"Write the weekly recap of the …\" — turned off by you · `chi schedule enable b2c3d4e5`"
+  },
+  {
+    "type": "text",
+    "text": "Can't be read:\n\n- schedule e1f2a3b4 can't be read: `chi schedule cancel e1f2a3b4` removes it\n- 1 schedule with no id can't be read: fix or remove it in schedules.json"
+  },
+  {
+    "type": "text",
+    "text": "Schedules"
+  },
+  {
+    "type": "table",
+    "columns": [
+      {
+        "key": "name",
+        "label": "Name"
+      },
+      {
+        "key": "state",
+        "label": "State",
+        "key_column": true
+      },
+      {
+        "key": "when",
+        "label": "When"
+      },
+      {
+        "key": "next",
+        "label": "Next",
+        "key_column": true
+      },
+      {
+        "key": "last_run",
+        "label": "Last run"
+      },
+      {
+        "key": "last_result",
+        "label": "Last result"
+      },
+      {
+        "key": "skips",
+        "label": "Skips"
+      },
+      {
+        "key": "failures",
+        "label": "Failures"
+      },
+      {
+        "key": "mode",
+        "label": "Mode"
+      },
+      {
+        "key": "id",
+        "label": "ID"
+      }
+    ],
+    "rows": [
+      [
+        "Heartbeat",
+        "on",
+        "every 1h",
+        "2026-11-25 13:00",
+        "2026-11-25 11:00",
+        "continued as 11111111",
+        "2/12",
+        "0/3",
+        "chain",
+        "a1b2c3d4"
+      ],
+      [
+        "Inbox",
+        "firing",
+        "every 2h",
+        "2026-11-25 14:00",
+        "2026-11-25 11:59",
+        null,
+        "0/12",
+        "0/3",
+        "chain",
+        "d0e1f2a3"
+      ],
+      [
+        "Standup",
+        "firing",
+        "2026-11-25 11:50",
+        null,
+        "2026-11-25 11:50",
+        "waiting for turn t-1",
+        "0/12",
+        "0/3",
+        "same",
+        "c9d0e1f2"
+      ],
+      [
+        "Dentist",
+        "missed",
+        "2026-11-20 08:00",
+        null,
+        null,
+        "missed",
+        "0/12",
+        "0/3",
+        "same",
+        "a7b8c9d0"
+      ],
+      [
+        "Quarterly",
+        "done",
+        "2026-11-18 09:00",
+        null,
+        "2026-11-18 09:00",
+        "continued as 88888888",
+        "0/12",
+        "0/3",
+        "chain",
+        "b8c9d0e1"
+      ],
+      [
+        "Release notes",
+        "done",
+        "2026-11-23 15:00",
+        null,
+        "2026-11-23 15:00",
+        "turn completed",
+        "0/12",
+        "0/3",
+        "same",
+        "e5f6a7b8"
+      ],
+      [
+        "Demo prep",
+        "off: failed",
+        "2026-11-22 10:00",
+        null,
+        "2026-11-22 10:00",
+        "no outcome",
+        "0/12",
+        "1/3",
+        "chain",
+        "f6a7b8c9"
+      ],
+      [
+        "Nightly build",
+        "off: 3 failures",
+        "every 1d",
+        "2026-11-24 02:00",
+        null,
+        "the session is archived",
+        "0/12",
+        "3/3",
+        "chain",
+        "d4e5f6a7"
+      ],
+      [
+        "Pod logs",
+        "off: 12 skips",
+        "every 30m",
+        "2026-11-25 08:00",
+        null,
+        "disabled: busy",
+        "12/12",
+        "0/3",
+        "chain",
+        "c3d4e5f6"
+      ],
+      [
+        "\"Write the weekly recap of the …\"",
+        "off: you",
+        "Mon 09:00",
+        "2026-11-30 09:00",
+        null,
+        "disabled",
+        "0/12",
+        "0/3",
+        "same",
+        "b2c3d4e5"
+      ]
+    ],
+    "dropped": 0
+  },
+  {
+    "type": "text",
+    "text": "Recent runs"
+  },
+  {
+    "type": "table",
+    "columns": [
+      {
+        "key": "when",
+        "label": "When"
+      },
+      {
+        "key": "schedule",
+        "label": "Schedule",
+        "key_column": true
+      },
+      {
+        "key": "what",
+        "label": "What",
+        "key_column": true
+      },
+      {
+        "key": "why",
+        "label": "Why"
+      },
+      {
+        "key": "session",
+        "label": "Session"
+      }
+    ],
+    "rows": [
+      [
+        "2026-11-25 11:00",
+        "Heartbeat",
+        "fired",
+        "continued as 11111111",
+        "11111111"
+      ],
+      [
+        "2026-11-25 10:00",
+        "Inbox",
+        "fired",
+        "continued as aaaaaaaa",
+        "aaaaaaaa"
+      ],
+      [
+        "2026-11-25 10:00",
+        "Heartbeat",
+        "skipped",
+        "busy",
+        "11111111"
+      ],
+      [
+        "2026-11-25 08:00",
+        "Pod logs",
+        "skipped",
+        "disabled: busy",
+        "33333333"
+      ],
+      [
+        "2026-11-25 07:30",
+        "Pod logs",
+        "skipped",
+        "busy",
+        "33333333"
+      ],
+      [
+        "2026-11-24 12:00",
+        "\"Write the weekly recap of the …\"",
+        "disabled",
+        null,
+        null
+      ],
+      [
+        "2026-11-24 09:00",
+        "\"Write the weekly recap of the …\"",
+        "fired",
+        "queued",
+        "22222222"
+      ],
+      [
+        "2026-11-24 02:00",
+        "Nightly build",
+        "failed",
+        "disabled: the session is archived",
+        "44444444"
+      ],
+      [
+        "2026-11-23 15:01",
+        "Release notes",
+        "fired",
+        "turn completed",
+        "55555555"
+      ],
+      [
+        "2026-11-22 10:40",
+        "Demo prep",
+        "failed",
+        "no outcome",
+        "66666666"
+      ],
+      [
+        "2026-11-21 08:00",
+        "Dentist",
+        "missed",
+        "past its time",
+        "77777777"
+      ],
+      [
+        "2026-11-19 09:00",
+        "Quarterly",
+        "edited",
+        "title",
+        null
+      ],
+      [
+        "2026-11-18 09:01",
+        "Quarterly",
+        "fired",
+        "continued as 88888888",
+        "88888888"
+      ]
+    ],
+    "dropped": 0
+  }
+]

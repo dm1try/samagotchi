@@ -131,6 +131,20 @@ RSpec.describe "The pages skill" do
     expect(record.keys).to include("completed_at", "model_ref", "cost", "cost_estimate")
   end
 
+  it "names runtime.schedules with members a Schedule has, its rows and warning, and the bundle by its name" do
+    require "samagotchi/pages/runtime"
+    line = text[/^- Schedules: .*?(?=^- |^\n)/m]
+    expect(line).to include("`runtime.schedules`", "`ui.table runtime.schedules.rows, columns: …`", "`.warning`",
+                            "`chi bundle install schedules`", "`script`")
+    members = Samagotchi::Pages::Runtime::SCHEDULE_MEMBERS.map(&:to_s)
+    runs = line[/runs: ([^)]*)\)/, 1].scan(/`([a-z_]+)`/).flatten
+    expect(runs).to match_array(Samagotchi::Pages::Runtime::Run.members.map(&:to_s))
+    expect(line.scan(/`([a-z_]+)`/).flatten - %w[script] - runs - members).to eq([])
+    expect(Samagotchi::Pages::Runtime::ScheduleList.instance_methods).to include(:rows, :warning)
+    shipped = File.expand_path("../lib/samagotchi/bundles/schedules/manifest.yml", __dir__)
+    expect(YAML.load_file(shipped)).to include("name" => "schedules", "pages" => ["schedules.rb"])
+  end
+
   it "runs chi self and pins the flags in its own help" do
     Dir.mktmpdir("pages-self") do |tmp|
       env = { "HOME" => tmp, "XDG_CONFIG_HOME" => File.join(tmp, "config"), "XDG_STATE_HOME" => File.join(tmp, "state") }

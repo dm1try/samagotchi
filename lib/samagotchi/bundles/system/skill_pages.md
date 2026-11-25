@@ -77,8 +77,13 @@ What trips a script:
   fine for a few dozen; group in Ruby). Its `turn_records` are only the newest turn's: for anything per turn
   or per day, read every turn from `<sessions dir>/ID/analytics.json` (`turn_records`: `completed_at`,
   `model_ref`, `cost` as reported, `cost_estimate` from the configured price; either may be missing). `chi self`
-  names the sessions dir. Schedules: `chi schedule list --all --format json`. `json` is loaded; `require`
-  anything else.
+  names the sessions dir. `json` is loaded; `require` anything else.
+- Schedules: `runtime.schedules` in the script reads them in chi itself (no command): each has `id`, `name`,
+  `state` (on, firing, off), `off_reason`, `next_due`, `last_fired`, `last_result`, `skips`, `failures` and
+  `history` (runs: `at`, `status`, `detail`, `session_id`), the keys of `chi schedule list --all --format json`;
+  `ui.table runtime.schedules.rows, columns: …` takes them as rows, and `.warning` says when nothing ticks.
+  For a ready page: `chi bundle install schedules`. To make it your own, copy its script (`chi page list
+  --format json` names it as `script`) to `<the pages folder>/schedules.rb` and change that.
 - Check that a command worked (`status.success?`, `$?.success?`) and `raise` with a plain message when it
   didn't: the page then says why.
 

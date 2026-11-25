@@ -23,13 +23,14 @@ module Samagotchi
     def self.usage(pages_dir: Paths.tilde(Pages.scripts_dir))
       <<~TEXT
         Usage: chi page <run|list|rm> [options]
-          run NAME [--format text|json]   run #{pages_dir}/NAME.rb in a process of its own (in the
+          run NAME [--format text|json]   run #{pages_dir}/NAME.rb (else an installed bundle's page NAME) in a process of its own (in the
                pages folder, cut at #{Pages::TIMEOUT_SECONDS} s with what it started), store what it built and print a summary of
                each block (json: the stored page). A failed run keeps the last good result. Exit 1 when the
                script raised, was stopped or broke a limit, when there is no such page or it is already running.
         list [--format text|json]   every page: its title, when it last ran or failed (and on which line),
-               (never ran), and "changed" when the script changed since the result was made
-        rm NAME   remove a page: its script and its stored result
+               (never ran), "changed" when the script changed since the result was made, and the bundle a page
+               comes with (json: bundle, and script: the path of the script it runs)
+        rm NAME   remove a page: its script and its stored result (a bundle's page stays: uninstall the bundle)
       TEXT
     end
 
@@ -72,7 +73,7 @@ module Samagotchi
       send(:"run_#{@sub}", parsed.options, parsed.args)
     rescue Pages::BadName => e
       usage_error(e.message)
-    rescue Pages::Missing, Pages::Busy => e
+    rescue Pages::Missing, Pages::Busy, Pages::FromBundle => e
       error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
     rescue Interrupt
@@ -188,7 +189,8 @@ module Samagotchi
       pages = Pages::Store.list
       if format == "json"
         @stdout.puts(JSON.generate(pages.map do |page|
-          page.to_json_hash.except("blocks").merge("state" => page.state.to_s, "changed" => page.changed?)
+          page.to_json_hash.except("blocks").merge("state" => page.state.to_s, "changed" => page.changed?,
+                                                   "bundle" => page.bundle, "script" => page.script)
         end))
       elsif pages.empty?
         @stdout.puts("no pages (a page is a script at #{Paths.tilde(Pages.scripts_dir)}/NAME.rb)")
@@ -202,7 +204,8 @@ module Samagotchi
       table = pages.map do |page|
         # A control character (a newline, a tab) in a title would break the row.
         title = page.state == :never_ran ? "(never ran)" : page.title.to_s.gsub(/[[:cntrl:]]+/, " ")
-        [page.name, title, [status(page), ("changed" if page.changed?)].compact.join(", ")]
+        notes = [status(page), ("changed" if page.changed?), ("#{page.bundle} bundle" if page.bundle)]
+        [page.name, title, notes.compact.reject(&:empty?).join(", ")]
       end
       widths = table.transpose.map { |column| column.map(&:length).max }
       table.each do |row|

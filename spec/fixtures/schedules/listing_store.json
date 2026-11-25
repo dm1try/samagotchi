@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-25T11:00:00Z",
+  "last_tick_at": "2026-11-25T10:00:00Z",
+  "schedules": [
+    {
+      "id": "a1b2c3d4", "title": "Heartbeat", "anchor": "11111111-aaaa-4aaa-8aaa-000000000001",
+      "head": "11111111-aaaa-4aaa-8aaa-000000000002", "mode": "chain", "prompt": "Check the open PRs and the CI",
+      "recurrence": {"kind": "every", "interval": "1h"}, "next_due": "2026-11-25T13:00:00Z",
+      "last_fired": "2026-11-25T11:00:00Z", "last_result": "continued as 11111111", "skips": 2, "max_skips": 12,
+      "failures": 0, "max_failures": 3, "enabled": true, "created_at": "2026-11-20T09:00:00Z",
+      "future_key": {"from": "a newer chi"},
+      "history": [
+        {"at": "2026-11-25T10:00:00Z", "status": "skipped", "detail": "busy", "session_id": "11111111-aaaa-4aaa-8aaa-000000000001"},
+        {"at": "2026-11-25T11:00:00Z", "status": "fired", "detail": "continued as 11111111", "session_id": "11111111-aaaa-4aaa-8aaa-000000000002"}
+      ]
+    },
+    {
+      "id": "b2c3d4e5", "anchor": "22222222-bbbb-4bbb-8bbb-000000000001", "mode": "same",
+      "prompt": "Write the weekly recap of the metrics dashboard and post it",
+      "recurrence": {"kind": "weekday", "weekday": 1, "time": "09:00"}, "next_due": "2026-11-30T09:00:00Z",
+      "last_result": "disabled", "enabled": false, "created_at": "2026-11-01T09:00:00Z",
+      "history": [
+        {"at": "2026-11-24T09:00:00Z", "status": "fired", "detail": "queued", "session_id": "22222222-bbbb-4bbb-8bbb-000000000001"},
+        {"at": "2026-11-24T12:00:00Z", "status": "disabled", "detail": null, "session_id": null}
+      ]
+    },
+    {
+      "id": "c3d4e5f6", "title": "Pod logs", "anchor": "33333333-cccc-4ccc-8ccc-000000000001", "mode": "chain",
+      "prompt": "Read the pod logs", "recurrence": {"kind": "every", "interval": "30m"}, "next_due": "2026-11-25T08:00:00Z",
+      "last_result": "disabled: busy", "skips": 12, "max_skips": 12, "enabled": false, "created_at": "2026-11-10T09:00:00Z",
+      "disabled_notice": {"kind": "skipped", "count": 12, "reason": "busy", "at": "2026-11-25T08:00:00Z"},
+      "history": [
+        {"at": "2026-11-25T07:30:00Z", "status": "skipped", "detail": "busy", "session_id": "33333333-cccc-4ccc-8ccc-000000000001"},
+        {"at": "2026-11-25T08:00:00Z", "status": "skipped", "detail": "disabled: busy", "session_id": "33333333-cccc-4ccc-8ccc-000000000001"}
+      ]
+    },
+    {
+      "id": "d4e5f6a7", "title": "Nightly build", "anchor": "44444444-dddd-4ddd-8ddd-000000000001", "mode": "chain",
+      "prompt": "Run the nightly build", "recurrence": {"kind": "every", "interval": "1d"}, "next_due": "2026-11-24T02:00:00Z",
+      "last_result": "the session is archived", "failures": 3, "max_failures": 3, "enabled": false,
+      "created_at": "2026-11-15T02:00:00Z",
+      "history": [
+        {"at": "2026-11-24T02:00:00Z", "status": "failed", "detail": "disabled: the session is archived", "session_id": "44444444-dddd-4ddd-8ddd-000000000001"}
+      ]
+    },
+    {
+      "id": "e5f6a7b8", "title": "Release notes", "anchor": "55555555-eeee-4eee-8eee-000000000001", "mode": "same",
+      "prompt": "Draft the release notes", "recurrence": {"kind": "date", "at": "2026-11-23T15:00:00Z"}, "next_due": null,
+      "last_fired": "2026-11-23T15:00:00Z", "last_result": "turn completed", "enabled": false,
+      "created_at": "2026-11-22T15:00:00Z",
+      "history": [
+        {"at": "2026-11-23T15:01:00Z", "status": "fired", "detail": "turn completed", "session_id": "55555555-eeee-4eee-8eee-000000000001"}
+      ]
+    },
+    {
+      "id": "f6a7b8c9", "title": "Demo prep", "anchor": "66666666-ffff-4fff-8fff-000000000001", "mode": "chain",
+      "prompt": "Prepare the demo", "recurrence": {"kind": "date", "at": "2026-11-22T10:00:00Z"}, "next_due": null,
+      "last_fired": "2026-11-22T10:00:00Z", "last_result": "no outcome", "failures": 1, "max_failures": 3, "enabled": false,
+      "created_at": "2026-11-21T10:00:00Z",
+      "history": [
+        {"at": "2026-11-22T10:40:00Z", "status": "failed", "detail": "no outcome", "session_id": "66666666-ffff-4fff-8fff-000000000001"}
+      ]
+    },
+    {
+      "id": "a7b8c9d0", "title": "Dentist", "anchor": "77777777-aaaa-4aaa-8aaa-000000000001", "mode": "same",
+      "prompt": "Remind me of the dentist", "recurrence": {"kind": "date", "at": "2026-11-20T08:00:00Z"}, "next_due": null,
+      "last_result": "missed", "enabled": false, "created_at": "2026-11-19T08:00:00Z",
+      "history": [
+        {"at": "2026-11-21T08:00:00Z", "status": "missed", "detail": "past its time", "session_id": "77777777-aaaa-4aaa-8aaa-000000000001"}
+      ]
+    },
+    {
+      "id": "b8c9d0e1", "title": "Quarterly", "anchor": "88888888-bbbb-4bbb-8bbb-000000000001", "mode": "chain",
+      "prompt": "Plan the quarter", "recurrence": {"kind": "date", "at": "2026-11-18T09:00:00Z"}, "next_due": null,
+      "last_fired": "2026-11-18T09:00:00Z", "last_result": "continued as 88888888", "enabled": false,
+      "created_at": "2026-11-17T09:00:00Z",
+      "history": [
+        {"at": "2026-11-18T09:01:00Z", "status": "fired", "detail": "continued as 88888888", "session_id": "88888888-bbbb-4bbb-8bbb-000000000002"},
+        {"at": "2026-11-19T09:00:00Z", "status": "edited", "detail": "title", "session_id": null}
+      ]
+    },
+    {
+      "id": "c9d0e1f2", "title": "Standup", "anchor": "99999999-cccc-4ccc-8ccc-000000000001", "mode": "same",
+      "prompt": "Write the standup", "recurrence": {"kind": "date", "at": "2026-11-25T11:50:00Z"}, "next_due": null,
+      "due_was": "2026-11-25T11:50:00Z", "last_fired": "2026-11-25T11:50:00Z", "last_result": "waiting for turn t-1",
+      "firing_since": "2026-11-25T11:50:00Z", "firing_token": "tok-1",
+      "pending_session_id": "99999999-cccc-4ccc-8ccc-000000000001", "pending_turn_id": "t-1", "enabled": false,
+      "created_at": "2026-11-25T11:00:00Z", "history": []
+    },
+    {
+      "id": "d0e1f2a3", "title": "Inbox", "anchor": "aaaaaaaa-dddd-4ddd-8ddd-000000000001", "mode": "chain",
+      "prompt": "Sort the inbox", "recurrence": {"kind": "every", "interval": "2h"}, "next_due": "2026-11-25T14:00:00Z",
+      "due_was": "2026-11-25T12:00:00Z", "last_fired": "2026-11-25T11:59:00Z", "firing_since": "2026-11-25T11:59:00Z",
+      "firing_token": "tok-2", "enabled": true, "created_at": "2026-11-24T08:00:00Z",
+      "history": [
+        {"at": "2026-11-25T10:00:00Z", "status": "fired", "detail": "continued as aaaaaaaa", "session_id": "aaaaaaaa-dddd-4ddd-8ddd-000000000002"}
+      ]
+    },
+    {"id": "e1f2a3b4", "title": "Half written", "mode": "chain"},
+    42
+  ]
+}

@@ -297,40 +297,33 @@ module Samagotchi
     # One `list` row: id, name, mode, recurrence, next due, target head, and the
     # notes (skips, why it is disabled, the last result). +name_width+ is the
     # widest name among the rows printed; without it the name column is just
-    # the name.
+    # the name. "disabled after N" only when that budget is spent: a one-off
+    # whose firing failed (ScheduleDisplay.off_reason "failures") reads
+    # " disabled" here.
     def entry_line(entry, name_width: nil)
       note = ""
-      note += " skips #{entry.skips} of #{entry.max_skips} (#{skip_window(entry)})" if entry.skips.positive?
-      unless entry.enabled
-        note += if entry.last_result == "disabled"
-                  " disabled"
-                elsif entry.skips >= entry.max_skips
-                  " disabled after #{entry.skips} #{entry.skips == 1 ? "skip" : "skips"}"
-                elsif entry.failures >= entry.max_failures
-                  " disabled after #{entry.failures} #{entry.failures == 1 ? "failure" : "failures"}"
-                else
-                  " disabled"
-                end
-      end
+      note += " skips #{entry.skips} of #{entry.max_skips} (#{ScheduleDisplay.skip_window(entry)})" if entry.skips.positive?
+      note += off_note(entry) unless entry.enabled
       note += " last: #{entry.last_result}" if entry.last_result
       "#{entry.id}  #{ScheduleDisplay.name(entry, width: name_width)}  #{entry.mode}  #{entry.recurrence_words}  " \
         "#{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
     end
 
-    # A skip budget as a time window: 3 of 12 at a 5 minute tick is about 1 hour
-    # of patience, which is what the count really measures.
-    def skip_window(entry)
-      minutes = entry.max_skips * Schedules.tick_interval_minutes
-      hours = minutes / 60.0
-      hours >= 1 ? "≈#{(hours * 10).round / 10} h at a #{Schedules.tick_interval_minutes} min tick" : "≈#{minutes} min"
+    def off_note(entry)
+      case ScheduleDisplay.off_reason(entry)
+      when "skips"
+        return " disabled" unless entry.skips >= entry.max_skips
+
+        " disabled after #{entry.skips} #{entry.skips == 1 ? "skip" : "skips"}"
+      when "failures"
+        return " disabled" unless entry.failures >= entry.max_failures
+
+        " disabled after #{entry.failures} #{entry.failures == 1 ? "failure" : "failures"}"
+      else " disabled"
+      end
     end
 
-    def entry_line_json(entry)
-      entry.to_h.transform_keys(&:to_s).merge(
-        "recurrence_words" => entry.recurrence_words,
-        "skip_window" => skip_window(entry)
-      )
-    end
+    def entry_line_json(entry) = ScheduleDisplay.json(entry)
 
     def print_tick_warning(stream = @stdout)
       warning = @schedules.tick_warning

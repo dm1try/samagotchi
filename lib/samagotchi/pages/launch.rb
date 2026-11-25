@@ -54,19 +54,29 @@ module Samagotchi
       # @return [Result]
       def run(name, timeout: TIMEOUT_SECONDS, cancelled: nil)
         Pages.check_name!(name)
-        raise Missing, name unless File.file?(Pages.script_path(name))
+        raise Missing, name unless Pages.exists?(name)
 
         Store.locked(name) do |lock|
           # Again under the lock: a `chi page rm` between the check above and
           # the lock removed the page, so this run writes nothing (not even
           # the lock file it just made).
-          unless File.file?(Pages.script_path(name))
+          unless Pages.exists?(name)
             FileUtils.rm_f(Store.lock_path(name))
             raise Missing, name
           end
+          refusal = Pages.bundled(name)&.refusal
+          next refused(name, refusal) if refusal
 
           launch(name, timeout, lock, cancelled)
         end
+      end
+
+      # A bundle page whose script isn't as installed runs nothing: the run
+      # fails with the refusal's words (Bundled::Page#refusal), the last good
+      # result kept, as any failed run.
+      def refused(name, refusal)
+        Store.record_failure(name, message: refusal, line: nil, script_sha: Store.script_sha(name))
+        Result.new(ok: false, page: Store.read(name), stdout: "", stderr: "", seconds: 0.0)
       end
 
       # The runner's argv: the name, the timeout (for its cut's words) and
@@ -101,6 +111,8 @@ module Samagotchi
 
       def launch(name, timeout, lock, cancelled)
         before = Store.file_id(name)
+        # A bundle's page runs there too: the folder may not exist yet.
+        FileUtils.mkdir_p(Pages.scripts_dir)
         started = monotonic
         out_r, out_w = IO.pipe
         err_r, err_w = IO.pipe

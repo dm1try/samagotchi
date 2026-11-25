@@ -26,18 +26,19 @@ module Samagotchi
       private
 
       # GET /api/pages: {pages: [{name, title, state, ran_at, failed_at,
-      # changed, error_line}]}, by name.
+      # changed, error_line, bundle}]}, by name (+bundle+: the bundle whose
+      # page it is, Pages::Bundled; nil for the owner's own).
       def handle_pages_list(_req)
         rows = Pages::Store.list.map do |page|
           { name: page.name, title: page.title, state: page.state.to_s, ran_at: page.ran_at, failed_at: page.error&.at,
-            changed: page.changed?, error_line: page.error&.line }
+            changed: page.changed?, error_line: page.error&.line, bundle: page.bundle }
         end
         json_response(200, { pages: rows })
       end
 
       # GET /api/pages/NAME: the page as stored (#page_json); 404 page_missing.
       def handle_page_show(_req, name)
-        return page_missing(name) unless Pages.valid_name?(name) && File.file?(Pages.script_path(name))
+        return page_missing(name) unless Pages.valid_name?(name) && Pages.exists?(name)
 
         json_response(200, page_json(Pages::Store.read(name)))
       end
@@ -63,7 +64,8 @@ module Samagotchi
       end
 
       # DELETE /api/pages/NAME: the script and its result. {removed: NAME};
-      # 409 page_busy, 404 page_missing.
+      # 409 page_busy, 409 page_bundled (a bundle's page: Pages::FromBundle),
+      # 404 page_missing.
       def handle_page_delete(_req, name)
         return page_missing(name) unless Pages.valid_name?(name)
 
@@ -73,6 +75,8 @@ module Samagotchi
         error_response(404, "page_missing", e.message)
       rescue Pages::Busy => e
         error_response(409, "page_busy", e.message)
+      rescue Pages::FromBundle => e
+        error_response(409, "page_bundled", e.message)
       end
 
       def page_missing(name) = error_response(404, "page_missing", Pages::Missing.new(name).message)
@@ -80,12 +84,13 @@ module Samagotchi
       # A page for the view. +changed+: the result came from an older script
       # (Stored#changed?); +changed_after_failure+: the script differs from
       # the one that failed, so the view needs no sha. +script_changed_at+:
-      # the script file's mtime. A text block carries +html+ (sanitised)
-      # when Markdown rendering is available.
+      # the script file's mtime. +bundle+: the bundle whose page it is (the
+      # view offers no Delete), nil for the owner's own. A text block carries
+      # +html+ (sanitised) when Markdown rendering is available.
       def page_json(page)
         error = page.error
         { name: page.name, title: page.title, state: page.state.to_s, ran_at: page.ran_at, duration_ms: page.duration_ms,
-          changed: page.changed?,
+          changed: page.changed?, bundle: page.bundle,
           changed_after_failure: !error.nil? && !error.script_sha.nil? && !page.current_sha.nil? &&
             error.script_sha != page.current_sha,
           script_changed_at: script_mtime(page.name),

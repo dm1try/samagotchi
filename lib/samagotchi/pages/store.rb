@@ -37,21 +37,28 @@ module Samagotchi
                               at: string(error["at"]), script_sha: string(error["script_sha"]))
                 end
         ran_at = string(raw["ran_at"])
+        bundled = Pages.bundled(name)
         Stored.new(name: name, title: string(raw["title"]), blocks: ran_at && raw["blocks"].is_a?(Array) ? raw["blocks"] : [],
                    ran_at: ran_at, duration_ms: raw["duration_ms"].is_a?(Numeric) ? raw["duration_ms"] : nil,
-                   script_sha: string(raw["script_sha"]), error: error, current_sha: script_sha(name))
+                   script_sha: string(raw["script_sha"]), error: error, current_sha: script_sha(name),
+                   bundle: bundled&.bundle, script: bundled ? bundled.path : Pages.user_script_path(name))
       end
 
-      # Every script with a valid name, by name; a file whose name breaks
-      # the rule is skipped.
+      # Every page by name: each script with a valid name in the pages
+      # folder (a file whose name breaks the rule is skipped) and each page
+      # an installed bundle ships (Bundled), one per name.
       # @return [Array<Stored>]
       def list
+        (user_names | Pages::Bundled.all.map(&:name)).sort.map { |name| read(name) }
+      end
+
+      def user_names
         return [] unless File.directory?(Pages.scripts_dir)
 
         Dir.children(Pages.scripts_dir).filter_map do |file|
           name = file.delete_suffix(".rb")
           name if file.end_with?(".rb") && Pages.valid_name?(name) && File.file?(File.join(Pages.scripts_dir, file))
-        end.sort.map { |name| read(name) }
+        end
       end
 
       # A good run: its blocks replace the last ones and the error is cleared.
@@ -102,10 +109,16 @@ module Samagotchi
       end
 
       # Deletes NAME's script and output folder under its lock, then the lock.
+      # Only the user's own script (Pages.user_script_path), never a
+      # bundle's: with the user's NAME.rb gone, a bundle page it shadowed is
+      # back, as never ran.
+      # @raise [FromBundle] NAME is a bundle's page (no NAME.rb of the user's)
       # @raise [Missing] no script and no output
       # @raise [Busy] it is running
       def remove(name)
-        script = Pages.script_path(name)
+        script = Pages.user_script_path(name)
+        bundled = Pages.bundled(name)
+        raise FromBundle.new(name, bundled.bundle) if bundled
         raise Missing, name unless File.exist?(script) || File.exist?(output_dir(name))
 
         locked(name) do

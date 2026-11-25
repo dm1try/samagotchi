@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "schedules"
+
 module Samagotchi
   # What a schedule is called when it is listed: `chi schedule list` and the
   # `list_schedules` tool both use this, so a schedule reads the same in the
@@ -27,6 +29,73 @@ module Samagotchi
     # The width of the name column for these entries.
     def self.name_width(entries)
       entries.map { |entry| name(entry) }.map(&:length).max
+    end
+
+    # The history statuses that are outcomes of a firing (HistoryPart): the
+    # owner's enabled/disabled and an edit's rows say nothing of how a
+    # one-off ended.
+    OUTCOMES = %w[fired failed missed skipped].freeze
+
+    # "firing" while a firing is under way (a tick holds it, or its turn is
+    # pending: a one-off is already off then, see Schedules#advance), "on"
+    # when enabled, else "off".
+    # @param entry [Schedules::Entry]
+    def self.state(entry)
+      return "firing" if entry.firing_since || entry.pending_session_id
+
+      entry.enabled ? "on" : "off"
+    end
+
+    # Why an off schedule is off, nil when it isn't (state on or firing):
+    #   "owner"     turned off by `chi schedule disable` (its last result)
+    #   "skips"     its skip budget ran out (max_skips)
+    #   "failures"  its failure budget ran out (max_failures), or a one-off
+    #               whose firing failed
+    #   "done"      a one-off that fired
+    #   "missed"    a one-off whose moment passed unseen
+    #   "off"       none of these (an older file's spent one-off)
+    # A one-off's reason is its last outcome row in the history (OUTCOMES),
+    # never `enabled: false` alone: firing, failing and missing all turn a
+    # one-off off.
+    def self.off_reason(entry)
+      return nil unless state(entry) == "off"
+      return "owner" if entry.last_result == "disabled"
+      return "skips" if entry.skips >= entry.max_skips
+      return "failures" if entry.failures >= entry.max_failures
+      return "off" unless entry.recurrence[:kind] == "date"
+
+      case entry.history.reverse.find { |row| OUTCOMES.include?(row[:status]) }&.dig(:status)
+      when "fired" then "done"
+      when "failed" then "failures"
+      when "missed" then "missed"
+      when "skipped" then "skips"
+      else "off"
+      end
+    end
+
+    # A skip budget as a time window: 3 of 12 at a 5 minute tick is about 1
+    # hour of patience, which is what the count really measures.
+    def self.skip_window(entry)
+      tick = Schedules.tick_interval_minutes
+      minutes = entry.max_skips * tick
+      hours = minutes / 60.0
+      hours >= 1 ? "≈#{(hours * 10).round / 10} h at a #{tick} min tick" : "≈#{minutes} min"
+    end
+
+    # One entry as `chi schedule list --format json` prints it (and
+    # Pages::Runtime reads it): every stored field with its extra keys, then
+    # what a reader needs and would otherwise compute: recurrence_words,
+    # skip_window, name, state, off_reason. Those come last, so an extra key
+    # of the same name (a newer chi's) never shadows them.
+    # @return [Hash{String => Object}]
+    def self.json(entry)
+      entry.to_h.transform_keys(&:to_s).merge(
+        "recurrence_words" => entry.recurrence_words,
+        "skip_window" => skip_window(entry),
+        "name" => name(entry),
+        "state" => state(entry),
+        "off_reason" => off_reason(entry)
+      )
     end
   end
 end

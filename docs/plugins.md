@@ -1737,6 +1737,26 @@ block_renderers:
   side and 100M px. Over that, or if the image doesn't decode, the block stays source. The
   layers and the residual risk are in [internals/block-renderers.md](internals/block-renderers.md).
 
+## Pages
+
+A bundle can ship [pages](pages.md): Ruby scripts the page runner runs, listed under `pages:` (from chi 0.189.0).
+
+```yaml
+# manifest.yml
+scripts:
+  schedules.rb: sha256:…          # scripts/schedules.rb in the bundle
+pages: [schedules.rb]             # scripts: keys named NAME.rb: the page NAME
+```
+
+- Each is a `scripts:` file, so it installs and checks as any script does, and one changed after the install runs
+  nothing until the bundle is reinstalled (a `--dev` install's links aren't checked).
+- chi web lists them from the install records, running no plugin. The first installed bundle (by name) with a page
+  name has it; a bundle whose `requires_chi` this chi doesn't meet has none.
+- The owner's own `NAME.rb` in the pages folder replaces a bundle's page, and a bundle's page can't be removed but
+  by uninstalling the bundle ([Pages from a bundle](pages.md#pages-from-a-bundle)).
+- The script is a page script like any other: `page`, `ui` and `runtime` ([pages.md](pages.md)). The shipped
+  schedules bundle is the example (`lib/samagotchi/bundles/schedules/`).
+
 ## Stable for bundles
 
 Bundles normally use only `chi.*` and `ctx`; the constants, helpers and manifest
@@ -1789,7 +1809,7 @@ that calls it, or for a real external bundle that does. No method on the chance 
 7. **The manifest schema**: the manifest's keys and shapes, as [A bundle with a plugin](#a-bundle-with-a-plugin)
    and [bundles.md](bundles.md) document them — `name`, `version`, `scope`, `description`, `files`, `hooks`,
    `trust_level`, `plugin`, `requires_chi`, `requires_chi_next` (shipped bundles only: the release tooling
-   reads it, chi doesn't), `needs`, `scripts`, `context_providers`, `block_renderers`, `includes`,
+   reads it, chi doesn't), `needs`, `scripts`, `context_providers`, `block_renderers`, `pages`, `includes`,
    `session_settings`, `settings`. Those are `BundleManifest::KEYS`; `BundleManifest::SINCE` is the chi release each
    key or shape first worked in, and the docs don't copy it — the code is its truth.
    - A key keeps its meaning. A new key gets a `SINCE` entry and a CHANGELOG line, and an older chi says
@@ -1801,6 +1821,10 @@ that calls it, or for a real external bundle that does. No method on the chance 
      There is no `api_version:`.
    - `block_renderers:`, the frame's `chi.defineRenderer` and `chi.features` (`regions`: `render` may return
      `{ svg, regions }`) ([Block renderers](#block-renderers)) are part of it. Neither is Ruby, so the scan below doesn't see them.
+   - `pages:` and the page script DSL a bundle's page (or anyone's) is written in: `page`, `ui.text` / `ui.table` /
+     `ui.walk`, and `runtime` with what it returns (`runtime.schedules`: its members, `rows`, `warning`,
+     `unreadable_ids`, `Pages::Runtime::Unreadable`) ([pages.md](pages.md)). A page runs in the page runner, not as a
+     plugin, so the scan below doesn't see it either.
 
 `Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of items 1-6,
 and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle
