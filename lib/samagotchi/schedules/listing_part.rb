@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require_relative "../config"
 
 module Samagotchi
   class Schedules

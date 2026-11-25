@@ -4,11 +4,11 @@ require "yaml"
 require "digest"
 require "fileutils"
 require_relative "context_providers"
+require_relative "pages"
 require_relative "version"
 
 module Samagotchi
   autoload :BlockRenderers, File.expand_path("block_renderers", __dir__)
-  autoload :Pages, File.expand_path("pages", __dir__)
 
   # Parses and validates a bundle manifest.yml.
   #

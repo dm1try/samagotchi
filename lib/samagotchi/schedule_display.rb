@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "schedules"
+
 module Samagotchi
   # What a schedule is called when it is listed: `chi schedule list` and the
   # `list_schedules` tool both use this, so a schedule reads the same in the
