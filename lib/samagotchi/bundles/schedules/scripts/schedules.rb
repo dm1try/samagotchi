@@ -15,6 +15,21 @@ require "time"
 # How many rows each table shows; the rest are counted, not drawn.
 SCHEDULE_ROWS = 100
 RUN_ROWS = 50
+# How many lines the "Turned off" and "Can't be read" texts show, and how
+# much of a name or a reason a line keeps: a text block holds at most 16 KB,
+# and schedule.max_total can be raised.
+TEXT_LINES = 20
+NAME_CHARS = 60
+REASON_CHARS = 80
+
+def cut(text, chars) = text.size > chars ? "#{text[0, chars - 1]}…" : text
+
+# The first TEXT_LINES of +lines+, and a line counting the rest.
+def capped(lines, rest_hint)
+  return lines if lines.size <= TEXT_LINES
+
+  lines.first(TEXT_LINES) + ["- and #{lines.size - TEXT_LINES} more: #{rest_hint}"]
+end
 
 # A time as the page shows it, in this machine's zone; nil for none.
 def clock(iso)
@@ -62,8 +77,8 @@ def last_reason(schedule)
 end
 
 def off_line(schedule)
-  line = "- #{schedule.name} — #{why_off(schedule)}"
-  reason = %w[skips failures].include?(schedule.off_reason) ? last_reason(schedule) : ""
+  line = "- #{cut(schedule.name.to_s, NAME_CHARS)} — #{why_off(schedule)}"
+  reason = %w[skips failures].include?(schedule.off_reason) ? cut(last_reason(schedule), REASON_CHARS) : ""
   line += ": #{reason}" unless reason.empty?
   # A one-off that ran or was missed is over: nothing to turn on.
   line += " · `chi schedule enable #{schedule.id}`" unless %w[done missed].include?(schedule.off_reason)
@@ -71,7 +86,13 @@ def off_line(schedule)
 end
 
 def unreadable_lines(ids)
-  lines = ids.compact.map { |id| "- schedule #{id} can't be read: `chi schedule cancel #{id}` removes it" }
+  lines = ids.compact.map do |id|
+    # An id too long to show can't be given to cancel either.
+    next "- schedule #{cut(id, NAME_CHARS)} can't be read: fix or remove it in schedules.json" if id.size > NAME_CHARS
+
+    "- schedule #{id} can't be read: `chi schedule cancel #{id}` removes it"
+  end
+  lines = capped(lines, "`chi schedule list` names none of them; schedules.json has them")
   nameless = ids.count(nil)
   lines << "- #{plural(nameless, "schedule")} with no id can't be read: fix or remove it in schedules.json" if nameless.positive?
   lines
@@ -91,7 +112,7 @@ page "Schedules" do |ui|
   ui.text [summary, list.warning].compact.join("\n\n")
 
   off = list.entries.select { |schedule| schedule.state == "off" }
-  ui.text "Turned off:\n\n#{off.map { |schedule| off_line(schedule) }.join("\n")}" unless off.empty?
+  ui.text "Turned off:\n\n#{capped(off.map { |schedule| off_line(schedule) }, "`chi schedule list --all`").join("\n")}" unless off.empty?
   ui.text "Can't be read:\n\n#{unreadable_lines(list.unreadable_ids).join("\n")}" unless list.unreadable_ids.empty?
 
   next if list.entries.empty?

@@ -78,6 +78,25 @@ RSpec.describe "The schedules bundle's page", :bundle do
     expect(File.read(store_path)).to eq("{not json")
   end
 
+  it "keeps the off and unreadable texts under a text block's cap: the first lines, then how many more" do
+    data = JSON.parse(File.read(File.join(fixtures, "store.json")))
+    template = data["schedules"].find { |entry| entry.is_a?(Hash) && entry["id"] == "d4e5f6a7" } # off by failures
+    failed = { "at" => "2026-11-24T02:00:00Z", "status" => "failed", "detail" => "disabled: #{"the session is archived " * 9}",
+               "session_id" => template["anchor"] }
+    data["schedules"] = (1..50).map do |i|
+      template.merge("id" => format("%08x", i), "title" => "Nightly build #{i} #{"y" * 90}", "history" => [failed])
+    end + (1..30).map { |i| { "id" => format("bad%05d", i) } }
+    schedules_file(JSON.generate(data))
+    result, blocks = run_page
+    expect(result).to be_ok, result.page.error&.message
+    off = texts(blocks).find { |text| text.start_with?("Turned off:") }
+    unreadable = texts(blocks).find { |text| text.start_with?("Can't be read:") }
+    [off, unreadable].each { |text| expect(text.bytesize).to be < Samagotchi::Pages::MAX_TEXT_BYTES / 4 }
+    expect(off.lines.last).to eq("- and 30 more: `chi schedule list --all`")
+    expect(off.lines[2].size).to be < 260
+    expect(unreadable.lines.last).to start_with("- and 10 more: ")
+  end
+
   it "stays under the output cap with many schedules and their full history: the tables cut and say so" do
     data = JSON.parse(File.read(File.join(fixtures, "store.json")))
     template = data["schedules"].first
