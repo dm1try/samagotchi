@@ -15,18 +15,23 @@ module Samagotchi
 
       # Each argument nil keeps the field; only the fields given change.
       # @param recurrence [Hash, nil] a whole one, from Schedules.recurrence
+      # @param condition [String, :none, nil] the owner's `--if CMD`, :none
+      #   to drop it (`--no-if`); the CLI's only, never a tool's
       # @return [Entry, nil] the entry as edited; nil when no schedule matches
       #   (or it is gone by the time the lock is held)
       # @raise [Usage] nothing to change, a field that is wrong, a duplicate
       #   in the chain
       # @raise [InFlight] a recurrence edit while a firing is in flight
       def edit(id_or_name, title: nil, prompt: nil, recurrence: nil, catch_up: nil, keep_links: nil, max_failures: nil,
-               max_skips: nil)
+               max_skips: nil, condition: nil)
         entry = lookup(id_or_name)
         return nil if entry.nil?
 
         changes = differing(entry, edit_changes(title: title, prompt: prompt, recurrence: recurrence, catch_up: catch_up,
                                                 keep_links: keep_links, max_failures: max_failures, max_skips: max_skips))
+        changes.merge!(condition_change(entry, condition, changes.fetch(:recurrence, entry.recurrence)))
+        # A condition kept, on a recurrence edited to a one-off.
+        refuse_dated_condition!(changes[:recurrence]) if changes.key?(:recurrence) && changes.fetch(:condition, entry.condition)
         raise Usage, "nothing to change" if changes.empty?
 
         # Each duplicate test only on what the edit changes: a clash in a field
@@ -78,8 +83,27 @@ module Samagotchi
       private
 
       # The +changes+ whose value is not +entry+'s already (`--title ""` on
-      # an untitled entry changes nothing).
-      def differing(entry, changes) = changes.reject { |field, value| entry.public_send(field) == value }
+      # an untitled entry changes nothing). A condition is the same when its
+      # command is: a new set_at alone is no change.
+      def differing(entry, changes)
+        changes.reject do |field, value|
+          field == :condition ? same_condition?(entry.condition, value) : entry.public_send(field) == value
+        end
+      end
+
+      def same_condition?(stored, given)
+        return stored.nil? if given.nil?
+
+        stored.is_a?(Hash) && stored[:cmd] == given[:cmd] && stored[:by] == given[:by]
+      end
+
+      # {condition: …} when +condition+ changes it: a command checked as #add
+      # checks it, :none for none; {} for nil (kept) or the same command.
+      def condition_change(entry, condition, recurrence)
+        return {} if condition.nil?
+
+        differing(entry, condition: condition == :none ? nil : condition_for(condition, recurrence))
+      end
 
       # The fields given, checked as #add checks them.
       def edit_changes(title:, prompt:, recurrence:, catch_up:, **budgets)

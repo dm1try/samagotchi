@@ -36,6 +36,7 @@
         "session_id": "77777777-aaaa-4aaa-8aaa-000000000001"
       }
     ],
+    "condition": null,
     "recurrence_words": "2026-11-20 08:00",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Dentist",
@@ -85,6 +86,7 @@
         "session_id": null
       }
     ],
+    "condition": null,
     "recurrence_words": "2026-11-18 09:00",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Quarterly",
@@ -121,6 +123,7 @@
     "created_at": "2026-11-25T11:00:00Z",
     "disabled_notice": null,
     "history": [],
+    "condition": null,
     "recurrence_words": "2026-11-25 11:50",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Standup",
@@ -164,6 +167,7 @@
         "session_id": "55555555-eeee-4eee-8eee-000000000001"
       }
     ],
+    "condition": null,
     "recurrence_words": "2026-11-23 15:00",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Release notes",
@@ -207,6 +211,7 @@
         "session_id": "66666666-ffff-4fff-8fff-000000000001"
       }
     ],
+    "condition": null,
     "recurrence_words": "2026-11-22 10:00",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Demo prep",
@@ -250,6 +255,7 @@
         "session_id": "44444444-dddd-4ddd-8ddd-000000000001"
       }
     ],
+    "condition": null,
     "recurrence_words": "every 1d",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Nightly build",
@@ -304,6 +310,7 @@
         "session_id": "33333333-cccc-4ccc-8ccc-000000000001"
       }
     ],
+    "condition": null,
     "recurrence_words": "every 30m",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Pod logs",
@@ -356,6 +363,7 @@
         "session_id": "11111111-aaaa-4aaa-8aaa-000000000002"
       }
     ],
+    "condition": null,
     "recurrence_words": "every 1h",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Heartbeat",
@@ -399,6 +407,7 @@
         "session_id": "aaaaaaaa-dddd-4ddd-8ddd-000000000002"
       }
     ],
+    "condition": null,
     "recurrence_words": "every 2h",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "Inbox",
@@ -449,6 +458,7 @@
         "session_id": null
       }
     ],
+    "condition": null,
     "recurrence_words": "Mon 09:00",
     "skip_window": "≈1 h at a 5 min tick",
     "name": "\"Write the weekly recap of the …\"",

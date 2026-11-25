@@ -25,6 +25,7 @@ require_relative "state_format"
 require_relative "turn_outcome"
 require_relative "worker_link"
 require_relative "schedules/busy_part"
+require_relative "schedules/condition_part"
 require_relative "schedules/edit_part"
 require_relative "schedules/history_part"
 require_relative "schedules/listing_part"
@@ -58,6 +59,7 @@ module Samagotchi
   # 30 s for a recap and 5 s for an archive, and an `add` must not wait on it.
   class Schedules
     include BusyPart
+    include ConditionPart
     include EditPart
     include HistoryPart
     include ListingPart
@@ -104,14 +106,16 @@ module Samagotchi
     # the session a same-mode turn was queued into. That is what makes
     # keep_links pruning provably safe: everything deleted is behind it.
     # `due_was` is the occurrence the last tick attempted: a skip or a failure
-    # puts the clock back to it.
+    # puts the clock back to it. `condition` is the owner's `--if CMD`
+    # (ConditionPart), nil for none.
     Entry = Data.define(:id, :title, :anchor, :head, :mode, :prompt, :recurrence, :busy, :catch_up,
                         :keep_links, :max_failures, :max_skips, :next_due, :due_was, :last_fired, :last_result,
                         :firing_since, :firing_token, :pending_session_id, :pending_turn_id, :failures, :skips, :enabled,
-                        :created_at, :disabled_notice, :history, :extra) do
+                        :created_at, :disabled_notice, :history, :condition, :extra) do
       # The recurrence comes back from JSON with string keys: every reader of
       # it below matches on `recurrence[:kind]`, so it is symbolised here once
-      # (the disabled notice too, whose fields the claim hands on as is).
+      # (the disabled notice too, whose fields the claim hands on as is; the
+      # condition and its hidden next_due: ConditionPart.stored).
       def self.from_record(record)
         fields = record.attributes
         recurrence = fields[:recurrence]
@@ -119,7 +123,7 @@ module Samagotchi
         notice = fields[:disabled_notice]
         fields[:disabled_notice] = notice.is_a?(Hash) ? notice.transform_keys(&:to_sym) : nil
         fields[:history] = HistoryPart.rows(fields[:history])
-        new(**fields, extra: record.extra)
+        new(**ConditionPart.stored(fields, record.extra))
       end
 
       def to_h
@@ -182,6 +186,8 @@ module Samagotchi
         StateFormat.added(:disabled_notice, in_version: VERSION, default: nil),
         # The last outcomes, newest last (HistoryPart).
         StateFormat.added(:history, in_version: VERSION, default: []),
+        # {cmd:, by: "cli", set_at:}: the owner's `--if CMD` (ConditionPart).
+        StateFormat.added(:condition, in_version: VERSION, default: nil),
         StateFormat.extra(:extra, in_version: VERSION)
       ],
       document_members: [StateFormat.added(:last_tick_at, in_version: VERSION, default: nil)]
@@ -255,10 +261,14 @@ module Samagotchi
     # @return [Entry]
     # @raise [Usage] the add is wrong
     # @raise [Session::NotFound, Session::AmbiguousId] no such session
+    # +condition+ is the owner's `--if CMD` (ConditionPart): the CLI's only,
+    # never a tool's.
     def add(target:, prompt:, recurrence:, title: nil, mode: CHAIN, catch_up: nil, keep_links: nil,
-            max_failures: nil, max_skips: nil)
+            max_failures: nil, max_skips: nil, condition: nil)
       raise Usage, "a schedule needs a session to run against" if target.to_s.strip.empty?
       raise Usage, "mode must be one of #{MODES.join(", ")}" unless MODES.include?(mode)
+
+      condition = condition.nil? ? nil : condition_for(condition, recurrence)
 
       given_catch_up = catch_up.nil? || catch_up.to_s.strip.empty? ? Config.get("schedule.default_catch_up") : catch_up.to_s.strip
       validate_catch_up!(given_catch_up)
@@ -294,7 +304,7 @@ module Samagotchi
         next_due: next_due_for(recurrence, from: now).utc.iso8601, due_was: nil,
         last_fired: nil, last_result: nil, firing_since: nil, firing_token: nil, pending_session_id: nil,
         pending_turn_id: nil, failures: 0, skips: 0, enabled: true, created_at: now.utc.iso8601,
-        disabled_notice: nil, history: [], extra: {}
+        disabled_notice: nil, history: [], condition: condition, extra: {}
       )
       write_under_lock { |file| file.entries << entry }
       entry
@@ -548,7 +558,9 @@ module Samagotchi
     def write(file:)
       FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
-      body = FORMAT.write(file, collection: "schedules", updated_at: Time.now.utc.iso8601)
+      # A copy (callers keep file.entries); ConditionPart#hide_next_due.
+      stored = file.with(entries: file.entries.map { |entry| entry.is_a?(Entry) ? hide_next_due(entry) : entry })
+      body = FORMAT.write(stored, collection: "schedules", updated_at: Time.now.utc.iso8601)
       AtomicFile.write(path, "#{JSON.pretty_generate(body)}\n")
     end
 

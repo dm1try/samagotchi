@@ -68,7 +68,7 @@ RSpec.describe Samagotchi::Pages::Runtime do
         end
       end
       bookkeeping = %w[recurrence busy catch_up keep_links due_was firing_since firing_token pending_session_id pending_turn_id
-                       disabled_notice]
+                       disabled_notice condition]
       expect(cli.flat_map(&:keys).uniq - described_class::SCHEDULE_MEMBERS.map(&:to_s) - ["future_key"]).to match_array(bookkeeping)
     end
 
