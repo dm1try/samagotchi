@@ -37,7 +37,9 @@ each usable `InstalledBundles.standings` record's `manifest.pages` (`InstalledBu
 `manifest.yml` only, never the record's mirror, since a key a later manifest gains is never mirrored), the first
 bundle by name winning a name; an unreadable or too-new bundle ships none. `Page#refusal` is
 `InstalledBundles::Dir#file_refusal(:scripts, …)` against the recorded sha: `Launch.run` checks it under the lock and,
-on one, records it as the run's failure and starts nothing. A bundle page's run loads `installed_bundles.rb` in the
+on one, records it as the run's failure and starts nothing. A bundle page whose installed script is gone is still
+a page (`Pages.exists?`, which `Launch.run` and `GET /api/pages/NAME` ask): its run fails with the `file_missing`
+refusal, not "no page". A bundle page's run loads `installed_bundles.rb` in the
 runner too (its `Pages.script_path`), accepted: the shipped one loads the schedules anyway.
 
 ## The one launch path

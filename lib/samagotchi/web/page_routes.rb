@@ -38,7 +38,7 @@ module Samagotchi
 
       # GET /api/pages/NAME: the page as stored (#page_json); 404 page_missing.
       def handle_page_show(_req, name)
-        return page_missing(name) unless Pages.valid_name?(name) && File.file?(Pages.script_path(name))
+        return page_missing(name) unless Pages.valid_name?(name) && Pages.exists?(name)
 
         json_response(200, page_json(Pages::Store.read(name)))
       end

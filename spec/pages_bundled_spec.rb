@@ -73,6 +73,17 @@ RSpec.describe Samagotchi::Pages::Bundled do
     expect(result.page.blocks).to eq([])
   end
 
+  it "runs nothing when the bundle's script is gone: the run fails with the same refusal, not \"no page\"" do
+    scripts = install_page_bundle
+    FileUtils.rm_f(File.join(scripts, "board.rb"))
+    expect(store.list.map(&:name)).to eq(["board"])
+    expect(pages.exists?("board")).to be(true)
+    result = Samagotchi::Pages::Launch.run("board")
+    expect(result).not_to be_ok
+    expect(result.page.error.message).to eq("bundle pager's scripts/board.rb is missing (reinstall the bundle)")
+    expect(pages.exists?("nope")).to be(false)
+  end
+
   it "lists none from a bundle this chi is too old for" do
     install_page_bundle(requires_chi: ">= 999.0.0", force: true)
     expect(described_class.all).to eq([])

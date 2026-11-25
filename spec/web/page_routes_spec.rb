@@ -222,5 +222,14 @@ RSpec.describe Samagotchi::Web::App, "pages" do
       expect(body["detail"]).to start_with("page board comes with the pager bundle: uninstall the bundle or write your own ")
       expect(File.file?(File.join(scripts, "board.rb"))).to be(true)
     end
+
+    it "is shown, and its Refresh fails with the bundle's refusal, when its installed script is gone" do
+      scripts = install_page_bundle
+      FileUtils.rm_f(File.join(scripts, "board.rb"))
+      expect(call("/api/pages/board").first).to eq(200)
+      status, body = call("/api/pages/board/run", method: "POST")
+      expect([status, body["state"], body.dig("error", "message")])
+        .to eq([200, "failed", "bundle pager's scripts/board.rb is missing (reinstall the bundle)"])
+    end
   end
 end

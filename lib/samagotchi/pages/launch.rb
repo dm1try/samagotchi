@@ -54,13 +54,13 @@ module Samagotchi
       # @return [Result]
       def run(name, timeout: TIMEOUT_SECONDS, cancelled: nil)
         Pages.check_name!(name)
-        raise Missing, name unless File.file?(Pages.script_path(name))
+        raise Missing, name unless Pages.exists?(name)
 
         Store.locked(name) do |lock|
           # Again under the lock: a `chi page rm` between the check above and
           # the lock removed the page, so this run writes nothing (not even
           # the lock file it just made).
-          unless File.file?(Pages.script_path(name))
+          unless Pages.exists?(name)
             FileUtils.rm_f(Store.lock_path(name))
             raise Missing, name
           end

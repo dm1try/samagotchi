@@ -146,6 +146,11 @@ module Samagotchi
       Bundled.find(name)&.path || user
     end
 
+    # Whether NAME is a page: a script of the user's, or a bundle's page,
+    # even one whose installed script is gone (its run then fails with the
+    # bundle's refusal, Bundled::Page#refusal, rather than "no page").
+    def exists?(name) = File.file?(script_path(name)) || !bundled(name).nil?
+
     # The bundle page NAME runs, nil when the user's NAME.rb shadows it or no
     # bundle ships one.
     # @return [Bundled::Page, nil]
