@@ -5,8 +5,7 @@ scope: system
 description: "A Schedules page in chi web (#/p/schedules, chi page run schedules): every durable schedule, why one is off and how to turn it on, and the recent runs; read-only"
 trust_level: reviewed
 # pages: and runtime.schedules are new in the next chi (release:bump sets the floor)
-requires_chi: ">= 0.188.0"
-requires_chi_next: true
+requires_chi: ">= 0.189.0"
 scripts:
   schedules.rb: sha256:95d3623bd112a88b49975b45a32d16781eb069eeebb7e5c4bf62ad82ac949ec3
 pages: [schedules.rb]

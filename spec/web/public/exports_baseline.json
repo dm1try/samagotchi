@@ -801,6 +801,19 @@
     "pageCardMeta",
     "pagesGroupTemplate"
   ],
+  "pages_list.js": [
+    "PAGES_HASH",
+    "createPagesList",
+    "pageCardMeta",
+    "pagesListOpen",
+    "pagesListTemplate"
+  ],
+  "pages_model.js": [
+    "createPagesModel"
+  ],
+  "pages_wiring.js": [
+    "wirePages"
+  ],
   "pan_zoom.js": [
     "BAR_ROOM",
     "FIT_PAD",

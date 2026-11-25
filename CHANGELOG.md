@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.189.0] - 2026-11-25
+
 ### Added
 
 - `chi schedule show ID` lists the schedule's last 20 outcomes, newest first (fired, skipped, failed, missed, your
@@ -43,6 +45,8 @@ and commands may change between minor versions. How releases are made:
   doesn't read, the refusal names it and `chi schedule cancel <id>` removes it. A missing file is still no schedules.
 - chi web: when a claim is shown while the Pages list or a page is open, the address bar no longer jumps to the
   session's hash: Back or a Reload now returns you to the page instead of to the session.
+
+Update with `chi update` (the new schedules bundle: `chi bundle install schedules`).
 
 ## [0.188.0] - 2026-11-24
 
@@ -6914,7 +6918,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.188.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.189.0...HEAD
+[0.189.0]: https://github.com/dm1try/samagotchi/compare/v0.188.0...v0.189.0
 [0.188.0]: https://github.com/dm1try/samagotchi/compare/v0.187.0...v0.188.0
 [0.187.0]: https://github.com/dm1try/samagotchi/compare/v0.186.0...v0.187.0
 [0.186.0]: https://github.com/dm1try/samagotchi/compare/v0.185.0...v0.186.0
