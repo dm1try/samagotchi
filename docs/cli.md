@@ -477,7 +477,10 @@ widest name among the rows printed, so the columns after it line up. `--format j
 carries `title` as it is stored (`null` with no title) and the whole `prompt`, and the
 quoted stand-in only as `name`; with it `state` (`on`, `firing`, `off`) and `off_reason`
 ([scheduling.md](scheduling.md#skip-not-failure)). The `list_schedules` tool names a
-schedule the same way.
+schedule the same way. An entry of `schedules.json` that doesn't read isn't a row: one line
+after the rows counts them and names the first five ids, "2 schedules can't be read (e1f2a3b4,
+…): chi schedule cancel ID removes one" (one with no id: "fix or remove it in schedules.json");
+under `--format json` that line goes to stderr and stdout stays the JSON list.
 
 `add` needs a target (`--session ID`, or `--continues ID` for the same session)
 and exactly one recurrence kind — `--every 45m|2h|1d`, `--weekday 1..7` with

@@ -213,18 +213,22 @@ module Samagotchi
       return refused if refused
 
       entries = @schedules.entries(include_disabled: @opts[:include_disabled] ? true : false)
+      unreadable = unreadable_line
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate(entries.map { |entry| entry_line_json(entry) }))
+        @stderr.puts(unreadable) if unreadable
         print_tick_warning(@stderr)
         return CLI::Exit::OK
       end
       if entries.empty?
         @stdout.puts("no schedules")
+        @stdout.puts(unreadable) if unreadable
         print_tick_warning
         return CLI::Exit::OK
       end
       name_width = ScheduleDisplay.name_width(entries)
       entries.each { |entry| @stdout.puts(entry_line(entry, name_width: name_width)) }
+      @stdout.puts(unreadable) if unreadable
       print_tick_warning
       CLI::Exit::OK
     end
@@ -369,6 +373,30 @@ module Samagotchi
     end
 
     def entry_line_json(entry) = ScheduleDisplay.json(entry)
+
+    # The entries of schedules.json that don't read, which list leaves out:
+    # one line naming them and the way out (Schedules#cancel takes one by its
+    # id, #cancel_unreadable), nil when there are none. A file that isn't
+    # JSON lists as no schedules, as before.
+    UNREADABLE_IDS_SHOWN = 5
+
+    def unreadable_line
+      ids = @schedules.listing.unreadable_ids
+      named = ids.compact
+      nameless = ids.size - named.size
+      parts = []
+      unless named.empty?
+        shown = named.first(UNREADABLE_IDS_SHOWN).join(", ")
+        shown += ", …" if named.size > UNREADABLE_IDS_SHOWN
+        parts << "#{plural(named.size, "schedule")} can't be read (#{shown}): chi schedule cancel ID removes one"
+      end
+      parts << "#{plural(nameless, "schedule")} with no id can't be read: fix or remove it in schedules.json" if nameless.positive?
+      parts.empty? ? nil : parts.join("; ")
+    rescue Schedules::Corrupt
+      nil
+    end
+
+    def plural(count, word) = "#{count} #{word}#{"s" unless count == 1}"
 
     def print_tick_warning(stream = @stdout)
       warning = @schedules.tick_warning

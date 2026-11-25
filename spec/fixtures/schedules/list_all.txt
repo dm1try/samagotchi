@@ -8,4 +8,5 @@ c3d4e5f6  Pod logs                           chain  every 30m  2026-11-25 08:00 
 a1b2c3d4  Heartbeat                          chain  every 1h  2026-11-25 13:00  11111111 skips 2 of 12 (≈1 h at a 5 min tick) if: $HOME/.local/bin/coord-pane ga… last: continued as 11111111
 d0e1f2a3  Inbox                              chain  every 2h  2026-11-25 14:00  aaaaaaaa
 b2c3d4e5  "Write the weekly recap of the …"  same  Mon 09:00  2026-11-30 09:00  22222222 disabled last: disabled
+1 schedule can't be read (e1f2a3b4): chi schedule cancel ID removes one; 1 schedule with no id can't be read: fix or remove it in schedules.json
 Warning: no schedule tick in the last 10 minutes; set schedule.auto_tick: true or run `chi schedule tick` from cron.

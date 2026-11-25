@@ -367,6 +367,11 @@ RSpec.describe Samagotchi::ScheduleCommand do
       Samagotchi::Schedules.new(state_dir: @dir, clock: -> { Time.utc(2026, 11, 25, 12, 0, 0) })
     end
 
+    let(:unreadable) do
+      "1 schedule can't be read (e1f2a3b4): chi schedule cancel ID removes one; " \
+        "1 schedule with no id can't be read: fix or remove it in schedules.json"
+    end
+
     def golden(name, actual)
       path = File.join(File.expand_path("fixtures/schedules", __dir__), name)
       File.write(path, actual) if ENV["UPDATE_GOLDENS"]
@@ -379,11 +384,37 @@ RSpec.describe Samagotchi::ScheduleCommand do
       golden("list_all.txt", printed)
     end
 
-    it "prints the JSON listing as before, the tick warning on stderr" do
+    it "prints the JSON listing as before, the unreadable entries' line and the tick warning on stderr" do
       status, printed, error = run("list", "--all", "--format", "json", store: store)
       expect(status).to eq(0)
-      expect(error).to eq("#{tick_warning}\n")
+      expect(error).to eq("#{unreadable}\n#{tick_warning}\n")
       golden("list_all.json", printed)
+    end
+  end
+
+  describe "list with entries that don't read" do
+    def store_with(ids)
+      entry = schedules.add(target: session, prompt: "Check", recurrence: hourly)
+      data = JSON.parse(File.read(schedules.path))
+      ids.each { |id| data["schedules"] << { "id" => id, "anchor" => entry.anchor }.compact }
+      File.write(schedules.path, JSON.generate(data))
+    end
+
+    it "names them, the first five, in one line after the rows, and says nothing when all read" do
+      expect(run("list")[1]).not_to include("can't be read")
+      store_with(%w[a1 a2 a3 a4 a5 a6])
+      printed = run("list")[1]
+      expect(printed.lines[1]).to eq("6 schedules can't be read (a1, a2, a3, a4, a5, …): chi schedule cancel ID removes one\n")
+      expect(run("cancel", "a6")[0]).to eq(0)
+      expect(run("list")[1]).to include("5 schedules can't be read (a1, a2, a3, a4, a5): ")
+    end
+
+    it "says it under no schedules too, and lists a file that isn't JSON as no schedules, as before" do
+      store_with(["a1"])
+      schedules.cancel(schedules.entries.first.id)
+      expect(run("list")[1].lines.first(2)).to eq(["no schedules\n", "1 schedule can't be read (a1): chi schedule cancel ID removes one\n"])
+      File.write(schedules.path, "{not json")
+      expect(run("list")[1].lines.first).to eq("no schedules\n")
     end
   end
 
