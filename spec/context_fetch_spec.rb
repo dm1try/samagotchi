@@ -159,6 +159,26 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(run.error).to eq("exit 3: END")
   end
 
+  # Run#status (a schedule's condition tells its exit codes apart): only a
+  # command that ended on its own within the cap has one, so a TERM trap's
+  # exit 0 after a timeout, or exit 0 after too much output, is no pass.
+  describe "Run#status" do
+    def run(cmd, timeout: 5) = described_class.run_command(cmd, cwd: work, env: {}, timeout: timeout, cancelled: -> { false })
+
+    it "is the status of a command that ended on its own, 0 or not" do
+      expect(run("exit 0").status.exitstatus).to eq(0)
+      expect(run("exit 3")).to have_attributes(error: "exit 3")
+      expect(run("exit 3").status.exitstatus).to eq(3)
+    end
+
+    it "is nil for a timed-out command that traps TERM and exits 0, and for one over the cap that exits 0" do
+      trapped = run("trap 'exit 0' TERM; sleep 20 & wait", timeout: 0.3)
+      expect([trapped.status, trapped.error]).to eq([nil, "timed out after 0 s"])
+      over = run("head -c #{Samagotchi::ContextSources::TEXT_MAX_BYTES + 10_000} /dev/zero | tr '\\0' x; exit 0")
+      expect([over.status, over.error]).to eq([nil, "it printed more than 1 MiB"])
+    end
+  end
+
   it "refuses more than 1 MiB of output" do
     outcome = fetch(source("yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -c 2000000"))
     expect(outcome.error).to eq("it printed more than 1 MiB")

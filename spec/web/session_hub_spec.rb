@@ -865,6 +865,18 @@ RSpec.describe Samagotchi::Web::SessionHub do
       stopper&.join
     end
 
+    # A condition's CMD (Schedules::ConditionPart) is killed when chi web stops.
+    it "hands the tick a cancel that turns true once the hub stops" do
+      hub, schedules = hub_with(true)
+      cancel = nil
+      allow(schedules).to receive(:tick) { |now:, cancelled:| cancel = cancelled }
+
+      hub.send(:run_schedule_tick)
+      expect(cancel.call).to be(false)
+      hub.stop
+      expect(cancel.call).to be(true)
+    end
+
     # A schedule some ticker (cron, run-now) turned off by its budget: the
     # notice it left in schedules.json, as Schedules#skipped writes it.
     def disabled_by_cron(title: "Heartbeat", at: Time.now.utc)

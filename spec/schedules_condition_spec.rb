@@ -5,6 +5,9 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/schedules"
 
+# A Process::Status as a condition runner hands it back.
+ConditionSpecStatus = Struct.new(:exitstatus)
+
 # A schedule's condition (`--if CMD`, Schedules::ConditionPart,
 # docs/scheduling.md "Conditions (--if)"): the store and its compat codec.
 RSpec.describe Samagotchi::Schedules::ConditionPart do
@@ -161,5 +164,220 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
     expect(schedules.lookup(entry.id).condition).to eq("exit 0")
     schedules.edit(entry.id, title: "Gate")
     expect(raw_entry(schedules, entry.id)).to include("next_due" => nil, "condition" => "exit 0")
+  end
+
+  describe "the tick" do
+    # A runner that answers each CMD with +answers+ (cmd → exit code, or a
+    # Run), and records what it was asked.
+    def runner(answers, calls)
+      lambda do |cmd, **options|
+        calls << options.merge(cmd: cmd)
+        answer = answers.fetch(cmd)
+        answer = answer.call(options) if answer.respond_to?(:call)
+        next answer if answer.is_a?(Samagotchi::ContextFetch::Run)
+
+        Samagotchi::ContextFetch::Run.new(output: "busy idle 81s 145K\nmore\n", error: answer.zero? ? nil : "exit #{answer}",
+                                          stderr: "", cancelled: false, status: ConditionSpecStatus.new(answer))
+      end
+    end
+
+    def ticking(answers, calls = [], monotonic: -> { 0.0 })
+      Samagotchi::Schedules.new(state_dir: @dir, clock: -> { now }, condition_runner: runner(answers, calls), monotonic: monotonic)
+    end
+
+    def continued(id)
+      allow(Samagotchi::SessionContinue).to receive(:run).and_return(double(id: id, first_turn_id: "scheduled-turn"))
+    end
+
+    before { require "samagotchi/context_fetch" }
+
+    it "fires on exit 0, running CMD in the target's folder with the schedule's env and the timeout" do
+      calls = []
+      target = session.id
+      schedules = ticking({ "gate" => 0 }, calls)
+      entry = schedules.add(target: target, prompt: "Check", recurrence: every("5m"), title: "Heartbeat", condition: "gate")
+      continued(target)
+
+      tick = schedules.tick(now: now + 300)
+      expect(tick.outcomes.map(&:status)).to eq(%w[pending])
+      expect(Samagotchi::SessionContinue).to have_received(:run).once
+      expect(calls.size).to eq(1)
+      expect(calls.first).to include(cmd: "gate", cwd: Dir.tmpdir, timeout: 30)
+      expect(calls.first[:env]).to include("SAMAGOTCHI_SCHEDULE_ID" => entry.id, "SAMAGOTCHI_SCHEDULE_TITLE" => "Heartbeat",
+                                           "SAMAGOTCHI_SCHEDULE_SESSION" => target, "SAMAGOTCHI_PARENT_SESSION" => nil)
+    end
+
+    it "moves a not-needed entry to its next occurrence and changes nothing else; another of its chain fires" do
+      target = session.id
+      schedules = ticking({ "gate" => 1 })
+      gated = schedules.add(target: target, prompt: "Check", recurrence: every("5m"), condition: "gate")
+      plain = schedules.add(target: target, prompt: "Other", recurrence: every("5m"))
+      continued(target)
+      before = schedules.lookup(gated.id)
+
+      tick = schedules.tick(now: now + 300)
+      expect(tick.outcomes.map { |outcome| [outcome.id, outcome.status] }).to contain_exactly([gated.id, "not-needed"], [plain.id, "pending"])
+      expect(tick.outcomes.find { |outcome| outcome.id == gated.id }.detail).to eq("exit 1: busy idle 81s 145K")
+      after = schedules.lookup(gated.id)
+      expect(after.next_due).to eq((now + 600).utc.iso8601)
+      expect(after.last_result).to eq("not needed: exit 1: busy idle 81s 145K")
+      expect(after.to_h.except("next_due", "last_result")).to eq(before.to_h.except("next_due", "last_result"))
+      expect(raw_entry(schedules, gated.id)["next_due"]).to be_nil
+      expect(Samagotchi::SessionContinue).to have_received(:run).once
+    end
+
+    it "counts a condition that can't run as a failure, keeping the occurrence, and disables at max_failures" do
+      calls = []
+      schedules = ticking({ "nosuchcmd" => 127 }, calls)
+      entry = schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"), condition: "nosuchcmd")
+
+      first = schedules.tick(now: now + 300).outcomes.first
+      expect([first.status, first.detail]).to eq(["failed", "condition: exit 127"])
+      stored = schedules.lookup(entry.id)
+      expect([stored.failures, stored.next_due, stored.history.last[:status]]).to eq([1, entry.next_due, "failed"])
+
+      schedules.tick(now: now + 360)
+      third = schedules.tick(now: now + 420).outcomes.first
+      expect(third.disabled).to be(true)
+      off = schedules.lookup(entry.id)
+      expect([off.enabled, off.failures, off.disabled_notice[:kind]]).to eq([false, 3, "failed"])
+      expect(calls.size).to eq(3)
+    end
+
+    it "says not needed before the busy check: a busy target spends no skip on an unneeded occurrence" do
+      target = session.id
+      Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(target, state_dir: @dir), prompt: "wait for me")
+      no = ticking({ "no" => 1, "yes" => 0 })
+      quiet = no.add(target: target, prompt: "Quiet", recurrence: every("5m"), condition: "no")
+      busy = no.add(target: target, prompt: "Busy", recurrence: every("5m"), condition: "yes")
+
+      outcomes = no.tick(now: now + 300).outcomes.to_h { |outcome| [outcome.id, outcome.status] }
+      expect(outcomes).to eq(quiet.id => "not-needed", busy.id => "skipped")
+      expect([no.lookup(quiet.id).skips, no.lookup(busy.id).skips]).to eq([0, 1])
+    end
+
+    it "misses a catch_up none entry a whole cycle late, whatever its CMD said" do
+      calls = []
+      schedules = ticking({ "gate" => 0 }, calls)
+      entry = schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"), catch_up: "none", condition: "gate")
+
+      outcome = schedules.tick(now: now + 900).outcomes.first
+      expect(outcome.status).to eq("missed")
+      expect(schedules.lookup(entry.id).next_due).to eq((now + 1200).utc.iso8601)
+      expect(calls.size).to eq(1) # the pre-pass ran it; the main pass missed it first
+    end
+
+    it "runs no CMD on a dry run or a run-now" do
+      calls = []
+      target = session.id
+      schedules = ticking({ "gate" => 1 }, calls)
+      entry = schedules.add(target: target, prompt: "Check", recurrence: every("5m"), condition: "gate")
+      continued(target)
+
+      dry = schedules.tick(dry_run: true, now: now + 300).outcomes.first
+      expect([dry.status, dry.detail]).to eq(["dry", "every 5m · if gate (not run)"])
+      expect(schedules.run_now(entry.id).status).to eq("pending")
+      expect(calls).to be_empty
+    end
+
+    it "leaves an entry whose condition or next_due changed since its CMD ran alone, with no outcome" do
+      schedules = nil
+      entry = nil
+      answers = { "gate" => lambda { |_options|
+        schedules.edit(entry.id, condition: "other")
+        Samagotchi::ContextFetch::Run.new(output: "", error: nil, stderr: "", cancelled: false, status: ConditionSpecStatus.new(0))
+      } }
+      schedules = ticking(answers)
+      entry = schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"), condition: "gate")
+      allow(Samagotchi::SessionContinue).to receive(:run)
+
+      expect(schedules.tick(now: now + 300).outcomes).to eq([])
+      stored = schedules.lookup(entry.id)
+      expect([stored.next_due, stored.failures, stored.condition[:cmd]]).to eq([entry.next_due, 0, "other"])
+      expect(Samagotchi::SessionContinue).not_to have_received(:run)
+    end
+
+    it "fails a condition set by anyone but the CLI, or one that doesn't read, without running it" do
+      calls = []
+      schedules = ticking({}, calls)
+      by = schedules.add(target: session.id, prompt: "One", recurrence: every("5m"), condition: "gate")
+      odd = schedules.add(target: session.id, prompt: "Two", recurrence: every("5m"), condition: "gate")
+      data = raw(schedules)
+      data["schedules"].find { |stored| stored["id"] == by.id }["condition"]["by"] = "model"
+      data["schedules"].find { |stored| stored["id"] == odd.id }["condition"] = "exit 0"
+      File.write(schedules.path, JSON.generate(data))
+
+      outcomes = schedules.tick(now: now + 300).outcomes.to_h { |outcome| [outcome.id, outcome.detail] }
+      expect(outcomes).to eq(by.id => "condition: set by model: this chi runs only one set with chi schedule",
+                             odd.id => "condition: it doesn't read (no command)")
+      expect(calls).to be_empty
+    end
+
+    # H1 (schedules-if.review.md): a firing reserved with the pre-pass's
+    # stale clock would look interrupted to a second ticker 35 s early.
+    it "moves the tick's now on by the time the conditions took" do
+      clock = [100.0]
+      target = session.id
+      answers = { "slow" => lambda { |_options|
+        clock[0] += 35
+        Samagotchi::ContextFetch::Run.new(output: "", error: nil, stderr: "", cancelled: false, status: ConditionSpecStatus.new(0))
+      } }
+      schedules = ticking(answers, monotonic: -> { clock.first })
+      entry = schedules.add(target: target, prompt: "Check", recurrence: every("5m"), condition: "slow")
+      continued(target)
+
+      schedules.tick(now: now + 300)
+      stored = schedules.lookup(entry.id)
+      expect(stored.firing_since).to eq((now + 335).utc.iso8601)
+      expect(stored.next_due).to eq((now + 635).utc.iso8601)
+      expect(raw(schedules)["last_tick_at"]).to eq((now + 335).utc.iso8601)
+    end
+
+    it "keeps now as given when no condition is due" do
+      clock = [100.0]
+      schedules = ticking({}, monotonic: -> { clock[0] += 50 })
+      schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"))
+
+      schedules.tick(now: now + 10)
+      expect(raw(schedules)["last_tick_at"]).to eq((now + 10).utc.iso8601)
+    end
+
+    it "records nothing for a cancelled CMD, and runs no more once cancelled" do
+      calls = []
+      stop = [false]
+      answers = { "gate" => lambda { |_options|
+        stop[0] = true
+        Samagotchi::ContextFetch::Run.new(output: nil, error: nil, stderr: "", cancelled: true)
+      } }
+      schedules = ticking(answers, calls)
+      one = schedules.add(target: session.id, prompt: "One", recurrence: every("5m"), condition: "gate")
+      schedules.add(target: session.id, prompt: "Two", recurrence: every("5m"), condition: "gate")
+
+      expect(schedules.tick(now: now + 300, cancelled: -> { stop.first }).outcomes).to eq([])
+      expect(calls.size).to eq(1)
+      expect(schedules.lookup(one.id)).to have_attributes(next_due: one.next_due, failures: 0)
+    end
+
+    context "with real commands (ContextFetch.run_command)" do
+      def real
+        Samagotchi::Schedules.new(state_dir: @dir, clock: -> { now })
+      end
+
+      it "gives the schedule's env and no parent session, the not-needed detail from stdout" do
+        schedules = real
+        entry = schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"),
+                              condition: 'printf "%s %s\\n" "$SAMAGOTCHI_SCHEDULE_ID" "${SAMAGOTCHI_PARENT_SESSION-unset}"; exit 3')
+        outcome = with_env("SAMAGOTCHI_PARENT_SESSION" => "abc") { schedules.tick(now: now + 300).outcomes.first }
+        expect([outcome.status, outcome.detail]).to eq(["not-needed", "exit 3: #{entry.id} unset"])
+      end
+
+      it "fails a missing command, the shell's words in the detail" do
+        schedules = real
+        schedules.add(target: session.id, prompt: "Check", recurrence: every("5m"), condition: "nosuchcmd-chi-spec")
+        outcome = schedules.tick(now: now + 300).outcomes.first
+        expect(outcome.status).to eq("failed")
+        expect(outcome.detail).to start_with("condition: exit 127: ").and include("nosuchcmd-chi-spec")
+      end
+    end
   end
 end

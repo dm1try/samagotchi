@@ -180,6 +180,8 @@ module Samagotchi
       # What one chain and one machine may hold, so a routine that re-schedules itself cannot multiply its entries.
       Entry.new(key: "schedule.max_per_session",      yaml_path: %w[schedule max_per_session],      type: :integer, default: 10,    expose: %i[env config], lifecycle: :next_cli_run),
       Entry.new(key: "schedule.max_total",            yaml_path: %w[schedule max_total],            type: :integer, default: 50,    expose: %i[env config], lifecycle: :next_cli_run),
+      # How long a schedule's condition (--if CMD) may run before it is killed and counted as a failure (1..300).
+      Entry.new(key: "schedule.condition_timeout_seconds", yaml_path: %w[schedule condition_timeout_seconds], type: :integer, default: 30, expose: %i[env config], lifecycle: :next_cli_run),
 
       # Images sent to a model (ImageStore): the long side they are downscaled
       # to, the most bytes one may take (bigger → re-encoded as jpeg), and how

@@ -404,7 +404,8 @@ module Samagotchi
 
       def run_schedule_tick
         schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
-        schedules.tick(now: Time.now)
+        # Stopping kills a condition's CMD (its process group) and runs no more.
+        schedules.tick(now: Time.now, cancelled: -> { stopped? })
         # Right after the tick, so a turn-off of this tick is pushed now.
         publish_disabled(schedules)
       rescue StandardError => e
