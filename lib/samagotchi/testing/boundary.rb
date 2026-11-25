@@ -125,6 +125,7 @@ module Samagotchi
           "Samagotchi::Pages::Store" => "spec: the page as listed and stored",
           "Samagotchi::Pages.scripts_dir" => "spec: the owner's pages folder stays unmade",
           "Samagotchi::Pages::MAX_OUTPUT_BYTES" => "spec: the output cap the page stays under",
+          "Samagotchi::Pages::MAX_TEXT_BYTES" => "spec: the text block cap the off and unreadable texts stay under",
           "Samagotchi::Paths.state_dir" => "spec: where the fixture schedules.json goes"
         },
         "slow-commands" => {
