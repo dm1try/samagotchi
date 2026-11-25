@@ -9,6 +9,9 @@
 
 require "time"
 
+# The text reads as plain text too (chi web's Markdown is off by default): no
+# headings or bold, only `code` around a command.
+
 # How many rows each table shows; the rest are counted, not drawn.
 SCHEDULE_ROWS = 100
 RUN_ROWS = 50
@@ -59,7 +62,7 @@ def last_reason(schedule)
 end
 
 def off_line(schedule)
-  line = "- **#{schedule.name}** — #{why_off(schedule)}"
+  line = "- #{schedule.name} — #{why_off(schedule)}"
   reason = %w[skips failures].include?(schedule.off_reason) ? last_reason(schedule) : ""
   line += ": #{reason}" unless reason.empty?
   # A one-off that ran or was missed is over: nothing to turn on.
@@ -88,8 +91,8 @@ page "Schedules" do |ui|
   ui.text [summary, list.warning].compact.join("\n\n")
 
   off = list.entries.select { |schedule| schedule.state == "off" }
-  ui.text "### Turned off\n\n#{off.map { |schedule| off_line(schedule) }.join("\n")}" unless off.empty?
-  ui.text "### Can't be read\n\n#{unreadable_lines(list.unreadable_ids).join("\n")}" unless list.unreadable_ids.empty?
+  ui.text "Turned off:\n\n#{off.map { |schedule| off_line(schedule) }.join("\n")}" unless off.empty?
+  ui.text "Can't be read:\n\n#{unreadable_lines(list.unreadable_ids).join("\n")}" unless list.unreadable_ids.empty?
 
   next if list.entries.empty?
 
@@ -102,7 +105,7 @@ page "Schedules" do |ui|
       "mode" => schedule.mode, "id" => schedule.id.to_s[0, 8] }
   end
   more = ordered.size - rows.size
-  ui.text "### Schedules#{"\n\nThe first #{SCHEDULE_ROWS}; #{more} more in `chi schedule list --all`." if more.positive?}"
+  ui.text "Schedules#{"\n\nThe first #{SCHEDULE_ROWS}; #{more} more in `chi schedule list --all`." if more.positive?}"
   ui.table rows, columns: { "name" => "Name", "state" => "State", "when" => "When", "next" => "Next", "last_run" => "Last run",
                             "last_result" => "Last result", "skips" => "Skips", "failures" => "Failures", "mode" => "Mode",
                             "id" => "ID" },
@@ -111,12 +114,12 @@ page "Schedules" do |ui|
   runs = list.entries.flat_map { |schedule| schedule.history.map { |run| [schedule, run] } }
              .sort_by { |_schedule, run| run.at.to_s }.reverse
   if runs.empty?
-    ui.text "### Recent runs\n\nNo runs recorded yet."
+    ui.text "Recent runs\n\nNo runs recorded yet."
     next
   end
 
   shown = runs.first(RUN_ROWS)
-  ui.text "### Recent runs#{"\n\nThe last #{RUN_ROWS} of #{runs.size}; `chi schedule show ID` has each one's." if runs.size > RUN_ROWS}"
+  ui.text "Recent runs#{"\n\nThe last #{RUN_ROWS} of #{runs.size}; `chi schedule show ID` has each one's." if runs.size > RUN_ROWS}"
   ui.table shown.map { |schedule, run|
              { "when" => clock(run.at), "schedule" => schedule.name, "what" => run.status, "why" => run.detail,
                "session" => run.session_id&.slice(0, 8) }

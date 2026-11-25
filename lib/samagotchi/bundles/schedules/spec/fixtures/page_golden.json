@@ -5,15 +5,15 @@
   },
   {
     "type": "text",
-    "text": "### Turned off\n\n- **Dentist** — one-off, missed\n- **Quarterly** — one-off, done\n- **Release notes** — one-off, done\n- **Demo prep** — one-off, failed: no outcome · `chi schedule enable f6a7b8c9`\n- **Nightly build** — failed 3 times: the session is archived · `chi schedule enable d4e5f6a7`\n- **Pod logs** — skipped 12 times (≈1 h at a 5 min tick): busy · `chi schedule enable c3d4e5f6`\n- **\"Write the weekly recap of the …\"** — turned off by you · `chi schedule enable b2c3d4e5`"
+    "text": "Turned off:\n\n- Dentist — one-off, missed\n- Quarterly — one-off, done\n- Release notes — one-off, done\n- Demo prep — one-off, failed: no outcome · `chi schedule enable f6a7b8c9`\n- Nightly build — failed 3 times: the session is archived · `chi schedule enable d4e5f6a7`\n- Pod logs — skipped 12 times (≈1 h at a 5 min tick): busy · `chi schedule enable c3d4e5f6`\n- \"Write the weekly recap of the …\" — turned off by you · `chi schedule enable b2c3d4e5`"
   },
   {
     "type": "text",
-    "text": "### Can't be read\n\n- schedule e1f2a3b4 can't be read: `chi schedule cancel e1f2a3b4` removes it\n- 1 schedule with no id can't be read: fix or remove it in schedules.json"
+    "text": "Can't be read:\n\n- schedule e1f2a3b4 can't be read: `chi schedule cancel e1f2a3b4` removes it\n- 1 schedule with no id can't be read: fix or remove it in schedules.json"
   },
   {
     "type": "text",
-    "text": "### Schedules"
+    "text": "Schedules"
   },
   {
     "type": "table",
@@ -187,7 +187,7 @@
   },
   {
     "type": "text",
-    "text": "### Recent runs"
+    "text": "Recent runs"
   },
   {
     "type": "table",

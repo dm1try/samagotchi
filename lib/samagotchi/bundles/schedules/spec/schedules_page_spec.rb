@@ -93,7 +93,7 @@ RSpec.describe "The schedules bundle's page", :bundle do
     expect(JSON.generate(result.page.to_json_hash).bytesize).to be < Samagotchi::Pages::MAX_OUTPUT_BYTES
     tables = blocks.select { |block| block["type"] == "table" }
     expect(tables.map { |table| table["rows"].size }).to eq([100, 50])
-    expect(texts(blocks)).to include("### Schedules\n\nThe first 100; 20 more in `chi schedule list --all`.",
-                                     "### Recent runs\n\nThe last 50 of 2400; `chi schedule show ID` has each one's.")
+    expect(texts(blocks)).to include("Schedules\n\nThe first 100; 20 more in `chi schedule list --all`.",
+                                     "Recent runs\n\nThe last 50 of 2400; `chi schedule show ID` has each one's.")
   end
 end
