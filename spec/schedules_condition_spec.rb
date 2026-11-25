@@ -342,6 +342,20 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
       expect(raw(schedules)["last_tick_at"]).to eq((now + 10).utc.iso8601)
     end
 
+    it "counts a condition whose run raises as its own failure, and the tick goes on to fire the rest" do
+      target = session.id
+      schedules = ticking({ "gate" => ->(_options) { raise ArgumentError, "string contains null byte" } })
+      gated = schedules.add(target: target, prompt: "Check", recurrence: every("5m"), condition: "gate")
+      plain = schedules.add(target: target, prompt: "Other", recurrence: every("5m"), mode: "same")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+        double(accepted?: true, enqueued_id: "t-1", wake_refused?: false)
+      )
+
+      outcomes = schedules.tick(now: now + 300).outcomes.to_h { |outcome| [outcome.id, [outcome.status, outcome.detail]] }
+      expect(outcomes[gated.id]).to eq(["failed", "condition: couldn't run it: ArgumentError: string contains null byte"])
+      expect(outcomes[plain.id].first).to eq("pending")
+    end
+
     it "records nothing for a cancelled CMD, and runs no more once cancelled" do
       calls = []
       stop = [false]

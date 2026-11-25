@@ -151,6 +151,12 @@ module Samagotchi
         Log.info(:worker, "schedule_condition", id: entry.id, result: kind, detail: detail,
                                                 ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
         condition_result(entry, kind, detail)
+      rescue StandardError => e
+        # A run that blows up (a spawn refusing its env, a session file that
+        # doesn't load) is this entry's failure, never the whole tick's: the
+        # entry stays due, and an abort here would stop every schedule.
+        Log.warn(:worker, "schedule_condition_failed", id: entry.id, error: e.class.name, msg: e.message)
+        condition_result(entry, :error, "couldn't run it: #{e.class}: #{e.message}")
       end
 
       def condition_result(entry, kind, detail)
