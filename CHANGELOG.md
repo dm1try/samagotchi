@@ -41,6 +41,8 @@ and commands may change between minor versions. How releases are made:
   tries again at the next sweep interval) and a delete (`chi sessions delete`, `prune`, the web's, `--remote`) is
   refused with "schedules.json is unreadable (…): fix or remove it before deleting sessions". For one schedule that
   doesn't read, the refusal names it and `chi schedule cancel <id>` removes it. A missing file is still no schedules.
+- chi web: when a claim is shown while the Pages list or a page is open, the address bar no longer jumps to the
+  session's hash: Back or a Reload now returns you to the page instead of to the session.
 
 ## [0.188.0] - 2026-11-24
 

@@ -11,7 +11,7 @@ import { createSessionStore } from "../../../lib/samagotchi/web/public/session_s
 const ID = "d4c5c3af-a814-48dd-a59c-fffa4bc0b094";
 const TURN = "0a1b2c3d-1111-2222-3333-444455556666";
 
-function harness({ target = null, hash = `#/s/${ID}`, allView = false, copies = true } = {}) {
+function harness({ target = null, hash = `#/s/${ID}`, allView = false, pagesArea = false, copies = true } = {}) {
   const historyEl = document.createElement("div");
   historyEl.innerHTML = `<div class="bubble user" data-turn-id="${TURN}"><div class="user-message">Count the files</div></div>
     <div class="bubble output">The count is wrong in a.rb.</div>
@@ -30,7 +30,7 @@ function harness({ target = null, hash = `#/s/${ID}`, allView = false, copies = 
     historyEl, store, claimTarget: () => target,
     toast: (text, action = null, options = {}) => toasts.push({ text, options }),
     copyText: async (text) => { copied.push(text); return copies; },
-    allViewOpen: () => allView, home: "/Users/sam", win,
+    allViewOpen: () => allView, pagesAreaOpen: () => pagesArea, home: "/Users/sam", win,
   });
   const answer = historyEl.querySelector(".bubble.output");
   const rangeOf = (el, from, to) => {
@@ -95,6 +95,25 @@ test("a pending claim shows once its session is open: the quote marked, the hash
   h.answer.classList.remove("claim-hit");
   h.claim.showPending();
   assert.equal(h.answer.classList.contains("claim-hit"), false);
+  h.historyEl.remove();
+});
+
+test("a pending claim on the Pages list (#/pages) or a page (#/p/x) keeps the pages hash", () => {
+  for (const hash of ["#/pages", "#/p/usage"]) {
+    const h = harness({ hash, pagesArea: true });
+    h.claim.pending({ sessionId: ID, turn: "0a1b2c3d", q: "is wrong", p: "The count " });
+    h.claim.showPending();
+    assert.deepEqual(h.replaced, [], `${hash}: the pages hash is not replaced`);
+    assert.ok(h.answer.classList.contains("claim-hit"), `${hash}: the claim is still shown`);
+    h.historyEl.remove();
+  }
+});
+
+test("a pending claim with a session hash still replaces it as today", () => {
+  const h = harness({ hash: `#/s/${ID}?t=0a1b2c3d&q=is+wrong` });
+  h.claim.pending({ sessionId: ID, turn: "0a1b2c3d", q: "is wrong", p: "The count " });
+  h.claim.showPending();
+  assert.deepEqual(h.replaced, [`/?dir=x#/s/${ID}`]);
   h.historyEl.remove();
 });
 
