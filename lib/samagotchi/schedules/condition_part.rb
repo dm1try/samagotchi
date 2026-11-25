@@ -50,9 +50,10 @@ module Samagotchi
       CONDITION_DETAIL_CHARS = 120
 
       # What one run of an entry's condition said: +kind+ :pass, :not_needed
-      # or :error, for the +condition+ and +next_due+ it ran for (a result
-      # counts only while the entry still has both).
-      ConditionResult = Data.define(:id, :condition, :next_due, :kind, :detail)
+      # or :error, for the +condition+, +next_due+ and +failures+ it ran for
+      # (a result counts only while the entry still has all three: a failure
+      # keeps next_due, so another ticker's counted error moves +failures+).
+      ConditionResult = Data.define(:id, :condition, :next_due, :failures, :kind, :detail)
 
       # The command that runs a condition: ContextFetch.run_command's
       # signature, its Run back.
@@ -160,8 +161,8 @@ module Samagotchi
       end
 
       def condition_result(entry, kind, detail)
-        ConditionResult.new(id: entry.id, condition: entry.condition, next_due: entry.next_due, kind: kind,
-                            detail: condition_line(detail))
+        ConditionResult.new(id: entry.id, condition: entry.condition, next_due: entry.next_due, failures: entry.failures,
+                            kind: kind, detail: condition_line(detail))
       end
 
       # [kind, detail] for a Run: by how it ended first (Run#status is nil
@@ -196,7 +197,8 @@ module Samagotchi
         end
 
         result = results&.fetch(entry.id, nil)
-        unless result && result.condition == entry.condition && result.next_due == entry.next_due
+        unless result && result.condition == entry.condition && result.next_due == entry.next_due &&
+               result.failures == entry.failures
           Log.info(:worker, "schedule_condition_unchecked", id: entry.id)
           return [entry, nil]
         end

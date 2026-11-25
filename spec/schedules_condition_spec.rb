@@ -297,6 +297,22 @@ RSpec.describe Samagotchi::Schedules::ConditionPart do
       expect(Samagotchi::SessionContinue).not_to have_received(:run)
     end
 
+    # Review M5: cron and chi web ticking at once both ran a broken CMD for
+    # one occurrence; failed() keeps next_due, so both counted it.
+    it "counts one occurrence's condition error once when two tickers overlap" do
+      other = ticking({ "broken" => 127 })
+      nil
+      answers = { "broken" => lambda { |_options|
+        other.tick(now: now + 300) # the other ticker's whole tick lands while this CMD runs
+        Samagotchi::ContextFetch::Run.new(output: "", error: "exit 127", stderr: "", cancelled: false, status: ConditionSpecStatus.new(127))
+      } }
+      first = ticking(answers)
+      entry = first.add(target: session.id, prompt: "Check", recurrence: every("5m"), condition: "broken")
+
+      expect(first.tick(now: now + 300).outcomes).to eq([])
+      expect(first.lookup(entry.id).failures).to eq(1)
+    end
+
     it "fails a condition set by anyone but the CLI, or one that doesn't read, without running it" do
       calls = []
       schedules = ticking({}, calls)

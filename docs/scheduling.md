@@ -323,8 +323,8 @@ mise tools aren't set up (wrap CMD in `mise exec --` when it needs them). It inh
 what the ticker's environment holds, secrets included. Each due condition runs once, in
 turn, before the tick takes the schedule lock (a slow CMD never holds `chi schedule
 add` or a firing's record up), and the tick's clock moves on by the time they took.
-When the lock is taken, an answer counts only for the condition and the `next_due` it
-ran for: an edit, a run-now or another ticker in between leaves the schedule as it is
+When the lock is taken, an answer counts only for the condition, the `next_due` and the
+failure count it ran for (so two tickers count one occurrence's error once): an edit, a run-now or another ticker in between leaves the schedule as it is
 and the next tick asks again. So CMD should be cheap, read-only and safe to run twice
 (cron and chi web ticking at once may both run it). A schedule whose target is busy
 runs CMD at every tick until it fires.
