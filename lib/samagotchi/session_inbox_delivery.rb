@@ -190,7 +190,8 @@ module Samagotchi
 
       # +id+ for a pinned kind, or for an id not archived (the cheap check
       # first: only an archived id is walked, with one Session.list).
-      # Else the walk forward over archived links that have a successor:
+      # Else the walk forward over archived links that have a successor (a
+      # schedule's pruned anchor: its head, Links#anchor_forward):
       # to the first link not archived, or the last (a loop a hand-edited
       # file could make ends where it started); a :reader kind goes one hop
       # at most. Then, for a kind that would un-archive the link it reaches

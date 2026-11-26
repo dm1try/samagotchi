@@ -3,6 +3,25 @@
 require "spec_helper"
 require "samagotchi/session_chain"
 require "samagotchi/context_note"
+require "tmpdir"
+require_relative "support/pruned_anchor"
+
+# SessionChain.resolve: `last:<anchor>` of a schedule's pruned chain.
+RSpec.describe Samagotchi::SessionChain, ".resolve" do
+  include PrunedAnchor
+
+  it "resolves last:<anchor> to the schedule's head over the link a prune deleted" do
+    Dir.mktmpdir("chain-resolve") do |root|
+      dir = File.join(root, "sessions")
+      chain = pruned_anchor_chain(dir)
+
+      expect(described_class.resolve("last:#{chain.anchor}", state_dir: dir)).to eq(chain.head)
+      expect(described_class.resolve("last:#{chain.anchor[0, 8]}", state_dir: dir)).to eq(chain.head)
+      expect(described_class.resolve(chain.anchor, state_dir: dir)).to eq(chain.anchor)
+      expect(described_class.next_of(chain.anchor, state_dir: dir)).to be_nil
+    end
+  end
+end
 
 # SessionChain.opener_for: the text web `continue →` prefills, derived from the chain.
 RSpec.describe Samagotchi::SessionChain, ".opener_for" do

@@ -11,6 +11,7 @@ require "samagotchi/context_sources"
 require "socket"
 require_relative "support/worker_links"
 require_relative "support/worker_fixtures"
+require_relative "support/pruned_anchor"
 
 # SessionAccess::Local: this machine's sessions, the calls the session
 # commands made before the seam (their own specs cover the behaviour).
@@ -41,6 +42,21 @@ RSpec.describe Samagotchi::SessionAccess::Local do
 
   def fetched(text, wake: true)
     Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: wake, hint: nil)
+  end
+
+  describe "a schedule's pruned anchor" do
+    include PrunedAnchor
+
+    it "is continued as the schedule's head: a peer pair is refused naming it" do
+      Dir.mktmpdir("session-access-pruned") do |root|
+        dir = File.join(root, "sessions")
+        chain = pruned_anchor_chain(dir)
+        local = described_class.new(state_dir: dir)
+
+        paired = local.peer_pair(chain.anchor, "claude", address: nil, from: "spec")
+        expect(paired).to have_attributes(status: :continued, next_id: chain.head)
+      end
+    end
   end
 
   describe "#peer_pair" do
