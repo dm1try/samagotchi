@@ -81,6 +81,24 @@ RSpec.describe Samagotchi::TaskFinishNote do
     expect(text.length).to be < 1000 + 600
   end
 
+  it "builds a wake note from a non-ASCII command and log as valid UTF-8 (a BINARY tail raised in the join)" do
+    File.write(output_path, "ok\nnaïve — résumé ✓\n")
+    accented = record.with(command: "echo résumé")
+
+    text = described_class.text(accented, limit_sec: nil, wake: true, cap: 30_000)
+    expect(text.encoding).to eq(Encoding::UTF_8)
+    expect(text).to be_valid_encoding
+    expect(text).to include("command: echo résumé").and include("naïve — résumé ✓")
+  end
+
+  it "keeps an ASCII command's note UTF-8 over a non-ASCII log (a BINARY note failed the wake turn's request)" do
+    File.write(output_path, "ok\nnaïve — résumé ✓\n")
+
+    note = described_class.note(record, limit_sec: nil, wake: true, turn_id: "t1", cap: 30_000, now: now)
+    expect(note[:text].encoding).to eq(Encoding::UTF_8)
+    expect { JSON.generate(note) }.not_to raise_error
+  end
+
   it "names a task_create id by its random part, not the time it starts with" do
     timed = record.with(id: "20261019164550-0e055c67")
     note = described_class.note(timed, limit_sec: nil, wake: false, cap: 10_000, now: now)
