@@ -8,11 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.190.1] - 2026-11-26
+
 ### Fixed
 
 - known-names no longer blocks a folder or ticket id that differs from a protected name only in its digits
   (`~/projects/ISSUE-8932` while in a repo named `ISSUE-8926`); a letter typo next to the digits is still caught
   (known-names 0.2.2).
+- A pruned schedule's first session keeps working as the chain's address: once `keep_links` pruning had deleted
+  the session after it, `chi send <its id>` from another agent was refused as archived, a person's send brought
+  that old session back beside the chain, and `last:<its id>` named it instead of the newest link. These now reach
+  the schedule's newest link, and continuing that first session directly is refused, naming the newest link.
+- Schedule pruning no longer stops for good after its first deletion; a chain stays at its `keep_links` length.
+
+Update with `chi update` (known-names 0.2.2).
 
 ## [0.190.0] - 2026-11-26
 
@@ -6957,7 +6966,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.190.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.190.1...HEAD
+[0.190.1]: https://github.com/dm1try/samagotchi/compare/v0.190.0...v0.190.1
 [0.190.0]: https://github.com/dm1try/samagotchi/compare/v0.189.0...v0.190.0
 [0.189.0]: https://github.com/dm1try/samagotchi/compare/v0.188.0...v0.189.0
 [0.188.0]: https://github.com/dm1try/samagotchi/compare/v0.187.0...v0.188.0
