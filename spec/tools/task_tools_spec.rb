@@ -247,6 +247,50 @@ RSpec.describe "task tools" do
     end
   end
 
+  describe Samagotchi::Tools::TaskRuntime, ".output_tail_lines" do
+    let(:log) { File.join(Dir.mktmpdir("task-tail"), "output.log") }
+
+    after { FileUtils.rm_rf(File.dirname(log)) }
+
+    it "returns a non-ASCII log's tail as valid UTF-8" do
+      File.write(log, "ok\nnaïve — résumé ✓\n")
+
+      tail = described_class.output_tail_lines(log, 5)
+      expect(tail.encoding).to eq(Encoding::UTF_8)
+      expect(tail).to eq("ok\nnaïve — résumé ✓\n")
+      expect { "résumé: #{tail}" }.not_to raise_error
+    end
+
+    it "stays valid when the read offset cuts a multibyte character, even on a line with no newline" do
+      size = described_class::OUTPUT_TAIL_READ_BYTES
+      File.write(log, "#{"é" * size}\n#{"✓" * size}")
+
+      tail = described_class.output_tail_lines(log, 5)
+      expect(tail).to be_valid_encoding
+      expect(tail.encoding).to eq(Encoding::UTF_8)
+      expect(tail).to end_with("✓✓")
+    end
+
+    it "scrubs invalid bytes" do
+      File.binwrite(log, "start\nbad \xFF\xFE bytes ✓\n")
+
+      tail = described_class.output_tail_lines(log, 5)
+      expect(tail).to be_valid_encoding
+      expect(tail).to eq("start\nbad \uFFFD\uFFFD bytes ✓\n")
+    end
+  end
+
+  describe Samagotchi::Tools::TaskWait, "a non-ASCII log" do
+    it "gives a finished task's text and a done_pattern match without an encoding error" do
+      create_result = Samagotchi::Tools::TaskCreate.call("printf 'naïve — résumé ✓\\n'; sleep 20")
+      task_id = extract_field(create_result, "task_id")
+
+      waited = described_class.call(task_id, timeout: 10, done_pattern: "résumé ✓")
+      expect(waited).to include("wait_result: pattern_matched").and include("naïve — résumé ✓")
+      Samagotchi::Tools::TaskStop.call(task_id)
+    end
+  end
+
   describe Samagotchi::Tools::TaskGet do
     it "returns full metadata for an existing task" do
       create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"get\"'")

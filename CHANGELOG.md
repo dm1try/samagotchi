@@ -23,6 +23,11 @@ and commands may change between minor versions. How releases are made:
   (`chi-schedule-if`: no parent agent or System 1 may allow it). Run `chi update`.
 - The schedules bundle (0.1.1): the Schedules page has an If column (a schedule's `--if` command).
 
+### Fixed
+
+- A finished background task whose output had non-ASCII text (accents, dashes, ✓) no longer fails its wake turn;
+  `task_wait` and a handed-over `execute` show such output as is.
+
 ## [0.189.0] - 2026-11-25
 
 ### Added

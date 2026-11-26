@@ -382,6 +382,12 @@ module Samagotchi
           file.seek(offset)
           file.read
         end
+        # Read binary: relabel as UTF-8 and scrub before the split (which
+        # raises on invalid bytes). The seek can land mid-character and a log
+        # can hold real binary bytes; a BINARY tail raises
+        # Encoding::CompatibilityError once joined with UTF-8 text (a task
+        # finish wake's note, task_wait's response, execute's hand-over).
+        content = content.force_encoding(Encoding::UTF_8).scrub
         content = content.split("\n", 2).last.to_s if offset.positive?
         content.lines.last(line_count).join
       end
