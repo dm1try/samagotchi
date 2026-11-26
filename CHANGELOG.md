@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.190.0] - 2026-11-26
+
 ### Added
 
 - `chi schedule add|edit --if CMD` (and `edit --no-if`): the tick runs CMD in the session's folder before a firing;
@@ -34,6 +36,10 @@ and commands may change between minor versions. How releases are made:
   nothing.
 - Raw bytes in a conversation (a tool's output that isn't valid UTF-8) no longer fail the next turn on any model
   host; such text goes to the model with the bad bytes replaced. `execute` returns a command's output as valid UTF-8.
+- `chi schedule list` says how many entries of `schedules.json` can't be read and how to remove one, instead of
+  hiding them; chi's `cancel_schedule` tool can remove such an entry by its exact id.
+
+Update with `chi update` (guardrails 0.9.4, schedules 0.1.1).
 
 ## [0.189.0] - 2026-11-25
 
@@ -6945,7 +6951,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.189.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.190.0...HEAD
+[0.190.0]: https://github.com/dm1try/samagotchi/compare/v0.189.0...v0.190.0
 [0.189.0]: https://github.com/dm1try/samagotchi/compare/v0.188.0...v0.189.0
 [0.188.0]: https://github.com/dm1try/samagotchi/compare/v0.187.0...v0.188.0
 [0.187.0]: https://github.com/dm1try/samagotchi/compare/v0.186.0...v0.187.0
