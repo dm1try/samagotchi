@@ -19,8 +19,12 @@ module Samagotchi
       # (deepest first) and the link last. The walk stops at a link that is not
       # archived, one whose subtree has a live worker, or one with a descendant
       # still unarchived: nothing is deleted in that case, and the next firing
-      # retries (a schedule failure it is not). The anchor is never pruned:
-      # `last:<anchor>` must keep resolving, and it is the id the user remembers.
+      # retries (a schedule failure it is not). A link already gone (the one
+      # an earlier prune deleted: the walk back from the head ends on its id)
+      # is skipped, not a stop, or every prune after the first would stall
+      # there. The anchor is never pruned: `last:<anchor>` must keep resolving
+      # (SessionChain::Links forwards it over the gap to the head), and it is
+      # the id the user remembers.
       def prune(entry, links)
         chain = []
         id = entry.head
@@ -43,6 +47,7 @@ module Samagotchi
 
         older.reverse_each do |link|
           next if link == entry.anchor
+          next if link_gone?(link)
           break unless ArchiveStore.archived?(Session.session_dir(link, state_dir: @state_dir))
 
           tree = SessionManager.delete_tree_ids(link, @state_dir)
@@ -73,6 +78,12 @@ module Samagotchi
         Log.warn(:worker, "prune_stopped", sid: e.session_id, id: entry.id, msg: e.message)
       rescue Session::NotFound => e
         Log.warn(:worker, "prune_missing", id: entry.id, msg: e.message)
+      end
+
+      # Neither a session file nor a folder: nothing left to delete.
+      def link_gone?(link)
+        !File.exist?(Session.session_file(link, state_dir: @state_dir)) &&
+          !File.directory?(Session.session_dir(link, state_dir: @state_dir))
       end
     end
   end

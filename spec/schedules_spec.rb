@@ -1517,6 +1517,30 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "keeps pruning after the first deletion: the gone link behind the window is skipped, not a stop" do
+    Dir.mktmpdir("schedules-prune-again") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+
+      heads = []
+      6.times do
+        set_idle(dir, schedules.lookup(entry.id).head)
+        schedules.run_now(entry.id)
+        complete_pending(dir, schedules, entry.id)
+        heads << schedules.lookup(entry.id).head
+      end
+
+      ids = Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)
+      # The first prune (third firing) deleted the first link; the fourth,
+      # fifth and sixth each deleted the next one, past the gone link behind
+      # them: only the anchor and the two-link window are left.
+      expect(ids).to contain_exactly(anchor, *heads.last(2))
+    end
+  end
+
   it "never prunes the links that came before the schedule's anchor" do
     Dir.mktmpdir("schedules-anchor-history") do |root|
       dir = File.join(root, "sessions")
