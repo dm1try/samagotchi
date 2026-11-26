@@ -44,6 +44,16 @@ RSpec.describe Samagotchi::Tools::Execute do
     # default hand-over.
     def short_limit(seconds = 0.2) = allow(described_class).to receive(:timeout_seconds).and_return(seconds)
 
+    # Any bytes a command prints read as valid UTF-8 (the request build's
+    # regex passes raise on invalid ones), as a task's tail does.
+    it "returns a command's non-UTF-8 output as valid UTF-8, scrubbed" do
+      result = described_class.call(%(printf 'na\\303\\257ve \\377 ok'))
+
+      expect(result.encoding).to eq(Encoding::UTF_8)
+      expect(result).to be_valid_encoding
+      expect(result).to include("naïve ? ok")
+    end
+
     # A chi run by the command answers as a parent agent (ParentApprovals).
     it "exports SAMAGOTCHI_PARENT_SESSION, the session's id, from the builtin handler" do
       require "samagotchi/tools/builtins"

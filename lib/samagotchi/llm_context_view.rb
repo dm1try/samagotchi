@@ -6,6 +6,7 @@ require_relative "tool_ids"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
 require_relative "llm_context_strategy"
+require_relative "llm/utf8_scrub"
 
 module Samagotchi
   # What the model is sent of the stored conversation: the one step
@@ -91,9 +92,14 @@ module Samagotchi
 
     def strategy = none? ? NONE : layers
 
+    # Every loop's request starts here (ChatLoop#wire_messages, KernelLoop's
+    # prompt and warm-up), so raw bytes in the history (a BINARY or invalid
+    # UTF-8 String) are read as UTF-8 here, once, before any regex pass
+    # (LLM::Utf8Scrub.messages: the stored entries stay as they are).
     # @param conversation [Array<Hash>] the stored entries, in order
     # @return [Array<Hash>] the entries to format
     def messages(conversation)
+      conversation = LLM::Utf8Scrub.messages(conversation)
       return conversation if none? && conversation.none? { |entry| LLMContextEdit.drop_on?(entry) }
 
       group = Group.new

@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 
 - A finished background task whose output had non-ASCII text (accents, dashes, ✓) no longer fails its wake turn;
   `task_wait` and a handed-over `execute` show such output as is.
+- Raw bytes in a conversation (a tool's output that isn't valid UTF-8) no longer fail the next turn on any model
+  host; such text goes to the model with the bad bytes replaced. `execute` returns a command's output as valid UTF-8.
 
 ## [0.189.0] - 2026-11-25
 

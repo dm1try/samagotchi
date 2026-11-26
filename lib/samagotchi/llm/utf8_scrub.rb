@@ -29,6 +29,32 @@ module Samagotchi
           obj
         end
       end
+
+      # +messages+ (a conversation's entries) as a request builds on them:
+      # each entry holding a String #call would change (BINARY with high
+      # bytes, invalid UTF-8) replaced by its scrubbed copy, before any
+      # UTF-8 regex reads it (Steer.wire_text's forged-frame quoting raises
+      # on a BINARY string). The same Array when no entry needs it, and the
+      # saved entries are never changed: same bytes in, same text out, so a
+      # request's prefix (and its prompt cache) is what it was.
+      # @param messages [Array<Hash>]
+      # @return [Array<Hash>]
+      def messages(messages)
+        return messages unless messages.any? { |entry| raw?(entry) }
+
+        messages.map { |entry| raw?(entry) ? call(entry) : entry }
+      end
+
+      # Whether #call would change a String in +obj+ (at any depth).
+      def raw?(obj)
+        case obj
+        when String
+          obj.encoding == Encoding::BINARY ? !obj.ascii_only? : obj.encoding == Encoding::UTF_8 && !obj.valid_encoding?
+        when Array then obj.any? { |element| raw?(element) }
+        when Hash then obj.any? { |key, value| raw?(key) || raw?(value) }
+        else false
+        end
+      end
     end
   end
 end

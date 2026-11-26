@@ -221,6 +221,10 @@ loop:
   one is logged `tool_direct_deferred`.
 - The conversation goes out in the OpenAI wire format (`wire_messages`); `AnthropicMessages` translates it again
   (`LLM::AnthropicWire`). Each call's result is its own tool message, paired by `tool_call_id`.
+- Raw bytes in the history (a BINARY or invalid UTF-8 String) never fail a request: every loop's request starts at
+  `LLMContextView#messages` (`wire_messages`, the native prompt and its warm-up), which reads such an entry as UTF-8
+  and scrubs it first (`LLM::Utf8Scrub.messages`; a copy, the saved entry stays; the same Array when none needs it),
+  before any regex pass (`Steer.wire_text`'s forged-frame quoting). The body's own scrub (`Utf8Scrub.call`) stays.
 - The first system message carries `cache_split:` (`SystemPrompt#stable_length`); where the adapters put cache
   breakpoints is prompt-caching.md's and anthropic.md's.
 - **Reasoning sent back** (`reasoning_content`) follows `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`,
