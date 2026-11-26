@@ -1447,7 +1447,11 @@ edit of a known name shorter than 10 characters, or two edits of a longer
 one, is a near miss. Tokens and names shorter than `min_length` (6) are
 skipped, as is a token that equals another known name. A token with a shell
 glob (`*?[]{}`, as in `ls -d samagotchi*`) is not checked. In `~name` (that
-user's home folder) the name after `~` is what is checked.
+user's home folder) the name after `~` is what is checked. For a name with a
+digit, a token that differs from it only in digits (`ISSUE-8932` next to a
+repo named `ISSUE-8926`, `run-3` for `run-2`) is a numbered sibling, not a
+near miss. A name without digits still catches a digit typo (`j0hndoe` or
+`johndoe2` for `johndoe`).
 
 By default (`mode: reject`) the call is denied with advice in place of the
 usual tail, so the model retries it corrected:

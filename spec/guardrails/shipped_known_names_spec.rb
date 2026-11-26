@@ -172,6 +172,36 @@ RSpec.describe "The known-names bundle" do
     end
   end
 
+  # Numbered siblings (tickets, worktrees, versions): a token that differs
+  # from a name with a digit only in its digits is not a near miss.
+  context "with a repo named after a ticket" do
+    let(:repo) do
+      path = File.join(File.dirname(@shared_repo), "ISSUE-8926")
+      system("git", "init", "-q", path, exception: true) unless File.directory?(path)
+      path
+    end
+
+    it "lets through a sibling that differs only in digits" do
+      expect(shell("ls ~/projects/ISSUE-8932")).to be_allow
+      expect(notices).to be_empty
+    end
+
+    it "still rejects a letter typo next to the digits" do
+      expect(shell("ls ~/projects/ISUE-8926").reason)
+        .to include('"ISUE-8926" in the command is 1 edit away from the known name "ISSUE-8926"')
+    end
+  end
+
+  it "lets through a numbered sibling of a configured name" do
+    settings.merge!("names" => ["build-2"])
+    expect(shell("ls build-3")).to be_allow
+  end
+
+  it "still rejects a digit typo of a name without digits" do
+    expect(shell("ls /home/j0hndoe").reason).to include('"j0hndoe" in the command is 1 edit away from the known name "johndoe"')
+    expect(shell("ls /home/johndoe2").reason).to include('"johndoe2" in the command is 1 edit away from the known name "johndoe"')
+  end
+
   it "scans a read's path and a write's path, not a write's content" do
     expect(verdict_for({ name: "read", content: "~/../johndeo/x" }).reason).to include('"johndeo" in the path')
     expect(verdict_for({ name: "write", path: "/home/johndeo/a.txt", content: "x" })).to be_deny

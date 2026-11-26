@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- known-names no longer blocks a folder or ticket id that differs from a protected name only in its digits
+  (`~/projects/ISSUE-8932` while in a repo named `ISSUE-8926`); a letter typo next to the digits is still caught
+  (known-names 0.2.2).
+
 ## [0.190.0] - 2026-11-26
 
 ### Added

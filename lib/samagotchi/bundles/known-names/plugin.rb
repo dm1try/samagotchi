@@ -9,7 +9,9 @@ require "samagotchi/git_env"
 # a rejection that names the right one breaks the loop.
 #
 # A token with a shell glob (*?[]{}) is not checked. In "~name" the name
-# after "~" is checked.
+# after "~" is checked. For a name with a digit, a token that differs from
+# it only in digits (ISSUE-8932 for ISSUE-8926, run-3 for run-2) is not a
+# near miss: numbered siblings, not a misspelling.
 #
 # Settings (config.yml, `bundles: known-names:`), all optional:
 #   names: [jonathandoe]         names to protect besides the derived ones
@@ -112,6 +114,7 @@ class KnownNames
 
           max = @max_distance || (name.length < 10 ? 1 : 2)
           bare = name_down.gsub(EDGE_SEPARATORS, "")
+          next if digits_only?(down, bare)
           next if (candidate.length - bare.length).abs > max
 
           d = self.class.distance(down, bare)
@@ -132,6 +135,19 @@ class KnownNames
 
     upper = parts.map(&:capitalize).join
     [upper, upper[0].downcase + upper[1..]].include?(candidate)
+  end
+
+  # "ISSUE-8932" for "ISSUE-8926", "run-3" for "run-2": numbered siblings
+  # (tickets, worktrees, versions) aren't misspellings, so a token whose
+  # non-digit characters are the name's, in order, passes whatever its
+  # digits. Only for a name with a digit: for "johndoe", "johndoe2" (an
+  # added digit) is still a near miss. A digit in place of a letter
+  # ("j0hndoe") never matches here: its letters differ. Both come in
+  # downcased, without edge separators.
+  def digits_only?(down, name_down)
+    return false unless name_down.match?(/\d/)
+
+    down.delete("0-9") == name_down.delete("0-9")
   end
 
   # [where, text] pairs to scan: the command, the cwd a command names,
