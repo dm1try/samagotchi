@@ -7,12 +7,15 @@ require "samagotchi/session_chain/links"
 # The one chain walker: SessionChain.latest/.next_of, SessionInbox::Head and
 # Schedules' tick all ask one of these.
 RSpec.describe Samagotchi::SessionChain::Links do
-  let(:tmpdir) { Dir.mktmpdir("chain-links") }
+  # The sessions dir under a root of its own: a schedules file lives in the
+  # sessions dir's parent, never the shared temp dir.
+  let(:root) { Dir.mktmpdir("chain-links") }
+  let(:tmpdir) { File.join(root, "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
   let(:clock) { [Time.utc(2026, 11, 10, 12)] }
 
-  after { FileUtils.rm_rf(tmpdir) }
+  after { FileUtils.rm_rf(root) }
 
-  def links = described_class.new(state_dir: tmpdir)
+  def links(**opts) = described_class.new(state_dir: tmpdir, **opts)
 
   # Each link a second after the last: created_at decides a fork.
   def link(continues: nil, archived: false)
@@ -177,6 +180,104 @@ RSpec.describe Samagotchi::SessionChain::Links do
 
     it "is the id alone for an id nobody lists" do
       expect(links.chain("0" * 32)).to eq(["0" * 32])
+    end
+  end
+
+  # A schedule's prune deletes the anchor's successor: nothing continues the
+  # anchor any more, so the addressing walks (#latest, #first_live,
+  # #anchor_forward) bridge the gap to the schedule's head; the graph walks
+  # (#next_of, #chain, #root) stay raw.
+  describe "a pruned anchor" do
+    # A→B→C→D with B deleted; A and C archived, D live.
+    def pruned_chain
+      a = link(archived: true)
+      b = link(continues: a.id, archived: true)
+      c = link(continues: b.id, archived: true)
+      d = link(continues: c.id)
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(b.id, state_dir: tmpdir))
+      FileUtils.rm_f(Samagotchi::Session.session_file(b.id, state_dir: tmpdir))
+      [a, c, d]
+    end
+
+    it "forwards latest, first_live and anchor_forward to the schedule's head; next_of and chain stay raw" do
+      a, c, d = pruned_chain
+      walker = links(anchor_heads: { a.id => [d.id] })
+
+      expect(walker.latest(a.id)).to eq(d.id)
+      expect(walker.first_live(a.id)).to eq(d.id)
+      expect(walker.anchor_forward(a.id)).to eq(d.id)
+      expect(walker.next_of(a.id)).to be_nil
+      expect(walker.chain(a.id)).to eq([a.id])
+      expect(walker.live_links(a.id)).to eq([a.id])
+      expect(walker.root(d.id)).not_to eq(a.id)
+      expect(walker.chain(c.id).last).to eq(d.id)
+    end
+
+    it "walks on from a head a later continue left behind" do
+      a, c, d = pruned_chain
+      walker = links(anchor_heads: { a.id => [c.id] })
+
+      expect(walker.latest(a.id)).to eq(d.id)
+      expect(walker.first_live(a.id)).to eq(d.id)
+      expect(walker.anchor_forward(a.id)).to eq(c.id)
+    end
+
+    it "keeps today's dead end without an entry, with a gone head, or with the head the anchor itself" do
+      a, = pruned_chain
+      gone = "0" * 32
+      [{}, { a.id => [gone] }, { a.id => [a.id] }].each do |heads|
+        walker = links(anchor_heads: heads)
+        expect(walker.latest(a.id)).to eq(a.id)
+        expect(walker.first_live(a.id)).to eq(a.id)
+        expect(walker.anchor_forward(a.id)).to be_nil
+      end
+    end
+
+    it "takes the first listed head of several entries on one anchor" do
+      a, _c, d = pruned_chain
+
+      expect(links(anchor_heads: { a.id => ["0" * 32, a.id, d.id] }).latest(a.id)).to eq(d.id)
+    end
+
+    it "never forwards an anchor that is not archived" do
+      a = link
+      other = link
+
+      walker = links(anchor_heads: { a.id => [other.id] })
+      expect(walker.latest(a.id)).to eq(a.id)
+      expect(walker.anchor_forward(a.id)).to be_nil
+    end
+
+    it "ends a loop through the bridge where it would repeat" do
+      a, c, d = pruned_chain
+      archived = link(continues: d.id, archived: true)
+      Samagotchi::ArchiveStore.archive(d.id, state_dir: tmpdir)
+      # A hand edit: the chain's archived end anchors a schedule whose head is
+      # the anchor, so the bridges make a loop.
+      walker = links(anchor_heads: { a.id => [c.id], archived.id => [a.id] })
+
+      expect(walker.latest(a.id)).to eq(archived.id)
+      expect(walker.latest(archived.id)).to eq(d.id)
+    end
+
+    it "reads no schedules for a live id or a link with a successor" do
+      first = link(archived: true)
+      second = link(continues: first.id)
+      heads = instance_double(Hash)
+      expect(heads).not_to receive(:[])
+      expect(heads).not_to receive(:fetch)
+
+      walker = links(anchor_heads: heads)
+      expect(walker.first_live(second.id)).to eq(second.id)
+      expect(walker.latest(first.id)).to eq(second.id)
+      expect(walker.first_live(first.id)).to eq(second.id)
+    end
+
+    it "lists nothing for a live id" do
+      live = link
+      expect(Samagotchi::Session).not_to receive(:list)
+
+      expect(links.first_live(live.id)).to eq(live.id)
     end
   end
 end

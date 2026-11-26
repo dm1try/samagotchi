@@ -751,13 +751,15 @@ module Samagotchi
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}
 
-      # The session that continues +id+, or nil. The archive check first: a
-      # continued link is always archived, and SessionChain.next_of loads
-      # every session.
+      # The session that continues +id+, or nil; for a schedule's pruned
+      # anchor, the schedule's head (SessionChain::Links#anchor_forward). The
+      # archive check first: a continued link is always archived, and the
+      # walk loads every session.
       def continued_as(id)
         return nil unless ArchiveStore.archived?(session_dir(id))
 
-        SessionChain.next_of(id, state_dir: state_dir!)
+        links = SessionChain::Links.new(state_dir: state_dir!)
+        links.next_of(id) || links.anchor_forward(id)
       end
 
       def state_dir! = @state_dir || Session.default_state_dir

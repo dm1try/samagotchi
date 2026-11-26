@@ -394,7 +394,13 @@ delegates archived forever with a dangling `parent_id`: archiving a session arch
 its descendants, and archived sessions are outside the retention sweep
 ([sessions.md](sessions.md)), so the delegate pile is the bulk of the archived
 count. The `anchor` is never pruned: it is the chain's root, the id the user and
-the coordinator remember, and `last:<anchor>` must keep resolving.
+the coordinator remember, and `last:<anchor>` must keep resolving. Once the
+anchor's successor is gone, nothing continues the anchor; the chain walks for
+`last:`, `chi send` and notes cross that gap to the entry's `head`
+(`SessionChain::Links#anchor_forward`, [sessions.md](sessions.md), *Session chains*
+→ Which link), so the anchor stays the chain's address. A link a previous prune
+already deleted is skipped, so each later firing prunes the next link behind the
+window.
 
 What a schedule protects (its anchor, its head and its resolved target, while it is
 enabled) the retention sweep keeps and a delete refuses: schedules are

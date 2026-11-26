@@ -31,7 +31,8 @@ module Samagotchi
   # SessionManager's.
   module SessionContinue
     # A continue that can't happen (#run). reason: :continued
-    # (another session continues it already: +ids+ names it), :open_children
+    # (another session continues it already, or a schedule's pruned
+    # anchor: +ids+ names the successor, or the schedule's head), :open_children
     # (open children it can't move to the new link: on an older chi's
     # worker or open in a one-turn chi run; +ids+ names them) or :folder_gone (its
     # folder isn't there).
@@ -538,7 +539,11 @@ module Samagotchi
     # @return [Checked]
     # @raise [Refused, ModelProfile::MissingModel]
     private_class_method def self.check!(previous, state_dir, model: nil)
-      if (following = SessionChain.next_of(previous.id, state_dir: state_dir))
+      # A schedule's pruned anchor counts as continued, by the schedule's
+      # head (Links#anchor_forward): continuing it would start a second
+      # line beside the chain.
+      links = SessionChain::Links.new(state_dir: state_dir)
+      if (following = links.next_of(previous.id) || links.anchor_forward(previous.id))
         raise Refused.new(previous.id, :continued, ids: [following])
       end
 

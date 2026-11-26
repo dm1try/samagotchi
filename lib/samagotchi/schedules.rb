@@ -256,6 +256,17 @@ module Samagotchi
       ambiguous(list.select { |entry| entry.title.to_s.casecmp?(given) }, given).first
     end
 
+    # anchor → the heads of the schedules anchored there, in the file's order,
+    # disabled and fired one-offs too (SessionChain::Links' walk over a pruned
+    # anchor's gap: a paused schedule's chain is still one chain). Lenient and
+    # quiet: a file that doesn't read forwards nothing.
+    # @return [Hash{String => Array<String>}]
+    def anchor_heads
+      read(quiet: true).entries.grep(Entry).each_with_object({}) do |entry, heads|
+        (heads[entry.anchor] ||= []) << entry.head
+      end
+    end
+
     # One match is the answer; several are a usage error naming them, the way
     # Session::AmbiguousId does for session prefixes.
     def ambiguous(entries, given)

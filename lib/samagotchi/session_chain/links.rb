@@ -15,7 +15,7 @@ module Samagotchi
     # a walk that comes back to a link it passed (a loop a hand-edited file
     # could make) ends where it would repeat. A walk stops where no listed
     # session continues the link: past a deleted middle link nothing is
-    # reached.
+    # reached, with one exception, the pruned anchor (below).
     #
     # The walks, and who uses which (not unified on purpose: a schedule
     # firing must continue the chain's end, SessionContinue refuses a link
@@ -23,19 +23,36 @@ module Samagotchi
     # live, and a send un-archives an archived end, a schedule never does):
     # - #latest: the chain's end (SessionChain.latest, `last:<id>`, Schedules)
     # - #first_live: the first link not archived, or the end (Head: send, note)
+    # - #anchor_forward: one hop over a pruned anchor's gap (continued_as)
     # - #root: back to the first link (Schedules' one firing per chain)
     # - #chain / #live_links: every link of +id+'s branch, root to end
     #   (Schedules#chain_of, the chain delete)
+    #
+    # A pruned anchor: a schedule's prune keeps its anchor but deletes the
+    # links behind its window, the anchor's successor too, so nobody
+    # continues the anchor any more. The addressing walks (#latest,
+    # #first_live, #anchor_forward) bridge that gap: at an archived link
+    # nobody continues, they go on at the head of a schedule anchored there
+    # (#anchor_head), so the anchor stays the chain's address. The graph
+    # walks (#next_of, #chain, #live_links, #root) stay raw: their callers
+    # delete, move delegates back or plan deletes from the answer, and must
+    # never reach the schedule's head through it.
     #
     # The listing is a snapshot: one Links per question, or per tick.
     class Links
       attr_reader :state_dir
 
-      def initialize(state_dir:)
+      # @param anchor_heads [Hash{String => Array<String>}, nil] anchor →
+      #   the heads of the schedules on it (Schedules#anchor_heads); nil reads
+      #   them from the schedules file the first time a walk dead-ends at an
+      #   archived link
+      def initialize(state_dir:, anchor_heads: nil)
         @state_dir = state_dir
         @by_id = nil
         @nexts = nil
         @archived = {}
+        @anchor_heads = anchor_heads
+        @anchor_head = {}
       end
 
       # The listed session +id+ (a Session summary), or nil.
@@ -61,15 +78,27 @@ module Samagotchi
       def next_of(id) = nexts[id]
 
       # The chain's end from +id+ on: +id+ itself when nobody continues it.
-      def latest(id) = walk(id).last
+      # Over a pruned anchor's gap too (#anchor_head).
+      def latest(id) = walk(id, forward: true).last
 
       # From +id+ forward over archived links: +id+ when it is not archived,
-      # else the first link after it that is not, or the chain's end. Only an
-      # archived +id+ makes the listing.
+      # else the first link after it that is not, or the chain's end (over a
+      # pruned anchor's gap too). Only an archived +id+ makes the listing.
       def first_live(id)
         return id unless archived?(id)
 
-        walk(id) { |link| !archived?(link) }.last
+        walk(id, forward: true) { |link| !archived?(link) }.last
+      end
+
+      # The link after a pruned anchor's gap: the head of a schedule anchored
+      # at +id+ when +id+ is archived and nobody continues it, else nil. One
+      # hop, as #next_of (SessionAccess::Local#continued_as, SessionContinue's
+      # check).
+      # @return [String, nil]
+      def anchor_forward(id)
+        return nil if !archived?(id) || nexts[id]
+
+        anchor_head(id)
       end
 
       # The chain's first link: back through `continues` to a link with no
@@ -90,7 +119,7 @@ module Samagotchi
       # it would repeat.
       # @return [Array<String>]
       def chain(id)
-        ids = [latest(id)]
+        ids = [walk(id).last]
         while (previous = continues(ids.last)) && !ids.include?(previous)
           ids << previous
         end
@@ -106,13 +135,43 @@ module Samagotchi
 
       # +id+ and the links after it, in order, until none follows, a link
       # would repeat, or the block says stop at the one just reached.
-      def walk(id)
+      # +forward+ crosses a pruned anchor's gap (#anchor_head).
+      def walk(id, forward: false)
         seen = [id]
-        while (following = nexts[seen.last]) && !seen.include?(following)
+        while (following = step(seen.last, forward)) && !seen.include?(following)
           seen << following
           break if block_given? && yield(following)
         end
         seen
+      end
+
+      # The link after +link+: its successor; with +forward+, at an archived
+      # link nobody continues, a schedule's head anchored there.
+      def step(link, forward)
+        nexts[link] || (forward && archived?(link) && anchor_head(link)) || nil
+      end
+
+      # The head of a schedule anchored at +link+ that is still listed and
+      # isn't +link+ itself: the first such of the entries on it, in the
+      # schedules file's order (disabled ones too: a paused schedule's chain
+      # is still one chain). nil without one, so a gone head (the same
+      # fallback as Schedules#target_of) or a schedule that never fired
+      # forwards nothing. Kept per link.
+      def anchor_head(link)
+        return @anchor_head[link] if @anchor_head.key?(link)
+
+        @anchor_head[link] = Array(anchor_heads[link]).find { |head| head != link && !gone?(head) }
+      end
+
+      # The schedules file read once, at the first gap: a normal walk never
+      # reaches it. Schedules sits above this file (schedules.rb requires
+      # session_chain), hence the deferred require, as
+      # SessionProtection.schedule_protector does.
+      def anchor_heads
+        @anchor_heads ||= begin
+          require_relative "../schedules"
+          Schedules.new(state_dir: @state_dir).anchor_heads
+        end
       end
 
       def by_id

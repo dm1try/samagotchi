@@ -5,12 +5,18 @@ require "spec_helper"
 require "samagotchi/session_inbox"
 require "samagotchi/archive_store"
 require "json"
+require_relative "../support/pruned_anchor"
 
 # Which link of a chain a delivery goes to.
 RSpec.describe Samagotchi::SessionInbox::Head do
-  let(:tmpdir) { Dir.mktmpdir("inbox-head") }
+  include PrunedAnchor
 
-  after { FileUtils.rm_rf(tmpdir) }
+  # The sessions dir under a root of its own: the schedules file lives in
+  # the sessions dir's parent, never the shared temp dir.
+  let(:root) { Dir.mktmpdir("inbox-head") }
+  let(:tmpdir) { File.join(root, "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
+
+  after { FileUtils.rm_rf(root) }
 
   def link(continues: nil, archived: false)
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", continues: continues).tap do |s|
@@ -35,6 +41,24 @@ RSpec.describe Samagotchi::SessionInbox::Head do
 
     expect(resolve(:note, first)).to eq(id: second.id, asked: first.id, via: :head)
     expect(resolve(:ring, first)).to eq(id: second.id, asked: first.id, via: :head)
+  end
+
+  it "forwards a send and a note to a schedule's pruned anchor to the head; a ring stays on the anchor" do
+    chain = pruned_anchor_chain(tmpdir)
+    at = lambda do |kind|
+      described_class.resolve(kind, chain.anchor, state_dir: tmpdir).to_h
+    end
+
+    expect(at.call(:send)).to eq(id: chain.head, asked: chain.anchor, via: :head)
+    expect(at.call(:note)).to eq(id: chain.head, asked: chain.anchor, via: :head)
+    expect(at.call(:ring)).to eq(id: chain.anchor, asked: chain.anchor, via: :same)
+  end
+
+  it "forwards nothing when the schedules file doesn't read" do
+    alone = link(archived: true)
+    File.write(File.join(root, Samagotchi::Schedules::FILE), "{")
+
+    expect(resolve(:send, alone)).to eq(id: alone.id, asked: alone.id, via: :same)
   end
 
   it "keeps an archived link nobody continues" do

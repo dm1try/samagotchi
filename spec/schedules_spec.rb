@@ -1517,6 +1517,60 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "keeps pruning after the first deletion: the gone link behind the window is skipped, not a stop" do
+    Dir.mktmpdir("schedules-prune-again") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+
+      heads = []
+      6.times do
+        set_idle(dir, schedules.lookup(entry.id).head)
+        schedules.run_now(entry.id)
+        complete_pending(dir, schedules, entry.id)
+        heads << schedules.lookup(entry.id).head
+      end
+
+      ids = Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)
+      # The first prune (third firing) deleted the first link; the fourth,
+      # fifth and sixth each deleted the next one, past the gone link behind
+      # them: only the anchor and the two-link window are left.
+      expect(ids).to contain_exactly(anchor, *heads.last(2))
+
+      # The anchor stays the chain's address: last:, a send and a note reach
+      # the head over the pruned links; the raw graph still ends at the anchor.
+      head = heads.last
+      expect(Samagotchi::SessionChain.resolve("last:#{anchor}", state_dir: dir)).to eq(head)
+      expect(Samagotchi::SessionInbox::Head.resolve(:send, anchor, state_dir: dir).to_h)
+        .to eq(id: head, asked: anchor, via: :head)
+      expect(Samagotchi::SessionChain.next_of(anchor, state_dir: dir)).to be_nil
+      expect(Samagotchi::SessionChain::Links.new(state_dir: dir).chain(anchor)).to eq([anchor])
+    end
+  end
+
+  it "falls back to the anchor when the head is gone, and forwards nothing then" do
+    Dir.mktmpdir("schedules-head-gone") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+      set_idle(dir, anchor)
+      schedules.run_now(entry.id)
+      complete_pending(dir, schedules, entry.id)
+      head = schedules.lookup(entry.id).head
+      # The head deleted by hand (the protection refuses it through chi).
+      FileUtils.rm_f(Samagotchi::Session.session_file(head, state_dir: dir))
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(head, state_dir: dir))
+
+      expect(Samagotchi::SessionChain.resolve("last:#{anchor}", state_dir: dir)).to eq(anchor)
+      outcome = schedules.run_now(entry.id)
+      expect(outcome).to have_attributes(status: "failed", detail: "archived")
+    end
+  end
+
   it "never prunes the links that came before the schedule's anchor" do
     Dir.mktmpdir("schedules-anchor-history") do |root|
       dir = File.join(root, "sessions")
