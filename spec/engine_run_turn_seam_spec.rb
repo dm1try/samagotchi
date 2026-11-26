@@ -274,10 +274,11 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect { engine.run_turn(session, "hi") }.to raise_error(Samagotchi::LLM::OutOfCredits)
       expect(session.last_turn.to_file).to include("outcome" => "failed", "error_kind" => "credits", "retryable" => false)
 
-      # Not a provider error: no kind to tell.
+      # chi's own error: its kind, no retry to tell.
       allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
       expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
-      expect(session.last_turn.to_file.keys).not_to include("error_kind", "retryable")
+      expect(session.last_turn.to_file).to include("error_kind" => "chi_error")
+      expect(session.last_turn.to_file.keys).not_to include("retryable")
 
       allow(kernel).to receive(:run).and_return(kernel_result(canceled: true, cancellation_reason: :user))
       engine.run_turn(session, "hi")
@@ -497,13 +498,15 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
                                    summary: "rate limited by host fw: HTTP 429: slow down; retry after 20s")
   end
 
-  it "adds no provider fields for other errors" do
+  it "adds no provider fields for other errors: chi's own kind and line" do
     allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
     events = []
 
     expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(RuntimeError)
 
-    expect(events.last.keys).to contain_exactly(:type, :turn_id, :error_class, :message, :duration_ms, :kept_from, :kept_to)
+    expect(events.last.keys).to contain_exactly(:type, :turn_id, :error_class, :message, :duration_ms, :kept_from, :kept_to,
+                                                :error_kind, :summary)
+    expect(events.last).to include(error_kind: :chi_error, summary: "chi error: boom (RuntimeError); details in samagotchi.log")
   end
 
   describe "a failed turn" do
@@ -518,7 +521,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       expect(session.messages.first(4)).to eq(partial)
       expect(session.messages.last).to eq({ role: "system", kind: "turn_note",
-                                            content: "[SYSTEM: the previous turn failed after 1 tool step: boom. Its work so far " \
+                                            content: "[SYSTEM: the previous turn failed after 1 tool step: chi error: boom (RuntimeError); " \
+                                                     "details in samagotchi.log. Its work so far " \
                                                      "(tool calls, file changes) stays; the user's last message is not answered yet.]" })
       expect(error.kept_steps).to eq(1)
       expect(session).to have_received(:save)
@@ -537,7 +541,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
 
       expect(first_request.kept_steps).to be_nil
-      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed before any answer: boom.")
+      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed before any answer: chi error: boom (RuntimeError);")
     end
 
     it "counts no step for a model message alone (a recovery nudge's, an unfinished call's)" do
@@ -552,7 +556,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
 
       expect(error.kept_steps).to be_nil
-      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed before any answer: boom.")
+      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed before any answer: chi error: boom (RuntimeError);")
     end
 
     it "doesn't mark a context overflow's steps kept (the UIs roll it back), though its note counts them" do

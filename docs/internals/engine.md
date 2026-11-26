@@ -115,7 +115,19 @@ StandardError in run_turn:
   → else end_turn(turn, "failed", save: true) (a failing save logged, turn_end_save_failed): failed_messages keeps
     the loop's partial conversation (both loops LLM::FailedTurn.attach it), else turn.messages, with
     TurnNote.failed at the tail; :turn_failed {error_class, message, duration_ms, + error_kind, retryable, host,
-    summary for a provider error}; re-raised
+    summary for a provider error; + error_kind: :chi_error, summary for chi's own}; re-raised
+  The line (FailureLine.for, via TurnEndings.failure_line: one builder for the event's summary, the note, the reload's line and the
+  one-shot's stderr): a provider error's summary; a UserError's message (ImageStore::Error,
+  ModelProfile::MissingModel: the user's to change, no error_kind); else chi's own (TurnEndings.chi_error?):
+  "chi error: <message's first line> (<Class>); details in samagotchi.log", logged ERROR turn chi_error with its
+  backtrace (Log.exception). retryable stays unset for it; a parent's wait, ParentReport and a schedule's last
+  result read error_kind "chi_error" as any other kind.
+
+Before the Engine's turn (Worker#run_engine_turn: begin_turn, the checkpoint, the running save):
+  → session still running, no :turn_failed sent: Engine#fail_turn_not_begun sets it idle, records last_turn and
+    emits :turn_failed from TurnEndings#failed_event (the same line), with no :turn_started before it; logged
+    ERROR worker turn_not_begun with its backtrace. The web draws its line only when no turn runs
+    (stream_handlers.js turn_failed); the Bridge's TurnAccumulator, with no turn, keeps nothing of it
 
 Interrupt (Ctrl-C; a one-shot only, a worker traps INT):
   → turn.ended: re-raised only
@@ -221,6 +233,10 @@ loop:
   one is logged `tool_direct_deferred`.
 - The conversation goes out in the OpenAI wire format (`wire_messages`); `AnthropicMessages` translates it again
   (`LLM::AnthropicWire`). Each call's result is its own tool message, paired by `tool_call_id`.
+- Raw bytes in the history (a BINARY or invalid UTF-8 String) never fail a request: every loop's request starts at
+  `LLMContextView#messages` (`wire_messages`, the native prompt and its warm-up), which reads such an entry as UTF-8
+  and scrubs it first (`LLM::Utf8Scrub.messages`; a copy, the saved entry stays; the same Array when none needs it),
+  before any regex pass (`Steer.wire_text`'s forged-frame quoting). The body's own scrub (`Utf8Scrub.call`) stays.
 - The first system message carries `cache_split:` (`SystemPrompt#stable_length`); where the adapters put cache
   breakpoints is prompt-caching.md's and anthropic.md's.
 - **Reasoning sent back** (`reasoning_content`) follows `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`,
@@ -531,7 +547,7 @@ Turn events (the main ones; `events.rb` keeps the shared sets):
 | `:guardrail_warning` | a guardrails line | `{message}` |
 | `:turn_completed` | normal end | `{turn_id, result, turn_summary, display_pending}`, plus `verify`, `verdict`, `revises` when there are; the SSE frame omits `result` |
 | `:turn_canceled` | Stop, hook stop, Ctrl-C, signal | `{turn_id, cancellation_reason, cancelled_by?, duration_ms}` |
-| `:turn_failed` | an error | `{turn_id, error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
+| `:turn_failed` | an error (also before a turn began: `Engine#fail_turn_not_begun`, no `:turn_started`) | `{turn_id, error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
 | `:answer_display` | after the after_turn hooks (observers only) | `{display, refs?}` |
 
 ### Origins and authors

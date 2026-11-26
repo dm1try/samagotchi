@@ -54,7 +54,8 @@ module Samagotchi
   end
 
   # Why a turn stopped, for a parent agent's wait (ReplyWait::Result takes
-  # them by these names): a failed turn's provider error kind, whether a
+  # them by these names): a failed turn's error kind (a provider's, or
+  # chi_error: FailureLine), whether a
   # retry may help and whether its work stayed (kept_steps: a parent must
   # not send the task again); a canceled one's reason and the hook that
   # stopped it.

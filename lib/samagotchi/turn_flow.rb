@@ -5,6 +5,7 @@ require_relative "output_formatter"
 require_relative "turn_note"
 require_relative "context_note"
 require_relative "llm/errors"
+require_relative "failure_line"
 
 module Samagotchi
   # The state around turns a session worker (and a one-shot) keeps out of
@@ -137,7 +138,7 @@ module Samagotchi
     #   model)
     # @return [Symbol] :kept or :restored
     def prompt_turn_failed(error: nil, wake: nil, wake_kept: nil, note: true)
-      summary = error && (error.respond_to?(:summary) ? error.summary : error.message)
+      summary = error && FailureLine.for(error)
       steps = LLM::FailedTurn.kept_steps(error)
       @offer = nil
       if steps

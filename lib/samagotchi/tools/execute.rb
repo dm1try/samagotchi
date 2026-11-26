@@ -334,7 +334,11 @@ module Samagotchi
         return "" unless File.file?(path)
 
         size = File.size(path)
-        return File.read(path) if size <= truncate_at_bytes
+        # Valid UTF-8 (Utf8Scrub's rules, a bad byte "?" as the request's
+        # body has it): a command's output can hold any bytes, and the turn's
+        # later regex passes raise on invalid ones (the preview below is
+        # scrubbed too).
+        return File.binread(path).force_encoding(Encoding::UTF_8).scrub("?") if size <= truncate_at_bytes
 
         LogPreview.new(size, OutputGuardrails.head_tail_from_file(path: path, file_size: size, preview_bytes: preview_bytes))
       end

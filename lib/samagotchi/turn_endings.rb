@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "llm/errors"
+require_relative "failure_line"
 require_relative "tools/task_runtime"
 require_relative "turn_note"
 
@@ -12,6 +13,14 @@ module Samagotchi
   # forwards each here and keeps the steps that hold the event lock or save
   # (end_turn, complete_turn, store_answer_display, record_last_turn).
   class TurnEndings
+    # A failed turn's error_kind when chi itself failed (FailureLine).
+    CHI_ERROR = FailureLine::CHI_ERROR
+
+    def self.chi_error?(error) = FailureLine.chi_error?(error)
+
+    # The one line of a failed turn (FailureLine.for).
+    def self.failure_line(error) = FailureLine.for(error)
+
     # @param failure_summary [#call] (error) → a failed turn's one line (Engine#failure_summary)
     def initialize(failure_summary:)
       @failure_summary = failure_summary
@@ -94,11 +103,12 @@ module Samagotchi
 
       steps = LLM::FailedTurn.progress(turn.session.messages, kept)
       error.kept_steps = steps if steps && error.is_a?(LLM::FailedTurn) && LLM::FailedTurn.keeps_work?(error)
-      summary = error.respond_to?(:summary) ? error.summary : error.message
-      TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: turn.continue, steps: steps))
+      TurnNote.replace_trailing(kept, TurnNote.failed(self.class.failure_line(error), continued: turn.continue, steps: steps))
     end
 
     # Called after #failed_messages, which marks the error's kept steps.
+    # A provider error and chi's own (.chi_error?) say their kind and their
+    # line (summary:); a UserError's message is its line.
     def failed_event(error, seconds)
       failed = { type: :turn_failed, error_class: error.class.name, message: error.message,
                  duration_ms: (seconds * 1000).round }
@@ -108,6 +118,8 @@ module Samagotchi
       # A provider error says what kind it is, for one line per kind in the UIs.
       if error.is_a?(LLM::ProviderError)
         failed.merge!(error_kind: error.kind, retryable: error.retryable?, host: error.host, summary: failure_summary(error))
+      elsif self.class.chi_error?(error)
+        failed.merge!(error_kind: CHI_ERROR, summary: self.class.failure_line(error))
       end
       failed
     end

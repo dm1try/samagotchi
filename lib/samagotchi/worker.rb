@@ -749,7 +749,8 @@ module Samagotchi
     # result (or the error the Engine announced as :turn_failed), the
     # answer goes to the output file and the session is saved.
     # A failure before the Engine's turn began (this save, say) goes to the
-    # block too, with no :turn_failed: it is logged, the session idle again.
+    # block too: the session idle again, its :turn_failed announced
+    # (Engine#fail_turn_not_begun, no :turn_started before it) and logged.
     # @yieldparam result [Object, nil] Engine#run_turn's, nil on a failure
     # @yieldparam error [StandardError, nil]
     def run_engine_turn(prompt, **turn_args)
@@ -784,10 +785,11 @@ module Samagotchi
         # Still running: no turn of the Engine's ended (it never began).
         # It ends here, failed, as an Engine turn would record it: a wait
         # (ReplyWait) tells a turn's end by last_turn.
+        # The UIs get its :turn_failed (the line a failed turn shows) and
+        # the log where it raised.
         if @session.status == Session::STATUS_RUNNING
-          @session.status = Session::STATUS_IDLE
-          @engine.record_last_turn(@session, "failed", 0, origin, { type: :turn_failed })
-          Log.warn(:worker, "turn_not_begun", error: e.class.name, msg: e.message)
+          @engine.fail_turn_not_begun(@session, e, origin: origin, turn_id: turn_args[:id])
+          Log.exception(:worker, "turn_not_begun", e)
         end
       ensure
         # Ended (or never begun): the saves write the session's own messages.

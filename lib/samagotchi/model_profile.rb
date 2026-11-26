@@ -2,6 +2,7 @@
 
 require_relative "log"
 require_relative "model_markup"
+require_relative "failure_line"
 module Samagotchi
   # Encapsulates all model-specific token formats and parsing behavior.
   # Each profile maps to a model family; ModelProfile.resolve picks one
@@ -17,8 +18,10 @@ module Samagotchi
     # (SessionManager.spawn_options, Tools::Builtins.parent_env).
     MODEL_FROM_CLI_ENV = "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI"
     # No model anywhere (--model, default.model in config.yml, the env): a
-    # first run before any config. An ArgumentError, as before.
+    # first run before any config. An ArgumentError, as before; a failed
+    # turn shows its message as it is (UserError).
     class MissingModel < ArgumentError
+      include UserError
     end
 
     # A host-qualified model whose host isn't configured (a MissingModel,

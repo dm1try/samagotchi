@@ -145,6 +145,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     end
   end
 
+  # A turn that failed before the Engine's began (Engine#fail_turn_not_begun):
+  # no turn_started before it, its line all the same.
+  it "shows a failed turn's line when no turn started" do
+    feed(snapshot, { type: :turn_failed, error_class: "Errno::ENOSPC", message: "No space left on device", duration_ms: 0,
+                     error_kind: :chi_error, summary: "chi error: No space left on device (Errno::ENOSPC); details in samagotchi.log" })
+
+    expect(screen.lines.last).to eq("✕ turn failed: chi error: No space left on device (Errno::ENOSPC); details in samagotchi.log · 0ms")
+    expect(attached).not_to be_running
+  end
+
   describe "the recap on return" do
     it "shows the saved recap when joining, before the last exchange, noting the turns since" do
       joined = snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello" }])

@@ -300,7 +300,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
                               replace! turn_failed save persist])
     expect(tail).to eq(["model:calling", "tool_response:ok", "system:[SYSTEM: the previous turn failed after 1 to"])
-    expect(failed).to include(error_class: "Samagotchi::LLM::RateLimited", error_kind: :rate_limited, host: "fw", kept_steps: 1)
+    expect(failed).to include(error_class: "Samagotchi::LLM::RateLimited", error_kind: :rate_limited, host: "fw", kept_steps: 1,
+                              summary: error.summary)
     expect(error.kept_steps).to eq(1)
     expect(at_end).to eq(status: "idle", outcome: "failed")
     expect_released
@@ -309,10 +310,14 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   it "9. image error before the turn's messages: no note, no replace, still saved" do
     session.messages = [{ role: "user", content: "old" }]
     timeline.clear
+    failed = nil
+    engine.subscribe(observer: ->(e) { failed = e if e[:type] == :turn_failed })
 
     raised = run(images: [{ path: "/nonexistent/b3.png" }])
 
     expect(raised).to be_a(Samagotchi::ImageStore::Error)
+    # The user's to change (UserError): its message is the line, no chi error.
+    expect(failed.keys).not_to include(:error_kind, :summary)
     expect(timeline).to eq(%w[turn_started turn_failed save persist])
     expect(session.messages).to eq([{ role: "user", content: "old" }])
     expect(at_end).to eq(status: "idle", outcome: "failed")
@@ -330,11 +335,32 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
                               replace! turn_failed save persist])
     expect(session.messages.last[:content]).to eq(
-      "[SYSTEM: the previous turn failed before any answer: boom. The continued turn stopped there.]"
+      "[SYSTEM: the previous turn failed before any answer: chi error: boom (RuntimeError); details in samagotchi.log. " \
+        "The continued turn stopped there.]"
     )
     expect(tail(3).first(2)).to eq(["tool_response:r", "system:[SYSTEM: REMINDERS DUE 2026-01-02 03:04 loca"])
     expect(at_end).to eq(status: "idle", outcome: "failed")
     expect_released
+  end
+
+  it "10b. chi's own error: chi_error and its line on the event, its backtrace in the log" do
+    native { |_messages, **| raise Encoding::CompatibilityError, "incompatible encoding regexp match\nsecond line" }
+    failed = nil
+    engine.subscribe(observer: ->(e) { failed = e if e[:type] == :turn_failed })
+    allow(Samagotchi::Log).to receive(:exception).and_call_original
+
+    raised = run
+
+    expect(raised).to be_a(Encoding::CompatibilityError)
+    expect(failed).to include(error_kind: :chi_error, error_class: "Encoding::CompatibilityError",
+                              summary: "chi error: incompatible encoding regexp match (Encoding::CompatibilityError); " \
+                                       "details in samagotchi.log")
+    expect(failed).not_to have_key(:retryable)
+    expect(session.last_turn).to have_attributes(outcome: "failed", error_kind: "chi_error")
+    expect(Samagotchi::Log).to have_received(:exception).with(:turn, "chi_error", raised)
+    expect(session.messages.last[:content]).to start_with(
+      "[SYSTEM: the previous turn failed before any answer: chi error: incompatible encoding regexp match (Encoding::"
+    )
   end
 
   it "11. an after_turn hook presenting the answer: display_pending, then answer_display with the text" do
