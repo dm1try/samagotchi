@@ -16,8 +16,8 @@ module Samagotchi
     # @steer_cut, @hooks, @event_log, @client.
     module TurnEndPart
       # How the turn ended, on the session (Session#last_turn): the caller's
-      # save puts it in the file the session hub watches. Public for the
-      # Worker's turn that failed before it began (no #end_turn ran).
+      # save puts it in the file the session hub watches (#end_turn, and
+      # #fail_turn_not_begun where no #end_turn ran).
       # @param limit [Integer, nil] the turn ran out of iterations at this
       #   limit: "exhausted" => true, "limit" => N, so a wait with nobody to
       #   answer the continue offer says so (ReplyWait, ParentReport "limit")
@@ -30,6 +30,24 @@ module Samagotchi
                                          enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
                                          author: origin.participant_author,
                                          **stop_facts(event))
+      end
+
+      # A turn that failed before the Engine's began (the Worker's steps
+      # before #run_turn raised, or #begin_turn did): idle again, its
+      # last_turn and its :turn_failed as an Engine turn's failure has
+      # them (TurnEndings#failed_event, the same line), with no
+      # :turn_started before it and nothing kept. Observers only (no turn
+      # sink); the caller logs it.
+      # @param origin [TurnOrigin] the turn's
+      # @param turn_id [String, nil] the id the turn would have run under
+      def fail_turn_not_begun(session, error, origin:, turn_id: nil)
+        synchronize_events do
+          event = failed_event(error, 0)
+          event[:turn_id] = turn_id if turn_id
+          session.status = Session::STATUS_IDLE
+          record_last_turn(session, "failed", 0, origin, event)
+          emit_event(nil, origin.empty? ? event : event.merge(origin: origin.to_h))
+        end
       end
 
       # Why a turn stopped (TurnEndings#stop_facts).

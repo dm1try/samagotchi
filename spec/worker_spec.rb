@@ -3494,7 +3494,14 @@ RSpec.describe Samagotchi::Worker do
           expect(engine.pending_question).to have_attributes(kind: "continue")
           wait_for("the continue question to be saved") { saved_session.pending_question&.kind == "continue" }
           expect(saved_session.status).to eq("idle")
-          expect(seen.map { |e| e[:type] }).not_to include(:turn_failed)
+          # Its line in the UIs, as an Engine turn's failure has it (no
+          # turn_started before it), and its last_turn.
+          failed_event = seen.find { |e| e[:type] == :turn_failed }
+          expect(failed_event).to include(error_kind: :chi_error, error_class: "Errno::ENOSPC",
+                                          summary: "chi error: No space left on device - session file (Errno::ENOSPC); " \
+                                                   "details in samagotchi.log")
+          expect(seen.map { |e| e[:type] }.last(3)).to eq(%i[turn_failed continue_offered question_requested])
+          expect(saved_session.last_turn).to have_attributes(outcome: "failed", error_kind: "chi_error")
         end
 
         it "is asked again when the continue turn fails before it begins (the Engine's checkpoint)" do

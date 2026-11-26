@@ -649,7 +649,10 @@ credit held by in-flight requests, retried after 20 s), `OutOfCredits` (any othe
 402), `ServerError`, `AuthError`, `BadRequest` (`context_overflow?`) or `ProtocolError`. Engine keeps the turn's
 conversation (the prompt plus completed tool iterations) and emits
 `:turn_failed` with `error_kind:`, `retryable:`, `host:` and a one-line
-`summary:`, which the attached TUI, a one-shot's stderr and the web show.
+`summary:`, which the attached TUI, a one-shot's stderr and the web show. Any other error
+is chi's own (`TurnEndings.chi_error?`): `error_kind: chi_error` and the summary "chi error:
+<message> (<Class>); details in samagotchi.log", unless it tells the user what to change
+(`UserError`: an image the turn can't use, no model), whose message is the line.
 
 **Usage and models.** A turn's token counts are `SessionMetrics`', read from the
 stream events (server counts, else a chars/4 estimate). Model lists are `LLM::ModelInfo`

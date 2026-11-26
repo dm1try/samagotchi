@@ -30,6 +30,12 @@ RSpec.describe Samagotchi::TurnOutcome do
         .to eq("turn error: timeout")
     end
 
+    # A schedule's last result for a turn chi itself failed (TurnEndings::CHI_ERROR).
+    it "names chi's own failure by its kind" do
+      expect(described_class.new(replied: false, turn: turn("failed", error_kind: "chi_error")).detail)
+        .to eq("turn failed: chi_error")
+    end
+
     it "says the turn did not complete when it names no reason" do
       expect(described_class.new(replied: false, turn: turn(nil)).detail).to eq("turn did not complete")
     end

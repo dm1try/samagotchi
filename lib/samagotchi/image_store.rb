@@ -7,6 +7,7 @@ require "securerandom"
 require "tmpdir"
 require_relative "atomic_file"
 require_relative "config"
+require_relative "failure_line"
 
 module Samagotchi
   # Reads an image's format and size from its first bytes, in pure Ruby.
@@ -235,7 +236,10 @@ module Samagotchi
   # Messages hold small refs to those files; the base64 is built only when
   # a request is sent.
   module ImageStore
+    # What the user sent can't be used (UserError: its message as it is).
     class Error < StandardError
+      include UserError
+
       # A ref to a file this session doesn't hold as an image: one wording
       # for a turn's refs (#check_refs) and a web upload's (#ref_for).
       def self.unknown_image(file) = new("unknown image #{file.to_s[0, 80]}")

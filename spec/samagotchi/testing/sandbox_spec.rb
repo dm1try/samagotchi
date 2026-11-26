@@ -135,8 +135,10 @@ RSpec.describe Samagotchi::Testing::Sandbox do
   #  code split into spawn_env.rb, task_files.rb and task_transcript.rb (the same code, in
   #  three more files), 298 with SessionCommandCatalog (session_command_catalog.rb, which
   #  session_commands requires), 300 with PromptPart (prompt_part.rb, a session field's
-  #  value object), plus a one-file margin (under 310: up to 309).)
-  it "requires no Engine with the kit, in under 310 chi files" do
+  #  value object), 310 with Utf8Scrub (llm/utf8_scrub.rb, the request view's raw-bytes
+  #  pass) and FailureLine (failure_line.rb, a failed turn's line and UserError, which
+  #  TurnFlow, ImageStore and ModelProfile read), plus a one-file margin (under 312: up to 311).)
+  it "requires no Engine with the kit, in under 312 chi files" do
     lib = File.expand_path("../../../lib", __dir__)
     script = 'lib = ARGV.fetch(0); require "samagotchi/testing"; ' \
              'print [$LOADED_FEATURES.count { |f| f.start_with?(lib + "/samagotchi/") }, ' \
@@ -145,6 +147,6 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(status).to be_success, err
     count, engine = out.split
     expect(engine).to eq("nil")
-    expect(Integer(count)).to be < 310
+    expect(Integer(count)).to be < 312
   end
 end

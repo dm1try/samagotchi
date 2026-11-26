@@ -53,7 +53,7 @@ module Samagotchi
     # @!attribute limit [Integer, nil] the iteration limit an "exhausted"
     #   turn ran out at
     # @!attribute error_kind [String, nil] a "failed" turn's provider error
-    #   kind (credits, server, auth, …), from last_turn
+    #   kind (credits, server, auth, …) or chi_error, from last_turn
     # @!attribute retryable [Boolean, nil] whether that error may pass on a
     #   retry
     # @!attribute cancel_reason [String, nil] a "canceled" turn's reason

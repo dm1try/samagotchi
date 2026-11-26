@@ -333,18 +333,34 @@ test("turn_failed keeps a rolled-back turn's line for its prompt_restored", () =
 });
 
 test("turn_failed of a kept turn finishes its timing line from the turn record, as turn_canceled does", () => {
-  const { handlers, page } = fakePage();
+  const { handlers, page } = fakePage({ running: true });
   handlers.turn_failed({ error: "boom" });
   assert.equal(page.calls.filter(([name]) => name === "refreshTimingFromSession").length, 0);
   handlers.turn_failed({ error: "boom", kept_steps: 2 });
   assert.equal(page.calls.filter(([name]) => name === "refreshTimingFromSession").length, 1);
 });
 
+// A turn that failed before the Engine's began (Worker#run_engine_turn's
+// rescue) sends a turn_failed with no turn_started: no turn to end, its
+// line only (its prompt_restored draws it again after the re-read).
+test("turn_failed with no turn running draws its line only; with one running it ends that turn", () => {
+  const idle = fakePage();
+  idle.handlers.turn_failed({ message: "boom", error_kind: "chi_error", summary: "chi error: boom (RuntimeError); details in samagotchi.log" });
+  assert.deepEqual(idle.page.names().filter((name) => name !== "updateInfoBar"), ["addEndBubble", "setLiveStatus"]);
+  assert.equal(idle.page.calls[0][1], "\u2715 turn failed: chi error: boom (RuntimeError); details in samagotchi.log");
+  assert.ok(idle.liveTurn.failedText);
+
+  const busy = fakePage({ running: true });
+  busy.handlers.turn_failed({ message: "boom" });
+  assert.ok(busy.page.names().includes("endTurnView"));
+  assert.ok(!busy.page.names().includes("addEndBubble"));
+});
+
 // A continue turn's origin carries its offer turn's enqueued_id (the
 // original prompt's bubble key). Its failure ends the running turn's DOM only: no
 // prompt_restored follows a continue turn, so no failed bubble reuses the key.
 test("turn_failed of a continue turn (origin with the offer turn's enqueued_id) draws no user bubble", () => {
-  const { page, handlers } = fakePage();
+  const { page, handlers } = fakePage({ running: true });
   handlers.turn_failed({ error: "boom", continue: true, origin: { client_id: ME, enqueued_id: "e1" } });
   assert.ok(!page.names().includes("makeUserBubble"));
 });

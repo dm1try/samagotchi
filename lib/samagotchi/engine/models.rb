@@ -2,6 +2,7 @@
 
 require_relative "../config"
 require_relative "../effective_model"
+require_relative "../failure_line"
 require_relative "../llm/backend"
 require_relative "../llm/errors"
 require_relative "../log"
@@ -91,12 +92,13 @@ module Samagotchi
       end
       private :record_prompt_parts
 
-      # A failed turn's one line (the error's #summary). A host's failure
-      # under an alias says what the alias became (HostRegistry#alias_note):
-      # "host main" alone doesn't tell --model splash's user it was splash.
+      # A failed turn's one line (FailureLine.for: the error's
+      # #summary, else "chi error: …"). A host's failure under an alias says
+      # what the alias became (HostRegistry#alias_note): "host main" alone
+      # doesn't tell --model splash's user it was splash.
       # @return [String]
       def failure_summary(error)
-        summary = error.respond_to?(:summary) ? error.summary : error.message
+        summary = FailureLine.for(error)
         return summary unless error.is_a?(LLM::ProviderError) && error.host
 
         note = @host_registry.alias_note(effective_model_name)

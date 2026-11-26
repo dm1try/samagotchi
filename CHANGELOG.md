@@ -27,6 +27,11 @@ and commands may change between minor versions. How releases are made:
 
 - A finished background task whose output had non-ASCII text (accents, dashes, ✓) no longer fails its wake turn;
   `task_wait` and a handed-over `execute` show such output as is.
+- A turn that fails because of chi itself (not the model's host) says so on the web, in the terminal and on
+  `-p --non-interactive`'s stderr: "turn failed: chi error: <message> (<Class>); details in samagotchi.log", where
+  the log has where it failed. Its `error_kind` (`chi send --wait --format json`, a schedule's last result) is
+  `chi_error`. A turn that fails before it begins (its session can't be saved) now shows that line too, instead of
+  nothing.
 - Raw bytes in a conversation (a tool's output that isn't valid UTF-8) no longer fail the next turn on any model
   host; such text goes to the model with the bad bytes replaced. `execute` returns a command's output as valid UTF-8.
 

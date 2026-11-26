@@ -954,7 +954,8 @@ module Samagotchi
     # only re-raised: the turn already ended; so is any error there. Any
     # other error (e.g. an LLM::ProviderError) emits :turn_failed and
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
-    # one-line summary:.
+    # one-line summary:, chi's own (FailureLine.chi_error?) error_kind:
+    # :chi_error and its summary: (logged with its backtrace, chi_error).
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false,
                  origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil, revises: nil,
                  input_waiting: nil, opener_source: nil, reply_for: nil)
@@ -997,6 +998,9 @@ module Samagotchi
           raise
         end
 
+        # chi's own failure: where it raised goes to the log (its line
+        # says "details in samagotchi.log").
+        Log.exception(:turn, "chi_error", e) if TurnEndings.chi_error?(e)
         # Keep what the turn got to (the prompt plus the loop's completed
         # tool iterations) like a cancel does, and save it: a worker exits
         # after a failed turn.
