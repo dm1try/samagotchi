@@ -13,10 +13,12 @@ require "samagotchi/peer_mailbox"
 require "samagotchi/peer_receipts"
 require "samagotchi/session_access/local"
 require_relative "support/worker_links"
+require_relative "support/pruned_anchor"
 
 # SessionContinue.run: the next link of a session chain.
 RSpec.describe Samagotchi::SessionContinue, ".run" do
   include WorkerLinks
+  include PrunedAnchor
 
   let(:manager) { Samagotchi::SessionManager }
   let(:tmpdir) { Dir.mktmpdir("continue-spec") }
@@ -1236,6 +1238,39 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       third = continue(link.id)
       expect(load(third.id).continues).to eq(link.id)
       expect(archived?(link.id)).to be(true)
+    end
+
+    it "refuses a schedule's pruned anchor as continued, naming the head; last:<anchor> continues the head" do
+      Dir.mktmpdir("continue-pruned") do |root|
+        dir = File.join(root, "sessions")
+        chain = pruned_anchor_chain(dir)
+        short = chain.anchor[0, 8]
+
+        expect { described_class.run(chain.anchor, state_dir: dir, recap_wait: 0) }
+          .to raise_error(Samagotchi::SessionContinue::Refused) { |e|
+            expect(e).to have_attributes(reason: :continued, ids: [chain.head])
+            expect(e.message).to eq("#{short} is continued already, by #{chain.head[0, 8]}; continue that one (or last:#{short})")
+          }
+        expect(Process).not_to have_received(:spawn)
+        expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:continues)).not_to include(chain.anchor)
+
+        link = described_class.run("last:#{chain.anchor}", state_dir: dir, recap_wait: 0)
+        expect(Samagotchi::Session.load(link.id, state_dir: dir).continues).to eq(chain.head)
+      end
+    end
+
+    it "continues a schedule's archived anchor that never fired: its head is the anchor itself" do
+      Dir.mktmpdir("continue-unfired") do |root|
+        dir = File.join(root, "sessions")
+        anchor = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: folder)
+        anchor.save(state_dir: dir)
+        Samagotchi::ArchiveStore.archive(anchor.id, state_dir: dir)
+        Samagotchi::Schedules.new(state_dir: dir)
+                             .add(target: anchor.id, prompt: "Audit", recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+
+        link = described_class.run(anchor.id, state_dir: dir, recap_wait: 0)
+        expect(Samagotchi::Session.load(link.id, state_dir: dir).continues).to eq(anchor.id)
+      end
     end
 
     it "refuses a live delegate on an older chi's worker (no reparent feature), naming it, and starts nothing" do
