@@ -1273,7 +1273,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
         expect(e).to have_attributes(reason: :continued, ids: [link.id])
-        expect(e.message).to eq("#{previous.id[0, 8]} is continued already, by #{link.id[0, 8]}; " \
+        expect(e.message).to eq("session #{previous.id[0, 8]} was continued as #{link.id}; " \
                                 "continue that one (or last:#{previous.id[0, 8]})")
       }
       expect(Process).to have_received(:spawn).once
@@ -1293,7 +1293,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
         expect { described_class.run(chain.anchor, state_dir: dir, recap_wait: 0) }
           .to raise_error(Samagotchi::SessionContinue::Refused) { |e|
             expect(e).to have_attributes(reason: :continued, ids: [chain.head])
-            expect(e.message).to eq("#{short} is continued already, by #{chain.head[0, 8]}; continue that one (or last:#{short})")
+            expect(e.message).to eq("session #{short} was continued as #{chain.head}; continue that one (or last:#{short})")
           }
         expect(Process).not_to have_received(:spawn)
         expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:continues)).not_to include(chain.anchor)
@@ -1539,7 +1539,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(refused.status).to eq(:refused)
       expect(refused.ack).to include("error" => Samagotchi::SessionManager::DeliverResult::CONTINUED,
                                      "session_id" => previous.id, "successor_id" => link.id)
-      expect(refused.ack["detail"]).to eq("being continued as #{link.id[0, 8]}; send again in a moment")
+      expect(refused.ack["detail"]).to eq("session #{previous.id[0, 8]} is being continued as #{link.id}; send again in a moment")
       expect(Samagotchi::SessionInbox.find_new_input_files(dir_of(previous.id))).to eq([])
     end
 

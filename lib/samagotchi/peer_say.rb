@@ -2,6 +2,7 @@
 
 require_relative "peer_mailbox"
 require_relative "peer_receipts"
+require_relative "session_chain/successor"
 
 module Samagotchi
   # What chi peer say tells the peer, in chi's own words: the message's
@@ -58,7 +59,7 @@ module Samagotchi
       case status
       when :gone then "no such session"
       when :deleting then "this session is being deleted"
-      when :continued then "this session was continued as #{next_id}: say it there"
+      when :continued then "#{SessionChain::Continued.new(nil, next_id).message}: say it there"
       when :not_paired then "not paired: run the pair script"
       when :old_worker then "this session's chi is older than chi peer: restart the session (chi sessions restart)"
       when :full then "chi has #{PeerMailbox::UNTAKEN_MAX} unread messages from #{peer}"
@@ -118,7 +119,7 @@ module Samagotchi
 
     def refusal
       case status
-      when :continued then "this session was continued as #{next_id}: pair with it"
+      when :continued then "#{SessionChain::Continued.new(nil, next_id).message}: pair with it"
       when :old_worker then PeerSay.refusal(:old_worker, nil, nil)
       end
     end

@@ -290,7 +290,8 @@ module Samagotchi
       # Generic (the CLI and chi web load no plugins): a peer's skill owns
       # its re-pair.
       def self.continued_message(name, id, next_id)
-        "#{id.to_s[0, 8]} was continued as #{next_id}: #{name} stays with the session it was attached to; " \
+        require_relative "session_chain/successor"
+        "#{SessionChain::Continued.new(id, next_id).message}: #{name} stays with the session it was attached to; " \
           "attach it to #{next_id} (or pair again with #{next_id}) and push there"
       end
     end

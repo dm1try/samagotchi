@@ -42,7 +42,7 @@ module Samagotchi
 
       # The refusal of a send whose link is still being continued once the
       # sender's wait is over.
-      def continuing_refusal = "being continued as #{id[0, 8]}; send again in a moment"
+      def continuing_refusal = "#{SessionChain::Continued.new(asked, id, in_flight: true).message}; send again in a moment"
     end
 
     # A delivery's outcome.

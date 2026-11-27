@@ -223,13 +223,18 @@ module Samagotchi
                         SessionChain::Successor.of(session_id, state_dir: sd, anchor: false)
                       else
                         SessionChain::Successor.in_flight(session_id, state_dir: sd)
-                      end&.id
+                      end
           next yield if held && successor.nil?
 
-          words = successor ? "being continued as #{successor[0, 8]}" : "being continued"
+          # A held lock with no successor named: Busy's words.
+          words = if successor
+                    "#{SessionChain::Continued.for(session_id, successor).message}; send again in a moment"
+                  else
+                    SessionTransition::Busy.new(session_id).message
+                  end
           DeliverResult.new(status: :refused, code: 409,
-                            ack: { "error" => DeliverResult::CONTINUED, "detail" => "#{words}; send again in a moment",
-                                   "session_id" => session_id, "successor_id" => successor }.compact)
+                            ack: { "error" => DeliverResult::CONTINUED, "detail" => words,
+                                   "session_id" => session_id, "successor_id" => successor&.id }.compact)
         end
       end
 

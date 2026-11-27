@@ -80,7 +80,7 @@ RSpec.describe Samagotchi::SessionAccess::Exchange do
       access.heads = [resolved(new_id, via: :continuing)]
       found = exchange.locate(old_id)
       expect(found).to have_attributes(reason: :continuing, asked: old_id,
-                                       message: "being continued as #{new_id[0, 8]}; send again in a moment")
+                                       message: "session #{old_id[0, 8]} is being continued as #{new_id}; send again in a moment")
       expect(pauses.sum).to be >= 1.0
     end
 

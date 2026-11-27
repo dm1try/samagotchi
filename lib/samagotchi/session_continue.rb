@@ -55,7 +55,8 @@ module Samagotchi
       def continue_refused_message(detail)
         short = @session_id[0, 8]
         case @reason
-        when :continued then "#{short} is continued already, by #{@ids.first[0, 8]}; continue that one (or last:#{short})"
+        when :continued
+          "#{SessionChain::Continued.new(@session_id, @ids.first).message}; continue that one (or last:#{short})"
         when :open_children
           "#{short} has delegates still open that can't move to the next link: #{detail}; " \
           "then continue (or wait for them, stop them or archive them)"

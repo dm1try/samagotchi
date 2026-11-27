@@ -229,7 +229,7 @@ RSpec.describe Samagotchi::ContextCommand do
         link.save(state_dir: state_dir)
 
         expect(run("push", "notes", "-m", "later", a.id)).to eq(1)
-        expect(err.string).to include("chi context push: #{a.id[0, 8]} was continued as #{link.id}: notes stays with the " \
+        expect(err.string).to include("chi context push: session #{a.id[0, 8]} was continued as #{link.id}: notes stays with the " \
                                       "session it was attached to; attach it to #{link.id} (or pair again with " \
                                       "#{link.id}) and push there")
         expect(own(a).snapshot("notes").text).to eq("late")
