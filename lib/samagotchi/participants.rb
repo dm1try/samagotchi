@@ -128,7 +128,7 @@ module Samagotchi
       # continue archives the link and ends its grants (end_sessions), so
       # one issued between the two would outlive the archive.
       issued = SessionTransition.shared(session_id, state_dir: state_dir) do |free|
-        raise Grants::Invalid, SessionTransition::Busy.new(session_id).message unless free
+        raise Grants::Invalid, SessionTransition::Busy.held(session_id, state_dir: state_dir).message unless free
         if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
           raise Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
         end

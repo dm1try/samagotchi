@@ -362,12 +362,16 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       }
     end
 
-    it "reads a continue's 409 transition_busy as SessionContinue::Refused, in its own words" do
+    it "reads a continue's 409 transition_busy as SessionContinue::Refused, in chi web's words naming the holder, else its own" do
       access, = scripted([409, { error: "transition_busy", reason: "transition_busy", session_id: "abcdef12-0000",
-                                 message: "ignored" }])
+                                 message: "session abcdef12 is being deleted; try again in a moment" }],
+                         [409, { error: "transition_busy", reason: "transition_busy", session_id: "abcdef12-0000" }])
 
       expect { access.archive("s") }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
-        expect([e.reason, e.message]).to eq([:transition_busy, "session abcdef12 is busy with another change; try again in a moment"])
+        expect([e.reason, e.message]).to eq([:transition_busy, "session abcdef12 is being deleted; try again in a moment"])
+      }
+      expect { access.archive("s") }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
+        expect(e.message).to eq("session abcdef12 is busy with another change; try again in a moment")
       }
     end
 

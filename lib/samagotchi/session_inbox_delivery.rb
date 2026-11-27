@@ -299,8 +299,12 @@ module Samagotchi
         SessionTransition.shared(id, state_dir: state_dir) do |free|
           next yield if free
 
-          # The holder's in-flight continue first (its new link may be
-          # saved already), then a saved one.
+          # A delete holding it names nobody (Busy's "being deleted": a
+          # link being deleted or pruned is not continued anywhere new);
+          # else the holder's in-flight continue first (its new link may
+          # be saved already), then a saved one.
+          next refused.call(nil) if SessionTransition.holder(id, state_dir: state_dir) == :delete
+
           refused.call(SessionChain::Successor.in_flight(id, state_dir: state_dir) ||
                        SessionChain::Successor.of(id, state_dir: state_dir, anchor: false))
         end

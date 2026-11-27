@@ -129,6 +129,26 @@ RSpec.describe "the seats' transition hold" do
       expect(Samagotchi::ArchiveStore.archived?(dir_of(session.id))).to be(false)
     end
 
+    # Busy's words name the holder (Busy.held): a delete holding the lock
+    # is "being deleted", and a saved link after it (the next link of a
+    # middle one being pruned) is not offered as where to send instead.
+    it "refuses a turn and a push while a delete holds the lock as being deleted, naming no successor" do
+      following = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w")
+      following.continues = session.id
+      following.save(state_dir: tmpdir)
+      Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
+
+      holding_transition(session.id, state_dir: tmpdir, kind: :delete) do
+        result = send_turn(follow: true)
+
+        expect(result).to be_busy
+        expect(result.ack).not_to include("successor_id")
+        expect(result.detail).to eq("session #{session.id[0, 8]} is being deleted; try again in a moment")
+        expect(deliver(:push).first).to have_attributes(status: :refused, wake: :busy)
+      end
+      expect(inputs(session.id)).to be_empty
+    end
+
     it "makes no folder for a session that is gone" do
       gone = SecureRandom.uuid
 
