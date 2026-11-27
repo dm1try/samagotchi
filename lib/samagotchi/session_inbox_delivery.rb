@@ -8,6 +8,7 @@ require_relative "worker_presence"
 require_relative "continue_intent"
 require_relative "session_chain/links"
 require_relative "session_chain/successor"
+require_relative "session_transition"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -56,7 +57,9 @@ module Samagotchi
     #   worker comes: it waits for the next start)
     # @!attribute wake [Symbol] WakePolicy#decide's outcome, :woken for a
     #   start made, or the refusal (:gone, :deleting: a deleter holds its
-    #   lock, :owned: a one-turn chi run's, :scratch). :deleting after the
+    #   lock, :owned: a one-turn chi run's, :scratch; a :shared row's
+    #   :continued, a continue holding the transition lock names its new
+    #   link, or :busy, another transition holds it: Hold.under). :deleting after the
     #   write (status :waits) is a delete that took the lock meanwhile: the
     #   file goes with the session (a caller that reports the delivery takes
     #   it back, SessionInbox.withdraw)
@@ -272,6 +275,38 @@ module Samagotchi
       end
     end
 
+    # What a delivery holds of its session's transition lock (its row's
+    # WakePolicy#hold), taken once in each seat (Dispatch.deliver / .wake,
+    # SessionManager.deliver_turn) around the check, the write and the
+    # start, so no transition (a continue) starts in between; never taken
+    # again inside it (a nested seat on this thread opens a second shared
+    # hold, which a shared one never conflicts with).
+    module Hold
+      module_function
+
+      # The block under +policy+'s hold of +id+, or, when a transition
+      # holds the lock now (not waited for), +refused+ called with who
+      # continues +id+ (the holding continue's new link, in flight, else a
+      # saved successor: SessionChain::Successor) or nil (busy: Busy's
+      # words). A :none row,
+      # or an id that is no session id (the caller's own refusal follows),
+      # is the block alone.
+      # @param refused [#call] (successor) the refusal's value
+      # @return the block's value, or +refused+'s
+      def under(policy, id, state_dir, refused:)
+        return yield unless policy.shared? && Session.valid_id?(id)
+
+        SessionTransition.shared(id, state_dir: state_dir) do |free|
+          next yield if free
+
+          # The holder's in-flight continue first (its new link may be
+          # saved already), then a saved one.
+          refused.call(SessionChain::Successor.in_flight(id, state_dir: state_dir) ||
+                       SessionChain::Successor.of(id, state_dir: state_dir, anchor: false))
+        end
+      end
+    end
+
     # SessionInbox.deliver and SessionInbox.wake.
     module Dispatch
       # What a start each kind makes is logged as (SessionManager.start_for_inbox).
@@ -280,10 +315,11 @@ module Samagotchi
       module_function
 
       # Deliver one +kind+ of thing to session +target+, in this order:
-      # resolve the link (Head.resolve), refuse (WakePolicy#refusal: before
-      # any write), write (the block: the kind's own writer, given the id
-      # it writes under), read the presence once, then decide and apply
-      # (#wake).
+      # resolve the link (Head.resolve), then under the row's transition
+      # hold (Hold.under: refused :continued or :busy while a transition
+      # holds it) refuse (WakePolicy#refusal: before any write), write (the
+      # block: the kind's own writer, given the id it writes under), read
+      # the presence once, then decide and apply (#wake).
       # @param wake [Boolean] the delivery may ask for a worker; the block's
       #   value says whether it does (truthy: asks)
       # @param pin [Boolean] write under +target+ itself, whatever the kind's
@@ -304,22 +340,35 @@ module Samagotchi
         resolved = Resolved.new(id: target, asked: target, via: :pinned) if pin
         resolved ||= Head.resolve(kind, target, state_dir: sd)
         at = policy.resolves == :reader ? resolved.asked : resolved.id
-        if (why = refusal(policy, at, sd, owner))
-          return Delivered.new(kind: kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
+        Hold.under(policy, at, sd, refused: ->(successor) { held(policy, resolved, successor) }) do
+          if (why = refusal(policy, at, sd, owner))
+            next Delivered.new(kind: kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
                                wake: why)
-        end
+          end
 
-        asks = yield(at)
-        apply(policy, resolved, sd, wake: wake && asks ? true : false, owner: owner, start: start)
+          asks = yield(at)
+          apply(policy, resolved, sd, wake: wake && asks ? true : false, owner: owner, start: start)
+        end
       end
 
       # The wake half of #deliver alone, for a delivery already on disk (a
-      # failed continue's previous link with rings that came meanwhile).
+      # failed continue's previous link with rings that came meanwhile),
+      # under the row's hold as #deliver's.
       # @return [Delivered]
       def wake(kind, target, state_dir: nil, owner: nil, start: nil)
         sd = state_dir || Session.default_state_dir
-        apply(WakePolicy.for(kind), Head.resolve(kind, target, state_dir: sd), sd, wake: true, owner: owner,
-                                                                                    start: start)
+        policy = WakePolicy.for(kind)
+        resolved = Head.resolve(kind, target, state_dir: sd)
+        Hold.under(policy, resolved.id, sd, refused: ->(successor) { held(policy, resolved, successor) }) do
+          apply(policy, resolved, sd, wake: true, owner: owner, start: start)
+        end
+      end
+
+      # A delivery a transition's hold refused, nothing written: :continued
+      # (+successor+ names the continue's new link) or :busy.
+      def held(policy, resolved, successor)
+        Delivered.new(kind: policy.kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
+                      wake: successor ? :continued : :busy)
       end
 
       # Every kind reads the presence: a session being deleted refuses

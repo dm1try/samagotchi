@@ -4,6 +4,7 @@ require_relative "../analytics_file"
 require_relative "../session_inbox"
 require_relative "../worker_link"
 require_relative "../starting_marker"
+require_relative "../session_transition"
 
 module Samagotchi
   class SessionManager
@@ -14,8 +15,10 @@ module Samagotchi
     # and is still empty. A turn's drawing (Bridge::TurnDrawings::FILE)
     # exists only after a turn that kept messages: never a skeleton file.
     # The starting marker is one too: a start left one behind; a fresh one
-    # keeps the session from the deleters itself.
-    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerLink::FILE, AnalyticsFile::NAME, StartingMarker::FILE].freeze
+    # keeps the session from the deleters itself. So is the transition lock
+    # (a send's shared hold leaves it: SessionInbox::Hold).
+    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerLink::FILE, AnalyticsFile::NAME, StartingMarker::FILE,
+                            SessionTransition::LOCK].freeze
     EMPTY_DIRS = [SessionInbox::INPUT_DIR, SessionInbox::NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
 

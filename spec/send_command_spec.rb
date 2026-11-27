@@ -781,6 +781,9 @@ RSpec.describe Samagotchi::SendCommand do
             created.id = successor
             created.continues = old.id
             created.save(state_dir: tmpdir)
+            # The continue ends once its new link is saved: its locks go.
+            [@lock, @successor_lock].compact.each(&:close)
+            @lock = @successor_lock = nil
             locks << Samagotchi::OwnerLock.acquire(dir_of(created), kind: "worker")
             serve(created)
           end
@@ -950,6 +953,9 @@ RSpec.describe Samagotchi::SendCommand do
             created.continues = old.id
             created.last_prompt = "hi"
             created.save(state_dir: tmpdir)
+            # The continue ends once its new link is saved: its locks go.
+            [@lock, @successor_lock].compact.each(&:close)
+            @lock = @successor_lock = nil
             locks << Samagotchi::OwnerLock.acquire(dir_of(created), kind: "worker")
             serve(created)
           end
@@ -974,6 +980,9 @@ RSpec.describe Samagotchi::SendCommand do
             created.continues = old.id
             created.save(state_dir: tmpdir)
             Samagotchi::StartingMarker.mark(created.id, state_dir: tmpdir)
+            # The continue ends once its new link is saved: its locks go.
+            [@lock, @successor_lock].compact.each(&:close)
+            @lock = @successor_lock = nil
           end
           stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
           allow(Process).to receive(:spawn).and_return(40_007)
