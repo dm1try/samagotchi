@@ -3,7 +3,9 @@
 require "securerandom"
 require "tmpdir"
 require "spec_helper"
+require_relative "support/transition_holder"
 require "samagotchi/schedules"
+require "samagotchi/schedule_command"
 require "samagotchi/session_continue"
 require "samagotchi/continue_intent"
 require "samagotchi/memory_usage"
@@ -12,6 +14,8 @@ require "samagotchi/session_manager"
 # Durable schedules (docs/scheduling.md): the store, the lock, the recurrence
 # math, the tick, the busy check and the chain prune.
 RSpec.describe Samagotchi::Schedules do
+  include TransitionHolder
+
   def session(state_dir, parent: nil, continues: nil, status: "idle", delegate: false)
     now = Time.now.utc.iso8601
     Samagotchi::Session.new(
@@ -1752,6 +1756,115 @@ RSpec.describe Samagotchi::Schedules do
       expect(fired.status).to eq("pending")
       complete_pending(dir, schedules, entry.id)
       expect(archived?(dir, first)).to be(false)
+    end
+  end
+
+  # A link that can't go now holds the prune there: never skipped past
+  # (the chain is not deleted around it), recorded on the entry (list and
+  # show say it), logged once per link, tried again every tick.
+  describe "a prune held at a link" do
+    def fire(dir, schedules, entry)
+      set_idle(dir, schedules.lookup(entry.id).head)
+      schedules.run_now(entry.id)
+      complete_pending(dir, schedules, entry.id)
+      schedules.lookup(entry.id).head
+    end
+
+    def waiting(schedules, entry) = described_class::PrunePart.waiting(schedules.lookup(entry.id))
+    def present?(dir, id) = Samagotchi::Session.exist?(id, state_dir: dir)
+    def warned(name) = @warnings.count { |args| args[1] == name }
+
+    def command(schedules, *argv)
+      out = StringIO.new
+      Samagotchi::ScheduleCommand.new(argv, stdout: out, stderr: StringIO.new, schedules: schedules).run
+      out.string
+    end
+
+    before do
+      allow(Process).to receive(:spawn).and_return(12_345)
+      @warnings = []
+      allow(Samagotchi::Log).to receive(:warn).and_wrap_original do |original, *args, **kw|
+        @warnings << args
+        original.call(*args, **kw)
+      end
+    end
+
+    it "stops at a link whose transition lock is held, keeps every link after it, and goes on once it is free" do
+      Dir.mktmpdir("schedules-prune-held") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+        first = fire(dir, schedules, entry)
+        second = fire(dir, schedules, entry)
+
+        holding_transition(first, state_dir: dir) do
+          2.times { fire(dir, schedules, entry) } # both prunes reach `first`
+          expect([present?(dir, first), present?(dir, second)]).to eq([true, true])
+          expect(waiting(schedules, entry)).to have_attributes(
+            link: first, reason: "session #{first[0, 8]} is busy with another change; try again in a moment"
+          )
+          expect(warned("prune_waiting")).to eq(1)
+          expect(schedules.lookup(entry.id).failures).to eq(0)
+        end
+
+        # Nothing due: the tick tries the waiting prune again.
+        schedules.tick(now: Time.now)
+        expect([present?(dir, first), present?(dir, second)]).to eq([false, false])
+        expect(waiting(schedules, entry)).to be_nil
+        expect(present?(dir, anchor)).to be(true)
+      end
+    end
+
+    it "stops at a link while the link after it is held" do
+      Dir.mktmpdir("schedules-prune-next-held") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+        first = fire(dir, schedules, entry)
+        second = fire(dir, schedules, entry)
+
+        set_idle(dir, second)
+        schedules.run_now(entry.id) # continues `second`: then the prune of `first` meets its hold
+        holding_transition(second, state_dir: dir, kind: :delete) do
+          complete_pending(dir, schedules, entry.id)
+          expect(present?(dir, first)).to be(true)
+          expect(waiting(schedules, entry)).to have_attributes(
+            link: first, reason: "session #{second[0, 8]} is being deleted; try again in a moment"
+          )
+        end
+      end
+    end
+
+    # The probed stall (audit r23, reader 4): another enabled schedule
+    # anchored inside the chain protects its link for good.
+    it "says where it waits when another schedule is anchored inside the chain, deleting nothing around it" do
+      Dir.mktmpdir("schedules-prune-mid-anchor") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+        first = fire(dir, schedules, entry)
+        second = fire(dir, schedules, entry)
+        other = schedules.add(target: first, prompt: "Watch the deps", recurrence: every("1h"))
+
+        3.times { fire(dir, schedules, entry) }
+        reason = "this session is the target of an enabled schedule; cancel it with chi schedule cancel #{other.id}"
+        expect([present?(dir, first), present?(dir, second)]).to eq([true, true])
+        expect(waiting(schedules, entry)).to have_attributes(link: first, reason: reason)
+        expect(warned("prune_waiting")).to eq(1)
+        expect(command(schedules, "list")).to include("pruning held at #{first[0, 8]}")
+        expect(command(schedules, "show", entry.id)).to include("  pruning held at #{first[0, 8]}: #{reason}  (since ")
+        expect(JSON.parse(File.read(schedules.path))["schedules"].find { |raw| raw["id"] == entry.id }["prune_waiting"])
+          .to include("link" => first, "reason" => reason)
+
+        schedules.cancel(other.id)
+        schedules.tick(now: Time.now)
+        expect([present?(dir, first), present?(dir, second)]).to eq([false, false])
+        expect(waiting(schedules, entry)).to be_nil
+        expect(command(schedules, "list")).not_to include("pruning held")
+      end
     end
   end
 

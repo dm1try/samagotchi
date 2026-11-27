@@ -252,6 +252,8 @@ module Samagotchi
       @stdout.puts("  last fired: #{clock(entry.last_fired)}  last result: #{entry.last_result || "-"}")
       @stdout.puts("  skips: #{entry.skips} of #{entry.max_skips}  failures: #{entry.failures} of #{entry.max_failures}")
       @stdout.puts("  keep_links: #{entry.keep_links}  enabled: #{entry.enabled}")
+      waiting = Schedules::PrunePart.waiting(entry)
+      @stdout.puts("  pruning held at #{waiting.link[0, 8]}: #{waiting.reason}  (since #{clock(waiting.at)})") if waiting
       @stdout.puts("  if: #{condition_show(entry)}") unless entry.condition.nil?
       @stdout.puts("  prompt: #{entry.prompt}")
       print_history(entry)
@@ -336,7 +338,8 @@ module Samagotchi
     end
 
     # One `list` row: id, name, mode, recurrence, next due, target head, and the
-    # notes (skips, why it is disabled, the last result). +name_width+ is the
+    # notes (skips, why it is disabled, the last result, the link its prune
+    # waits at: Schedules::PrunePart.waiting). +name_width+ is the
     # widest name among the rows printed; without it the name column is just
     # the name. "disabled after N" only when that budget is spent: a one-off
     # whose firing failed (ScheduleDisplay.off_reason "failures") reads
@@ -347,6 +350,7 @@ module Samagotchi
       note += off_note(entry) unless entry.enabled
       note += " if: #{ScheduleDisplay.condition_words(entry, chars: ScheduleDisplay::PROMPT_CHARS)}" unless entry.condition.nil?
       note += " last: #{entry.last_result}" if entry.last_result
+      note += " pruning held at #{Schedules::PrunePart.waiting(entry).link[0, 8]}" if Schedules::PrunePart.waiting(entry)
       "#{entry.id}  #{ScheduleDisplay.name(entry, width: name_width)}  #{entry.mode}  #{entry.recurrence_words}  " \
         "#{clock(entry.next_due)}  #{entry.head[0, 8]}#{note}"
     end
