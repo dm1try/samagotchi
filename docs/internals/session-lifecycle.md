@@ -174,7 +174,9 @@ continue, followed send and delete honour it.
   holds counts as taken, so a repair reached inside a continue never undoes it.
 - `shared(id, state_dir:)` is a non-blocking shared hold (an invalid id is `false`, the folder and file are created),
   around a followed send's check and resume, a peer say's, a peer pair's and a context push's continued check and
-  write (`SessionAccess::Local#moved_on`), and a chain delete's links.
+  write (`SessionAccess::Local#moved_on`), and a chain delete's links. A caller that can't write the session folder
+  (a peer's chi behind the mailbox door) holds an existing lock file read-only, and holds nothing when there is none
+  (no transition holds a file that isn't there; one starting after it is not held off).
 - `held?(id, state_dir:)` is a kernel probe (`in_flight`, `DeletePreview`): it creates nothing and ignores the
   registry, so it answers the same inside this thread's own hold.
 - `forget(id, state_dir:)` takes back the lock file `exclusive` left for a session with no session file (one try
