@@ -365,9 +365,11 @@ module Samagotchi
 
       # Attaches +source+ to the target's own sources.
       # @return [ContextAdded]
+      # A session's own: under its transition lock (ContextSources.changing).
+      # @raise [ContextSources::Held] a transition holds the session's lock
       def context_add(target, source)
         location = context_location(target)
-        location.add(source.with(scope: location.scope))
+        own_change(target) { location.add(source.with(scope: location.scope)) }
         ContextAdded.new(name: source.name)
       end
 
@@ -461,9 +463,10 @@ module Samagotchi
       # Detaches the target's own source +name+.
       # @return [Symbol] :removed, :project (a session's project has it:
       #   rm --project, or mute it) or :missing
+      # @raise [ContextSources::Held] a transition holds the session's lock
       def context_remove(target, name)
         ContextSources.check_name!(name)
-        return :removed if context_location(target).remove(name)
+        return :removed if own_change(target) { context_location(target).remove(name) }
 
         project = !target.project? && ContextSources.project_location_for(target.project_root,
                                                                           project_id: target.project_id,
@@ -817,6 +820,14 @@ module Samagotchi
         return continued_as(id) if free
 
         SessionChain::Successor.of(id, state_dir: state_dir!, in_flight: true) || :busy
+      end
+
+      # The block, for a session target under its transition lock
+      # (ContextSources.changing); a project's as is.
+      def own_change(target, &)
+        return yield if target.project?
+
+        ContextSources.changing(target.session_id, state_dir: state_dir!, &)
       end
 
       def state_dir! = @state_dir || Session.default_state_dir

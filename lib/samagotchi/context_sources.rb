@@ -52,6 +52,12 @@ module Samagotchi
     # A name, a command, a value the store can't take.
     class Invalid < ArgumentError; end
 
+    # A change to a session's own sources refused while a transition holds
+    # the session's lock (#changing): a continue copies them to its new
+    # link, so one written then would stay behind. Its words name the
+    # continue's new link, or say busy; try again in a moment.
+    class Held < Invalid; end
+
     # A source's definition. +cmd+ nil: pushed only (chi context push).
     # +provider+: the bundle whose context provider made it (a URL), whose
     # folder its cmd's {bundle_dir} names (ContextProviders.command_for).
@@ -595,6 +601,28 @@ module Samagotchi
     # <state dir>/context; +state_dir+ is the sessions dir (SessionPaths.default_state_dir).
     def root(state_dir: nil)
       File.join(File.dirname(state_dir || SessionPaths.default_state_dir), DIR)
+    end
+
+    # The block (a change to session +session_id+'s own sources: an add, a
+    # remove) under a shared hold of the session's transition lock
+    # (SessionTransition.shared), so a continue (ContextSources.move) can't
+    # copy them in between. A session whose file is gone takes no hold (its
+    # folder is not made again).
+    # @param state_dir [String] the sessions dir
+    # @raise [Held] a transition holds it now (nothing written)
+    def changing(session_id, state_dir:)
+      return yield unless Session.exist?(session_id, state_dir: state_dir)
+
+      require_relative "session_transition"
+      require_relative "session_chain/successor"
+      SessionTransition.shared(session_id, state_dir: state_dir) do |free|
+        next yield if free
+
+        successor = SessionChain::Successor.in_flight(session_id, state_dir: state_dir)
+        raise Held, SessionTransition::Busy.new(session_id).message unless successor
+
+        raise Held, "#{SessionChain::Continued.for(session_id, successor).message}; try again in a moment"
+      end
     end
 
     def session_location(session_id, state_dir: nil)

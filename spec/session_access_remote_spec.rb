@@ -184,6 +184,16 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /answered 423 locked: other/)
     end
 
+    it "maps an add's and a remove's 423 context_busy to ContextSources::Held with the words" do
+      source = Samagotchi::ContextSources::Source.new(name: "ci", cmd: "x", every_seconds: nil, why: nil, hint: nil,
+                                                      scope: nil, added_by: "cli", created_at: nil)
+      access, = scripted([423, { error: "context_busy", detail: "session s-1 is busy" }])
+      expect { access.context_add(target, source) }.to raise_error(Samagotchi::ContextSources::Held, "session s-1 is busy")
+
+      access, = scripted([423, { error: "context_busy", detail: "session s-1 is busy" }])
+      expect { access.context_remove(target, "ci") }.to raise_error(Samagotchi::ContextSources::Held, "session s-1 is busy")
+    end
+
     it "matches no_provider by code" do
       url = "https://nope.example/1"
       expected = "no installed bundle on studio resolves #{url} (chi bundle install github-pr there for GitHub PRs)"

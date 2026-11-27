@@ -6,10 +6,13 @@ require "json"
 require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/session"
+require_relative "../support/transition_holder"
 
 # The session bar's attached context: list, one source's text, and detach
 # (a session's source) or mute (a project's, for this session).
 RSpec.describe Samagotchi::Web::App, "attached context" do
+  include TransitionHolder
+
   let(:tmpdir) { Dir.mktmpdir("web-context") }
   let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions").tap { |d| FileUtils.mkdir_p(d) } }
   let(:repo) { File.join(tmpdir, "app").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) } }
@@ -137,6 +140,17 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
       expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/context", method: "POST",
                                                                                 body: { url: "https://example.com/pull/1" }).first).to eq(404)
     end
+  end
+
+  # A continue copies the session's own sources: no change while a transition holds its lock.
+  it "refuses a detach 423 context_busy while a transition holds the session's lock, the source kept" do
+    add(own, "mine")
+    holding_transition(session.id, state_dir: state_dir) do
+      status, body = call("/api/sessions/#{session.id}/context/mine?own=1", method: "DELETE")
+      expect([status, body["error"]]).to eq([423, "context_busy"])
+      expect(call("/api/sessions/#{session.id}/context/mine", method: "DELETE").first).to eq(423)
+    end
+    expect(own.source("mine")).not_to be_nil
   end
 
   it "detaches a session's source and mutes a project's for this session only" do
