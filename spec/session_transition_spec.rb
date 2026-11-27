@@ -209,6 +209,48 @@ RSpec.describe Samagotchi::SessionTransition do
     end
   end
 
+  describe ".forget" do
+    def save(id)
+      Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: state_dir)
+                         .tap { |session| session.id = id }.save(state_dir: state_dir)
+    end
+
+    it "takes back the lock file of a session with no file, and its folder when that empties it" do
+      exclusive([low]) { nil }
+      expect(File.exist?(lock_file(low))).to be(true)
+
+      expect(described_class.forget(low, state_dir: state_dir)).to be(true)
+      expect(Dir.exist?(dir_of(low))).to be(false)
+    end
+
+    it "keeps a folder with more in it, taking only the lock" do
+      exclusive([low]) { File.write(File.join(dir_of(low), "note.json"), "{}") }
+
+      expect(described_class.forget(low, state_dir: state_dir)).to be(true)
+      expect(Dir.children(dir_of(low))).to eq(["note.json"])
+    end
+
+    it "leaves a saved session's lock, one held elsewhere, and one this thread holds" do
+      save(low)
+      exclusive([low]) { nil }
+      expect(described_class.forget(low, state_dir: state_dir)).to be(false)
+      expect(File.exist?(lock_file(low))).to be(true)
+
+      held = raw_lock(high)
+      expect(described_class.forget(high, state_dir: state_dir)).to be(false)
+      expect(File.exist?(lock_file(high))).to be(true)
+      held.close
+
+      exclusive([high]) { expect(described_class.forget(high, state_dir: state_dir)).to be(false) }
+      expect(File.exist?(lock_file(high))).to be(true)
+    end
+
+    it "is false for no lock file, or an id that isn't one" do
+      expect(described_class.forget(low, state_dir: state_dir)).to be(false)
+      expect(described_class.forget("../x", state_dir: state_dir)).to be(false)
+    end
+  end
+
   describe ".held?" do
     it "is a kernel probe: true inside this thread's own hold (the registry is not read)" do
       exclusive([low]) { expect(held?(low)).to be(true) }
