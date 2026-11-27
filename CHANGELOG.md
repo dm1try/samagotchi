@@ -8,11 +8,25 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.191.0] - 2026-11-27
+
+### Changed
+
+- Continuing, deleting, pruning, stopping and archiving a session no longer race each other: each waits briefly for
+  the other change to finish, then goes on or is refused, naming what holds the session ("session ab12cd34 is being
+  deleted; try again in a moment").
+- A message sent while its session is being continued is no longer lost: `chi send` and thin-client asks retry and
+  reach the new link; a schedule's firing skips that tick; `chi peer say`/`pair` and `chi context push` are refused,
+  naming the new link to send to.
+
 ### Fixed
 
+- Schedule pruning no longer stalls partway down a chain when one session can't go yet: it stops there, shows
+  `pruning held at …` in `chi schedule list` (and why in `show`), and tries again on the next tick.
+- A child's report waking its parent no longer undoes a stop of that parent that is in progress.
 - A stop or an archive no longer slips into the middle of a continue or a delete: `chi sessions stop`, the web's
-  stop and an archive wait (up to 10 s) for the change to finish, then go on or are refused in its words ("session
-  ab12cd34 is being deleted; try again in a moment").
+  stop and an archive wait (up to 10 s) for the change to finish, then go on or are refused in its words.
+- Retention and a scratch session's cleanup no longer delete a session in the middle of a continue.
 
 ## [0.190.1] - 2026-11-26
 
@@ -6972,7 +6986,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.190.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.191.0...HEAD
+[0.191.0]: https://github.com/dm1try/samagotchi/compare/v0.190.1...v0.191.0
 [0.190.1]: https://github.com/dm1try/samagotchi/compare/v0.190.0...v0.190.1
 [0.190.0]: https://github.com/dm1try/samagotchi/compare/v0.189.0...v0.190.0
 [0.189.0]: https://github.com/dm1try/samagotchi/compare/v0.188.0...v0.189.0
