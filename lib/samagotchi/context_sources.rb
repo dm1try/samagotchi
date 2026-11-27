@@ -619,7 +619,7 @@ module Samagotchi
         next yield if free
 
         successor = SessionChain::Successor.in_flight(session_id, state_dir: state_dir)
-        raise Held, SessionTransition::Busy.new(session_id).message unless successor
+        raise Held, SessionTransition::Busy.held(session_id, state_dir: state_dir).message unless successor
 
         raise Held, "#{SessionChain::Continued.for(session_id, successor).message}; try again in a moment"
       end

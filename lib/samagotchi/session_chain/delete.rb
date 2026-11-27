@@ -3,6 +3,7 @@
 require "digest"
 require "json"
 require_relative "links"
+require_relative "successor"
 require_relative "../archive_store"
 require_relative "../child_move"
 require_relative "../continued_from"
@@ -40,6 +41,11 @@ module Samagotchi
     # - Either way the link's own delegates follow SessionManager::DELEGATES
     #   (D7).
     module Delete
+      # How long a delete waits for the transition locks of the sessions it
+      # takes (SessionTransition.exclusive, kind :delete): a send's shared
+      # hold is short, a continue's is not waited out (DeleteRefused.held).
+      LOCK_WAIT = 10
+
       module_function
 
       # What deleting the link +id+ alone does, read from one listing: the
@@ -97,40 +103,79 @@ module Samagotchi
       def chained?(id, links) = links.live_links(id).size > 1
 
       # Delete the link +id+ (a full id with a file or a folder; a session
-      # in no chain is a link with no previous one), inside a shared hold
-      # of its continue lock (and the previous link's when it would come
-      # back), so no continue of either starts meanwhile.
+      # in no chain is a link with no previous one) under the exclusive
+      # transition locks (kind :delete) of it, the previous link when it
+      # would come back and the delegates that go with it, taken in sorted
+      # order before anything (the stop included) and held to the end: no
+      # continue of either starts meanwhile, and an arrival is refused as
+      # "being deleted". The plan is made again under them; an id it adds
+      # (late) is taken then, within the same LOCK_WAIT.
       # @return [Hash] {id:, removed:, stopped:, unarchived:, moved_back:,
       #   deleted: (its delegates deleted and it), left_running:}
-      # @raise [SessionManager::DeleteRefused] :continuing, :scheduled,
-      #   :delegate_unmovable, :worker_running, :still_stopping
+      # @raise [SessionManager::DeleteRefused] :continuing or
+      #   :transition_held (a lock not free within LOCK_WAIT:
+      #   DeleteRefused.held), :scheduled, :delegate_unmovable,
+      #   :worker_running, :still_stopping
       # @raise [SessionManager::OwnedByTUI]
+      # @raise [Session::NotFound] it went while the delete waited
       # @param running_tasks [SessionManager::RunningTasks::Policy] for the
       #   link and the delegates that go with it (check_link!, then each
       #   one's removal under its lock)
-      def link(id, state_dir:, stop:, wait:, revive_previous:, refuse_continuing:, expect: nil,
+      def link(id, state_dir:, stop:, wait:, revive_previous:, expect: nil,
                running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
-        SessionTransition.shared(id, state_dir: state_dir) do |held|
-          raise SessionManager::DeleteRefused.new(id, :continuing) if refuse_continuing && !held
-
-          plan = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: revive_previous)
-          unless plan.previous
-            return delete_link(plan, state_dir: state_dir, stop: stop, wait: wait, expect: expect,
-                                     running_tasks: running_tasks)
+        ends_at = monotonic + LOCK_WAIT
+        links = Links.new(state_dir: state_dir)
+        following = links.next_of(id)
+        first = link_plan(id, state_dir: state_dir, links: links, undo: revive_previous)
+        under_locks(plan_ids(first), state_dir, ends_at) do
+          raise Session::NotFound, id unless on_disk?(id, state_dir)
+          # Continued while the delete waited: it is no longer the link the
+          # caller meant (a newest link would now be a middle one).
+          if following.nil? && (successor = Links.new(state_dir: state_dir).next_of(id))
+            raise SessionManager::DeleteRefused.new(id, :continuing, message: SessionChain::Continued.new(id, successor).message)
           end
 
-          # Taken before the link's file goes: after it, a continue of the
-          # previous link would no longer be refused. The plan is made again
-          # under it.
-          SessionTransition.shared(plan.previous, state_dir: state_dir) do |previous_held|
-            raise SessionManager::DeleteRefused.new(plan.previous, :continuing) unless previous_held
-
-            again = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: true)
-            return delete_link(again, state_dir: state_dir, stop: stop, wait: wait, expect: expect,
-                                      running_tasks: running_tasks)
+          plan = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: revive_previous)
+          under_locks(plan_ids(plan), state_dir, ends_at) do
+            delete_link(plan, state_dir: state_dir, stop: stop, wait: wait, expect: expect, running_tasks: running_tasks)
           end
         end
       end
+
+      # The sessions a plan takes or brings back: their transition locks.
+      def plan_ids(plan)
+        case plan
+        when LinkPlan then [plan.id, plan.previous, *plan.delegates.delete].compact
+        else [*plan.links, *plan.delegates.values.flat_map(&:delete)]
+        end
+      end
+
+      # The block under the exclusive transition locks (kind :delete) of
+      # +ids+ still on disk (a gone one's folder is never made again),
+      # tried until +ends_at+ (monotonic); ids this thread holds pass
+      # through, so a nested call takes only the late ones.
+      # @raise [SessionManager::DeleteRefused] a lock not free in time (DeleteRefused.held)
+      def under_locks(ids, state_dir, ends_at, &)
+        ids = ids.select { |sid| on_disk?(sid, state_dir) }
+        refuse_continuing_now!(ids, state_dir)
+        SessionTransition.exclusive(ids, kind: :delete, state_dir: state_dir, deadline: [ends_at - monotonic, 0].max, &)
+      rescue SessionTransition::Busy => e
+        raise SessionManager::DeleteRefused.held(e)
+      end
+
+      # A continue holding one of +ids+ now refuses at once, as before the
+      # exclusive hold (:continuing, DeleteRefused.held): its end would change
+      # what the delete takes. Ids this thread holds are its own.
+      def refuse_continuing_now!(ids, state_dir)
+        ids.each do |sid|
+          next if SessionTransition.holding?(sid, state_dir: state_dir) || !SessionTransition.held?(sid, state_dir: state_dir)
+
+          busy = SessionTransition::Busy.held(sid, state_dir: state_dir)
+          raise SessionManager::DeleteRefused.held(busy) if busy.kind == :continue
+        end
+      end
+
+      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       # D2's conditions: +id+ is the chain's end and not archived itself,
       # and the link before it is there and archived.
@@ -330,26 +375,46 @@ module Samagotchi
       #   and again under each link's locks; a stop runs link by link
       # @return also tasks_stopped:, tasks_not_stopped:, tasks_ended:
       def chain(id, state_dir:, stop:, wait:, expect: nil, running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
-        links = Links.new(state_dir: state_dir)
+        ends_at = monotonic + LOCK_WAIT
+        first = checked_chain_plan(id, state_dir, Links.new(state_dir: state_dir), stop: stop, expect: expect,
+                                                                                    running_tasks: running_tasks)
+        under_locks(plan_ids(first), state_dir, ends_at) do
+          raise Session::NotFound, id unless Session.exist?(id, state_dir: state_dir)
+
+          # Made and checked again under the locks (a wait may have changed
+          # the chain); the late ids are taken within the same LOCK_WAIT.
+          links = Links.new(state_dir: state_dir)
+          plan = checked_chain_plan(id, state_dir, links, stop: stop, expect: expect, running_tasks: running_tasks)
+          under_locks(plan_ids(plan), state_dir, ends_at) do
+            delete_chain_locked(plan, links, state_dir, stop: stop, wait: wait, running_tasks: running_tasks)
+          end
+        end
+      end
+
+      # The chain's plan, its digest matched (+expect+) and every refusal
+      # made (check_chain!).
+      def checked_chain_plan(id, state_dir, links, stop:, expect:, running_tasks:)
         plan = chain_plan(id, state_dir: state_dir, links: links)
         raise SessionManager::DeleteRefused.new(plan.id, :plan_changed) if !expect.nil? && expect != digest(plan)
 
         check_chain!(plan, state_dir, stop: stop, running_tasks: running_tasks)
-        hold_all(plan.links, state_dir) do
-          stopped = plan.links.select do |link|
-            SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait)
-          end
-          begin
-            delete_links(plan, links, state_dir, running_tasks: running_tasks)
-              .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
-          rescue SessionManager::DeleteRefused => e
-            raise e unless e.reason == :tasks_running && !stopped.empty?
+        plan
+      end
 
-            # Nothing went (a part-way refusal is in the result): say whose
-            # worker was stopped, the refused link's own when it was.
-            raise e.with_worker_stopped(stopped.include?(e.session_id) ? e.session_id : stopped.first)
-          end
+      # Every link's worker stopped, then the links deleted (#delete_links),
+      # under the chain's locks.
+      def delete_chain_locked(plan, links, state_dir, stop:, wait:, running_tasks:)
+        stopped = plan.links.select do |link|
+          SessionManager.release_for_delete!(link, state_dir: state_dir, stop: stop, wait: wait)
         end
+        delete_links(plan, links, state_dir, running_tasks: running_tasks)
+          .merge(stopped: stopped, cut_off: plan.cut_off, **running_tasks.result_fields)
+      rescue SessionManager::DeleteRefused => e
+        raise e unless e.reason == :tasks_running && !stopped.to_a.empty?
+
+        # Nothing went (a part-way refusal is in the result): say whose
+        # worker was stopped, the refused link's own when it was.
+        raise e.with_worker_stopped(stopped.include?(e.session_id) ? e.session_id : stopped.first)
       end
 
       # The refusals a chain's delete makes before anything goes (the
@@ -370,18 +435,6 @@ module Samagotchi
         doomed = [*plan.links, *plan.delegates.values.flat_map(&:delete)]
         SessionManager::RunningTasks.check!(doomed, state_dir: state_dir, policy: running_tasks) do |listing|
           SessionManager::DeleteRefused.new(plan.id, :tasks_running, tasks: listing, links: plan.links)
-        end
-      end
-
-      # The block inside a shared continue hold of every id.
-      # @raise [SessionManager::DeleteRefused] :continuing, the first one a continue holds
-      def hold_all(ids, state_dir, &block)
-        return yield if ids.empty?
-
-        SessionTransition.shared(ids.first, state_dir: state_dir) do |held|
-          raise SessionManager::DeleteRefused.new(ids.first, :continuing) unless held
-
-          hold_all(ids.drop(1), state_dir, &block)
         end
       end
 

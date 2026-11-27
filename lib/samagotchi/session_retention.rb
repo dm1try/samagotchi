@@ -11,6 +11,7 @@ require_relative "log"
 require_relative "model_profile"
 require_relative "session_manager"
 require_relative "session_protection"
+require_relative "session_transition"
 require_relative "system_one/runs"
 
 module Samagotchi
@@ -95,9 +96,12 @@ module Samagotchi
 
         unless dry_run
           policy = SessionManager::RunningTasks::Policy.stop(by: "retention")
-          SessionManager.remove_files(name, path, dir, state_dir: state_dir, purge_runs: false,
-                                                       still: -> { orphan_dir?(path, dir) }, running_tasks: policy)
+          gone = unheld(name, state_dir) do
+            SessionManager.remove_files(name, path, dir, state_dir: state_dir, purge_runs: false,
+                                                         still: -> { orphan_dir?(path, dir) }, running_tasks: policy)
+          end
           SessionManager::RunningTasks.log_automatic!(policy)
+          next unless gone
         end
         name
       rescue SessionManager::DeleteRefused, SystemCallError
@@ -119,6 +123,20 @@ module Samagotchi
     # runs it.
     private_class_method def self.starting?(session_id, state_dir)
       StartingMarker.fresh?(session_id, state_dir: state_dir)
+    end
+
+    # The block under +session_id+'s transition lock held exclusively
+    # (kind :delete, one try, before the owner lock the removal takes): a
+    # transition or an arrival holding it now (a continue, a delete, a
+    # send's shared hold) keeps the session for a later sweep.
+    # @return [Boolean] whether the block ran
+    private_class_method def self.unheld(session_id, state_dir)
+      SessionTransition.exclusive([session_id], kind: :delete, state_dir: state_dir, deadline: 0) do
+        yield
+        true
+      end
+    rescue SessionTransition::Busy
+      false
     end
 
     # Being started or owned now (+alive_check+, when given, reads the owner).
@@ -338,11 +356,14 @@ module Samagotchi
         else
           policy = SessionManager::RunningTasks::Policy.stop(by: "retention")
           begin
-            # Under the owner lock, the start read again (as a delete).
-            SessionManager.remove_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir,
-                                        purge_runs: false, running_tasks: policy)
-            deleted << session.id
-            purge_ids << session.id
+            # Under its transition lock (held: kept) and the owner lock, the
+            # start read again (as a delete).
+            gone = unheld(session.id, state_dir) do
+              SessionManager.remove_files(session.id, path, File.join(state_dir, session.id), state_dir: state_dir,
+                                          purge_runs: false, running_tasks: policy)
+            end
+            (gone ? deleted : kept) << session.id
+            purge_ids << session.id if gone
           rescue SessionManager::DeleteRefused
             kept << session.id
           rescue StandardError

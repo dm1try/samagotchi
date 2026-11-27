@@ -841,7 +841,7 @@ module Samagotchi
 
           raise SessionManager::OwnedByTUI, sid
         when "worker_running", "still_stopping", "scheduled", "continuing", "delegate_unmovable", "chain_scheduled",
-             "protection_unreadable"
+             "protection_unreadable", "transition_held"
           raise SessionManager::DeleteRefused.new(sid, reason || error.to_sym, message: message, ids: ids_of(json["ids"]),
                                                                                schedule_id: json["schedule_id"])
         when "tasks_running" then raise tasks_refusal(json, sid)
@@ -849,7 +849,7 @@ module Samagotchi
         when "busy", "scratch"
           raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
         when "continued", "open_children", "folder_gone", "transition_busy"
-          raise SessionContinue::Refused.new(sid, reason, ids: Array(json["ids"]))
+          raise SessionContinue::Refused.new(sid, reason, ids: Array(json["ids"]), detail: (message if reason == :transition_busy))
         when "held", "not_running", "unsupported", "failed"
           if reason
             raise SessionManager::RestartRefused.new(sid, reason, version: json["version"], holds: json["holds"],

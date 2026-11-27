@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "session_manager"
+require_relative "session_transition"
 
 module Samagotchi
   # WorkerBoot: the worker process, from the entry the boot string names
@@ -156,12 +157,14 @@ module Samagotchi
 
       # Delete a scratch session its worker left (its terminal gone:
       # Worker#leave_scratch, or any other way out), now the lock is free.
-      # Its terminal may have deleted it first.
+      # Its terminal may have deleted it first. Held by a transition or a
+      # send now (#unheld), it stays: the retention sweep takes a leftover
+      # scratch session.
       private def delete_left_scratch(session_id, state_dir:)
         policy = SessionManager::RunningTasks::Policy.stop(by: "scratch")
-        SessionManager.delete_session(session_id, state_dir: state_dir, running_tasks: policy)
+        unheld(session_id, state_dir) { SessionManager.delete_session(session_id, state_dir: state_dir, running_tasks: policy) }
         Log.info(:worker, "scratch_deleted", sid: session_id)
-      rescue SessionManager::DeleteRefused, ArgumentError, SystemCallError => e
+      rescue SessionManager::DeleteRefused, SessionTransition::Busy, ArgumentError, SystemCallError => e
         Log.info(:worker, "scratch_kept", sid: session_id, error: e.class.name, msg: e.message)
       ensure
         SessionManager::RunningTasks.log_automatic!(policy) if policy
@@ -173,15 +176,34 @@ module Samagotchi
       # (one that went in before the lock keeps the session), and a worker
       # woken meanwhile owns it (delete_session refuses). A delivery during
       # the deleting lock is refused (DeliverResult::DELETING, its file taken
-      # back), one after removal finds no session.
+      # back), one after removal finds no session. One holding its
+      # transition lock now (#unheld: a send's shared hold, a continue or a
+      # delete) keeps it.
       private def discard_left_session(session_id, state_dir:, default_model:)
         empty = -> { SessionManager.discardable?(session_id, state_dir: state_dir, default_model: default_model) }
         return unless empty.call
 
-        SessionManager.delete_session(session_id, state_dir: state_dir, purge_runs: false, still: empty)
+        unheld(session_id, state_dir) do
+          SessionManager.delete_session(session_id, state_dir: state_dir, purge_runs: false, still: empty)
+        end
         Log.info(:worker, "discarded_empty", sid: session_id)
-      rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
+      rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, SessionTransition::Busy, ArgumentError,
+             SystemCallError => e
         Log.info(:worker, "kept_session", sid: session_id, error: e.class.name, msg: e.message)
+      end
+
+      # The block under +session_id+'s transition lock held exclusively
+      # (kind :delete, one try), taken after this worker let go of its
+      # owner lock (transition before owner): a send, a continue or a
+      # delete holding it now raises SessionTransition::Busy, and the
+      # session stays. A session already gone takes no lock (its folder is
+      # not made again): the delete says so.
+      private def unheld(session_id, state_dir, &)
+        on_disk = File.exist?(Session.session_file(session_id, state_dir: state_dir)) ||
+                  Dir.exist?(Session.session_dir(session_id, state_dir: state_dir))
+        return yield unless on_disk && Session.valid_id?(session_id)
+
+        SessionTransition.exclusive([session_id], kind: :delete, state_dir: state_dir, deadline: 0, &)
       end
 
       # The tools' ProjectEnv for the session's folder (its working_directory;

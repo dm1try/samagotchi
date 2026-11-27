@@ -131,21 +131,101 @@ RSpec.describe Samagotchi::SessionTransition do
       expect(described_class.holding?(low, state_dir: state_dir)).to be(false)
     end
 
-    it "raises Busy after its deadline while another process holds it, shared too, the text its own" do
+    it "raises Busy after its deadline while another process holds it, shared too, naming no holder it can't tell" do
       hold_elsewhere(low, mode: "LOCK_SH")
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+      # A continue's taker meeting a shared holder (a send): not "being continued".
       expect { exclusive([low], deadline: 0.2) { :never } }.to raise_error(described_class::Busy) { |busy|
-        expect(busy.kind).to eq(:continue)
-        expect(busy.message).to eq("session #{low[0, 8]} is being continued; try again in a moment")
+        expect(busy.kind).to be_nil
+        expect(busy.message).to eq("session #{low[0, 8]} is busy with another change; try again in a moment")
       }
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be >= 0.2
+    end
+
+    it "names the holder, not the taker: a continue meeting a delete's hold is told it is being deleted" do
+      taken = Queue.new
+      release = Queue.new
+      deleter = Thread.new do
+        described_class.exclusive([low], kind: :delete, state_dir: state_dir) do
+          taken << true
+          release.pop
+        end
+      end
+      taken.pop
+
+      expect { exclusive([low], deadline: 0.05) { :never } }.to raise_error(described_class::Busy) { |busy|
+        expect(busy.kind).to eq(:delete)
+        expect(busy.message).to eq("session #{low[0, 8]} is being deleted; try again in a moment")
+      }
+    ensure
+      release&.push(true)
+      deleter&.join
     end
 
     it "names the kind's words, a plain busy for any other" do
       expect(described_class::Busy.new(low, kind: :delete).message).to eq("session #{low[0, 8]} is being deleted; try again in a moment")
       expect(described_class::Busy.new(low).message)
         .to eq("session #{low[0, 8]} is busy with another change; try again in a moment")
+    end
+
+    describe ".holder and Busy.held" do
+      def on_hold(kind:, ids: [low])
+        taken = Queue.new
+        release = Queue.new
+        thread = Thread.new do
+          described_class.exclusive(ids, kind: kind, state_dir: state_dir) do
+            taken << true
+            release.pop
+          end
+        end
+        taken.pop
+        yield
+      ensure
+        release&.push(true)
+        thread&.join
+      end
+
+      def busy_words(id = low) = described_class::Busy.held(id, state_dir: state_dir).message
+
+      it "reads the kind the exclusive holder recorded, and nothing once it lets go" do
+        on_hold(kind: :delete) { expect(described_class.holder(low, state_dir: state_dir)).to eq(:delete) }
+        expect(described_class.holder(low, state_dir: state_dir)).to be_nil
+        expect(File.read(lock_file(low))).to eq("")
+        on_hold(kind: :continue) { expect(described_class.holder(low, state_dir: state_dir)).to eq(:continue) }
+      end
+
+      it "tells no kind of a shared holder, a raw flock (an older chi's) or a kind it doesn't name" do
+        shared(low) { expect(described_class.holder(low, state_dir: state_dir)).to be_nil }
+        file = raw_lock(low)
+        expect(described_class.holder(low, state_dir: state_dir)).to be_nil
+        file.close
+        File.write(lock_file(low), "delete")
+        # Nobody holds it: a crash's leftover is not believed.
+        expect(described_class.holder(low, state_dir: state_dir)).to be_nil
+        on_hold(kind: :repair) { expect(described_class.holder(low, state_dir: state_dir)).to be_nil }
+      ensure
+        file&.close unless file&.closed?
+      end
+
+      it "names the holder in Busy's words: being deleted, being continued as the new link, else busy" do
+        on_hold(kind: :delete) { expect(busy_words).to eq("session #{low[0, 8]} is being deleted; try again in a moment") }
+
+        Samagotchi::ContinueIntent.write(File.join(dir_of(low), Samagotchi::ContinueIntent::FILE), successor_id: high,
+                                                                                                  previously_archived: [])
+        on_hold(kind: :continue, ids: [low, high]) do
+          busy = described_class::Busy.held(low, state_dir: state_dir)
+          expect(busy).to have_attributes(kind: :continue, successor_id: high)
+          expect(busy.message).to eq("session #{low[0, 8]} is being continued as #{high}; try again in a moment")
+        end
+        # A delete holding it over a continue's leftover intent is a delete.
+        on_hold(kind: :delete, ids: [low, high]) do
+          expect(busy_words).to eq("session #{low[0, 8]} is being deleted; try again in a moment")
+        end
+        on_hold(kind: :continue) { expect(busy_words).to eq("session #{low[0, 8]} is being continued; try again in a moment") }
+        FileUtils.rm_f(File.join(dir_of(low), Samagotchi::ContinueIntent::FILE))
+        on_hold(kind: :repair) { expect(busy_words).to eq("session #{low[0, 8]} is busy with another change; try again in a moment") }
+      end
     end
 
     it "takes the lock once the other holder lets go within the deadline" do

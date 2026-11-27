@@ -21,7 +21,7 @@ SessionManager boundaries are in [Architecture](../architecture.md) and [Engine 
 | In-memory exit claim | `Worker#exit_request` uses `WorkerExitClaim#claim`, `#accept`, `#release` and `#forget`; `#stopped!` records the last stop-all. It dies with that Worker. | Only that worker's threads read it; the Bridge's `/exit` and the loop coordinate through the Engine event lock, not a cross-process file. |
 | `stopped` | `SessionManager#stop_session` calls `Session.mark_stopped`; `SpawnPart#resume` and delivery's `#start_for_send` clear it with `Session.clear_stopped` when starting for a person. Session-directory deletion removes it. | `WorkerPresence`, the worker startup/signal paths, and `Session#load` check the marker. It is read from disk on a decision (and on the hub refresh); no worker event is required. Its timestamp is compared with `starting.at` so a stop cancels an older start, not a later resume. |
 | `archived` | `ArchiveStore.archive` is called by `SessionManager#archive_session`; `ArchiveStore.unarchive` is called by `#unarchive_session`, `SessionContinue#undo_failed_continue`, and the chain-delete undo/revival paths. Session-directory deletion removes it. | Lists, chain resolution, delivery, schedules, retention, and `WorkerPresence` call `ArchiveStore.archived?` against the file; changes are seen by the next read or list refresh. |
-| `continue.lock` and `continue.json` | `SessionTransition` is the only code that flocks `continue.lock`: a continue takes it exclusively after its recap, for the previous link and the new link's reserved id at once (`SessionContinue#with_lock`: `exclusive`, `LOCK_WAIT` 10 s a try, then `Refused :transition_busy`), crash repair tries it once (`try_exclusive`), arrivals and readers that must exclude a continue take a nonblocking shared hold (`shared`: each `WakePolicy` row's `hold`, taken in the seats), and previews probe it (`held?`). `ContinueIntent#write` records the successor before archive and updates the archived ids after; failed-continue cleanup removes the intent. The lock file remains until session-directory deletion; a continue that ends before its new link is saved removes that link's reserved folder, and the previous link's lock when the link was deleted meanwhile (`SessionTransition.forget`). | Every `:shared` delivery (sends, every turn sender, pushes, peer says), peer pairs, context adds/removes/pushes, invites, schedules, chain deletion, `SessionLifecycle.read` (`transitioning`) and `ContinueIntent.in_flight` (through `SessionChain::Successor`) inspect the lock and intent. flock coordinates the live transition; readers reload the JSON. An intent without a held lock is a crashed continue, not an active one; so is one whose successor is neither saved nor held (a continue holds both). |
+| `continue.lock` and `continue.json` | `SessionTransition` is the only code that flocks `continue.lock`: a continue takes it exclusively after its recap, for the previous link and the new link's reserved id at once (`SessionContinue#with_lock`: `exclusive`, `LOCK_WAIT` 10 s a try, then `Refused :transition_busy`), a user's link or chain delete takes it exclusively for its whole run (`SessionChain::Delete`, kind `delete`, `LOCK_WAIT` 10 s), the schedule prune, the retention sweep and a leaving worker's empty or scratch delete try it once (kind `delete`), crash repair tries it once (`try_exclusive`), an exclusive holder records its kind in the file while it holds it (`holder`, which `Busy.held` reads), arrivals and readers that must exclude a continue take a nonblocking shared hold (`shared`: each `WakePolicy` row's `hold`, taken in the seats), and previews probe it (`held?`). `ContinueIntent#write` records the successor before archive and updates the archived ids after; failed-continue cleanup removes the intent. The lock file remains until session-directory deletion; a continue that ends before its new link is saved removes that link's reserved folder, and the previous link's lock when the link was deleted meanwhile (`SessionTransition.forget`). | Every `:shared` delivery (sends, every turn sender, pushes, peer says), peer pairs, context adds/removes/pushes, invites, schedules, the delete preview, `SessionLifecycle.read` (`transitioning`) and `ContinueIntent.in_flight` (through `SessionChain::Successor`) inspect the lock and intent. flock coordinates the live transition; readers reload the JSON. An intent without a held lock is a crashed continue, not an active one; so is one whose successor is neither saved nor held (a continue holds both). |
 | `parent.json` | `Session#reparent` writes the override when `ChildMove` moves a child. Session-directory deletion removes it. | `ChildReports` resolves the current parent when routing a ring; the worker reads the override when loading its parent. Readers reload the file; it is not an event stream. |
 | `reminders.json` | `Worker::LeavePart#carry_reminders` writes it for an asked restart, or removes it when stopped/no successor; stop, archive, and a stopped restart also remove it. `ReminderCarry#take` reads and removes it at worker start. | Only the next worker restores it into its Engine. It is a one-shot hand-off, not polled state; the session id, 120-second window, and stop marker are checked before restore. |
 | Pending `input/`, `children/`, and `notes/` | `SessionInbox.write_input`, `#write_ring`, and `#write_note` write the files. A worker claims input and notes by atomic rename to `.processing`, then removes or settles them; rings are consumed by `ChildReports`. Session-directory deletion removes all three. | The worker checks input around turns and on its idle loop; rings and notes are checked by worker wake/absorption paths. The file is the durable queue; Bridge SSE can announce a live turn, but the worker's file scan is the fallback and recovery path. |
@@ -159,8 +159,9 @@ of the state), not what WakePolicy does; the literal columns and `SHOWN` are gol
 
 `owner.lock` is the single-owner boundary for an Engine; its flock is released by process death. A starting claim uses
 an atomic link rather than a long-held lock. A continue holds its exclusive `continue.lock` (and its new link's) from after the recap to the end;
-shared holds protect every `:shared` arrival (the seats, "Arrivals declare their hold") and chain operations. When chain deletion nests locks, it takes the continue hold
-before the `owner.lock` deletion locks. Inside a worker, the lock order is Engine event lock, then
+a user's delete holds them exclusively for its whole run, and the prune, the retention sweep and a leaving worker's
+delete for each removal ("Deletes, the prune and retention"); shared holds protect every `:shared` arrival (the seats,
+"Arrivals declare their hold"). Every delete takes its transition locks before the `owner.lock` deletion locks. Inside a worker, the lock order is Engine event lock, then
 `WorkerExitClaim`'s mutex. Session saves serialize through their per-session save lock. These locks protect separate
 facts; there is no global lifecycle lock or atomic snapshot across all markers.
 
@@ -176,9 +177,20 @@ in lib that flocks or probes it (`spec/session_transition_lock_spec.rb`). The fi
 continue, followed send and delete honour it.
 
 - `exclusive(ids, kind:, state_dir:, deadline:)` takes each id's lock in sorted order, creating a missing folder;
-  `deadline: nil` blocks (no caller since the continue took a deadline), seconds retry until then and raise `SessionTransition::Busy`,
-  which owns its refusal text ("being continued", "being deleted", else "busy with another change") and names the
-  id. Ids taken before a busy one are let go.
+  `deadline: nil` blocks (no caller since the continue took a deadline), seconds retry until then (`0`: one try)
+  and raise `SessionTransition::Busy`, which owns its refusal text and names the id. Ids taken before a busy one are
+  let go. While it holds a lock it writes its `kind` into the file (cleared on release, never from a lock another
+  holds; `try_exclusive` too).
+- `holder(id, state_dir:)` is that kind (`:continue`, `:delete`), read only behind a failed shared try: a shared
+  holder (a send), an older chi's continue, a raw flock and a crash's leftover name none. `Busy.held(id, state_dir:)`
+  is the one place that says who holds a lock: a delete is "being deleted" whatever else is on disk; else a continue
+  in flight (`ContinueIntent.in_flight`) is "being continued as <new id>" (`SessionChain::Continued`'s words), a
+  continue before its intent "being continued", anything else "busy with another change" (each "; try again in a
+  moment"). `exclusive`'s own Busy, the seats' busy refusal (`deliver_turn`), the continue's `transition_busy`
+  (its detail, which `--remote` reads back), `ContextSources.changing`, `Participants.invite`, the delete's refusal
+  (`DeleteRefused.held`) and the delete preview take their words from it; a delete holding the lock makes the seats
+  name no successor (`Hold.under`). The peer say/pair and the context push answer a status, `:busy`, whose words
+  are the plain ones.
 - `try_exclusive(id, …)` is one try that creates no folder, crash repair's (`repair_intent`): a lock this thread
   holds counts as taken, so a repair reached inside a continue never undoes it.
 - `shared(id, state_dir:)` is a non-blocking shared hold (an invalid id is `false`; the lock file is created, the
@@ -186,10 +198,10 @@ continue, followed send and delete honour it.
   the caller's own gone refusal follows; a lock file it made for a session gone by the block's end is taken back),
   around every arrival's check and write (the seats, below), a peer say's, a peer pair's and a context push's
   continued check and write (`SessionAccess::Local#moved_on`), a context add or remove (`ContextSources.changing`),
-  an invite (`Participants.invite`), and a chain delete's links. A caller that can't write the session folder
+  and an invite (`Participants.invite`). A caller that can't write the session folder
   (a peer's chi behind the mailbox door) holds an existing lock file read-only, and holds nothing when there is none
   (no transition holds a file that isn't there; one starting after it is not held off).
-- `held?(id, state_dir:)` is a kernel probe (`in_flight`, `DeletePreview`): it creates nothing and ignores the
+- `held?(id, state_dir:)` is a kernel probe (`in_flight`, `DeletePreview`, `holder`): it creates nothing and ignores the
   registry, so it answers the same inside this thread's own hold.
 - `forget(id, state_dir:)` takes back the lock file `exclusive` left for a session with no session file (one try
   EX|NB; held, or this thread's, it stays) and its folder when that empties it.
@@ -201,21 +213,21 @@ the current thread's (`Thread#thread_variable_*`, not per process: chi web is mu
 that thread passes through `exclusive` and `shared` of a held id without touching the file (a second flock on the
 held descriptor, or a dup, would convert it). Work handed to another thread doesn't carry the hold: it takes it again
 or is refused. Before the registry, a shared hold inside a continue's own lock was refused; nothing a continue runs
-under its lock takes one of its own id or reaches `follow_guard`, `Delete.link` or `hold_all`
+under its lock takes one of its own id or reaches `follow_guard`, `Delete.link` or `Delete.chain`
 (`spec/session_continue_spec.rb` records any). **No fork while held:** a forked child keeps the flock; workers
 start through `Process.spawn`, whose descriptors are close-on-exec.
 
 **A continue's hold** (`SessionContinue.run` → `continue_once`, `spec/session_continue_spec.rb` "the transition
 lock"). Unlocked: the refusals known before anything changes (`check!`, `archivable!`) and the recap wait (up to
 `RECAP_WAIT` 30 s), so a send during the wait goes in (the archive then refuses it as before) and a delete may take the
-link. Then one `exclusive([previous, reserved successor id])`, sorted, `LOCK_WAIT` (10 s) a try: under it the previous
+link (its exclusive hold then makes the continue's wait for the lock end busy, "being deleted"). Then one `exclusive([previous, reserved successor id])`, sorted, `LOCK_WAIT` (10 s) a try: under it the previous
 link is loaded and `check!`ed again (continued meanwhile → `Refused :continued`; deleted → not found; the delegate
 plan made again), then the intent, the archive (`archive_session` → `stop_session`, nested), the new link's spawn and
 carry (notes, peers, context, objectives, `ChildMove` notes and rings), or the undo (`return_rings`,
 `NoteMove.give_back`, unarchive, `wake_for_rings` → `wake_for_report` → `resume_session`, `discard_failed_link`'s
 stop and delete of the new link). All of it runs on the continue's thread under its token: a shared hold or a nested
 exclusive of either id passes through, so no step refuses itself (`exclusive` skips held ids). Busy: a plain id is
-refused `:transition_busy` (`SessionTransition::Busy`'s "busy with another change" words, a 409 of that name from chi
+refused `:transition_busy` (`SessionTransition::Busy.held`'s words naming the holder, a 409 of that name from chi
 web; a schedule's chain firing counts it a skip, `Schedules::SKIP_REASONS`); a `last:<id>` continue with tries left
 resolves again and waits again, so a second firing of the same chain follows the first one's new link. Any sender's turn
 that meets the hold is refused naming the successor from the intent (`follow_guard`, "Arrivals declare their hold"
@@ -229,6 +241,35 @@ would be refused by the continue's exclusive). The reserved folder (`exclusive` 
 ends before the new link is saved, with any note left there given back to the previous link; crash repair drops a
 crashed continue's the same way. `Schedules::FIRING_TIMEOUT` (70 s) covers the recap, a lock wait per try and the
 archive.
+
+### Deletes, the prune and retention
+
+- **A user's delete** (`SessionChain::Delete.link` / `.chain`, from `delete_session` with the chain keywords and
+  `delete_chain`: the CLI, chi web, `/exit --delete`) takes `exclusive(ids, kind: :delete, deadline:)` of every
+  session it takes or brings back (a link: it, the previous link it would revive, its delegates that go; a chain:
+  every link and their delegates), only ids still on disk (a gone one's folder is never made again), sorted, within
+  `LOCK_WAIT` (10 s) from the start. The plan is made (a chain's checks run) again under them; ids it adds then (late)
+  are a nested `exclusive` with the time left (held ids pass through). The stop (`release_for_delete!` →
+  `stop_session`), the task stop, the owner locks (`locked`, kind deleting), the removal, the undo
+  (`undo_deleted_link`) and the revival all run under the token. A lock not taken in time is
+  `DeleteRefused.held(busy)`: `:continuing` when a continue holds it, else `:transition_held` (chi web's 409 of that
+  name, which `--remote` reads back as `DeleteRefused`), Busy's words either way. A continue holding one of the ids
+  when the delete looks refuses it at once (`:continuing`, no wait: its end would change what the delete takes), and a
+  link continued while the delete waited for the locks is refused `:continuing` naming the new link rather than
+  deleted as a middle link. `refuse_continuing:` no longer
+  changes anything inside: either keyword takes `Delete.link`, which always refuses a held lock.
+- **The schedule prune** (`Schedules::PrunePart`) takes `exclusive([link, next link], kind: :delete, deadline: 0)` per
+  link, oldest first, and checks the link's hold (`prune_hold`: archived, a protector, a worker, an open descendant)
+  before and again under it. Busy or a hold stops the prune below the link: never skipped past. The entry records it
+  (`extra["prune_waiting"]`, `PrunePart.waiting`; `chi schedule list`/`show`), the log says `prune_waiting` once per
+  link, and every tick tries a waiting entry again (`prunes_due`). The deletes inside are plain (`delete_ids`).
+- **The retention sweep** (`SessionRetention.apply`, `prune_orphan_dirs`) and **a leaving worker's delete**
+  (`WorkerBoot#discard_left_session`, `#delete_left_scratch`, after the worker let go of its owner lock) take
+  `exclusive([id], kind: :delete, deadline: 0)` around the removal: held → kept (the sweep's `kept`; the worker's
+  `kept_session` / `scratch_kept`), and a later sweep takes it.
+- The automatic deletes inside a transition (a continue's `discard_failed_link`) and `delete_resolved` /
+  `remove_files` themselves take no transition lock: the callers above hold it, so a continue's undo never refuses
+  itself.
 
 ### Arrivals declare their hold
 
@@ -268,7 +309,7 @@ These are documented race boundaries, not promises of an atomic lifecycle transi
 | Window | Code comment / current behavior | Pin |
 |---|---|---|
 | A ring wake decides to start, then a stop lands before resume. | `SpawnPart#wake_for_report` (`session_manager/spawn.rb`): `resume_session` can clear that stop and start; the check and resume are not one transaction. | Unit spec: stop in the start callback and assert the worker is started and the marker cleared. |
-| Empty-session discard races a delivery (closed for turns and notes). | `WorkerBoot#discard_left_session` (`worker_boot.rb`) checks emptiness after releasing the worker lock and again under the deletion lock (`delete_session`'s `still:`): a send or note that went in before the lock keeps the session. One that reads the session during the lock is refused (`DeliverResult::DELETING`, a note as gone); one that read it before the lock and wrote after it reads it again after its write and takes its file back (`SessionInbox.withdraw`), so no turn or note is reported delivered and then removed. No new lock: the write-then-reread and the recheck under the existing deletion lock close it. What remains: a ring or fresh verdict that read the session before the lock and wrote after it is not taken back: it goes with the directory, or stays for the next worker if the delete gives up; neither is reported to a person. | `run_session_loop_spec.rb`: a send at deletion-lock acquisition is refused; one just before the lock keeps the session. `delivery_spec.rb` / `note_delivery_spec.rb`: the lock (or the removal) between the check and the write, deterministic through the bridge / writer seam. |
+| Empty-session discard races a delivery (closed for turns and notes). | `WorkerBoot#discard_left_session` (`worker_boot.rb`) checks emptiness after releasing the worker lock and again under the deletion lock (`delete_session`'s `still:`): a send or note that went in before the lock keeps the session. One that reads the session during the lock is refused (`DeliverResult::DELETING`, a note as gone); one that read it before the lock and wrote after it reads it again after its write and takes its file back (`SessionInbox.withdraw`), so no turn or note is reported delivered and then removed. No new lock for that: the write-then-reread and the recheck under the existing deletion lock close it (the discard also tries the session's transition lock once, kind `delete`: a send or a transition holding it keeps the session). What remains: a ring or fresh verdict that read the session before the lock and wrote after it is not taken back: it goes with the directory, or stays for the next worker if the delete gives up; neither is reported to a person. | `run_session_loop_spec.rb`: a send at deletion-lock acquisition is refused; one just before the lock keeps the session. `delivery_spec.rb` / `note_delivery_spec.rb`: the lock (or the removal) between the check and the write, deterministic through the bridge / writer seam. |
 | Stop reads an owner pid, then sends TERM. | `LifecyclePart#stop_session` (`session_manager/lifecycle.rb`): the pid can be reused between the owner read and `Process.kill`; protecting that requires a real pid-reuse scenario. | No unit pin: pid reuse/process signaling is not reliably representable without real processes. |
 | Saved `status` is used as a lifecycle hint. | `LifecyclePart#restart_fallback_holds` and `RemovalPart#archive_refusal` (`session_manager/lifecycle.rb`, `session_manager/removal.rb`) use saved `running` status as a busy hint; status is not a lock or proof that a worker is alive. | Unit spec: pin fallback refusal from saved status without a live Bridge. |
 | Stop/start ordering depends on wall-clock `at`. | `SpawnPart#claim_start` and `StartingMarker#claim` (`session_manager/spawn.rb`, `starting_marker.rb`) compare `starting.at` with `Session.stopped_at`; same-time starts are treated as before the stop. Clock adjustments across processes are not serialized. | Unit spec: pin the inclusive `at <= over_before` takeover boundary. |
@@ -277,9 +318,12 @@ These are documented race boundaries, not promises of an atomic lifecycle transi
 | A peer say, peer pair or context push during a continue (closed, N1). | Before: `Local#peer_say` checked `continued_as` (archived with a saved successor) and posted through `SessionInbox.deliver(:peer)`, a pinned row that skips Head's in-flight look and `follow_guard`; between the archive and the new link's save a say went into the old mailbox after `PeerContinue` had read it, and was never read (its line said "it reads this if you reopen it"). Now each takes `SessionTransition.shared` across the continued check and the write (`Local#moved_on`), never across the Bridge feature probe or the receipt wait: a continue holding the lock refuses it `:continued` naming its new link (in flight), else `:busy`. A say that holds the lock first goes in and the continue's carry takes it. | `session_access_local_spec.rb` "while a transition holds the session's lock" (say, pair, push refused naming the successor, Busy without one, mailbox and source unchanged); `session_continue_spec.rb` "refuses a peer say during the transition" (a real continue, the say made between its archive and the new link's save). |
 | A send between a continue's exclusive hold and its archive marker (closed). | Before: `follow_guard` held only for a followed send to an archived link, so a send (any sender) to a link a continue held but had not archived yet went in, and the archive then refused the continue as busy or queued. Now every `:shared` row's delivery takes the hold in its seat: refused naming the new link (`link_continued`), else `transition_busy`. | `spec/session_inbox/hold_spec.rb` (each sender busy under a really held lock; a send to a link not archived yet refused naming the new link); the matrix's transitioning rows. |
 | A frozen worker's Bridge post under a send's hold. | `deliver_turn` holds the session's lock shared across the Bridge's post (up to `BridgeClient::READ_TIMEOUT` 30 s for a worker that doesn't answer); a continue of that session waits `LOCK_WAIT` per try and is refused `transition_busy`. | No unit pin: a frozen worker's post is a timing case. |
-| A delete or a send during a continue's recap. | `SessionContinue.continue_once` waits for the recap before it takes the transition lock: in that window a link delete (`SessionChain::Delete.link`'s shared hold) and the delete preview no longer see a continue (`:continuing`), and a followed send to the link goes in. Under the lock the continue checks the link again: deleted → not found (its folder not brought back), continued by another → `Refused :continued`, a turn queued → the archive's refusal. | `session_continue_spec.rb` "the transition lock": the lock not held during the recap, a send then accepted, a link deleted or continued during the recap refused under the lock. |
+| A delete or a send during a continue's recap. | `SessionContinue.continue_once` waits for the recap before it takes the transition lock: in that window a link delete and the delete preview no longer see a continue (`:continuing`): the delete may take the link's lock exclusively, and the continue's lock wait then ends busy ("being deleted"); a followed send to the link goes in. Under the lock the continue checks the link again: deleted → not found (its folder not brought back), continued by another → `Refused :continued`, a turn queued → the archive's refusal. | `session_continue_spec.rb` "the transition lock": the lock not held during the recap, a send then accepted, a link deleted or continued during the recap refused under the lock. |
 | The new link's worker boots inside the continue's hold. | `SessionContinue.spawn_continuation` spawns it while the continue holds the new link's transition lock exclusively; its boot writes (`Worker#start` → `ChildMove.adopt`, `WorkerInbound` → `NoteMove.adoption`, its objectives notes through the note row, `:none`) take no transition hold. A hold added on that path would be refused until the continue ends (drop the new link's hold before the spawn instead). A send or a peer pair to the new link from outside is `transition_busy` until the continue lets go (milliseconds after the spawn): the senders retry. | `session_continue_spec.rb`: the boot's adoption on another thread makes no `SessionTransition` call, adopts the note, and a note through `NoteDelivery` goes in. |
 | An unpair or a revoke during a continue. | `:none` (above): an unpair of the old link while the new worker's `tell_moved` re-pairs the peer may leave the peer paired with the new link. | No pin (declared). |
+| Sends to a session a delete holds (open, by design). | `SessionChain::Delete` holds the transition locks from before its stop to the end: a send, a push, a peer say or a context change to the link, its previous link or a delegate that goes is refused `transition_busy` "being deleted" for the stop (up to the delete's wait, 10 s from the CLI), the task stop (about 4 s a link) and the removal; a chain delete holds every link's for the whole chain (N links × stop + tasks: minutes for a long chain with `--stop-tasks`). chi send and an ask retry within their wait; the web composer, a delegate, a plugin and a participant report it. Before, those sends went in and the delete stopped or removed them. | `session_chain/delete_spec.rb` "under the transition locks" (a send during the stop refused as being deleted, both locks the delete's). |
+| A delete meets a send's or another change's hold (closed). | Before: `Delete.link`, `hold_all` took `SH\|NB`, so a continue was refused but another delete, a prune or the retention sweep could run beside it, and a send held nothing off. Now a user's delete waits up to `LOCK_WAIT` for the locks exclusively, then refuses (`continuing` / `transition_held`, the holder named); the prune, the sweep and a leaving worker's delete try once and keep the session. | `session_chain/delete_spec.rb` (a short shared hold waited out, a long one refused, a held delegate refuses), `session_retention_spec.rb`, `session_discardable_spec.rb` (held → kept). |
+| A prune at a link it can't delete (closed: visible, never skipped). | Before: a link another enabled schedule protects (its anchor inside the chain, a stale head) was refused `prune_stopped` at every firing, after the link's delegates were already deleted, and the chain grew silently. Now the hold is checked before anything in the subtree goes and the prune stops there with a record (`prune_waiting`, list/show) and one log line; a held transition lock on the link or the next does the same, and every tick retries. Still open: the chain grows behind such a link until the other schedule is cancelled (re-linking the chain around it is held, D6). | `schedules_spec.rb` "a prune held at a link" (held link: kept with every later link, resumed next tick; next link held; the mid-chain schedule: one log, list/show lines, nothing deleted around it, gone after cancel). |
 | Several methods write or remove the same marker. | The definitions/callers in `session.rb`, `starting_marker.rb`, `archive_store.rb`, `bridge.rb`, and `reminder_carry.rb` are the source of truth; these APIs have multiple call sites. | `spec/session_lifecycle_writers_spec.rb` pins the call-site allow-lists; it does not claim their operations are one transaction. |
 
 ## Adding a transition
@@ -297,6 +341,9 @@ These are documented race boundaries, not promises of an atomic lifecycle transi
 6. If the fact changes a state, update `SessionLifecycle::STATES`/`Reading.derive` and `CANONICAL`, then the
    `ALLOWED` cells (the literal ones by hand; the delivery ones follow `WakePolicy::ROWS`) and the matrix's rows; a
    decider that answers otherwise is a `KNOWN_DIFFERENCES` entry with its reason, never a silent cell change.
-7. Recheck lock order, crash cleanup, and the existing file-format/compatibility specs before changing runtime behavior.
+7. A new multi-step transition takes `SessionTransition.exclusive` with its own `kind` (add its words to
+   `Busy::WORDS` so `Busy.held` names it), with a deadline, before any `owner.lock`; an automatic one tries once
+   (`deadline: 0`) and leaves the session for later.
+8. Recheck lock order, crash cleanup, and the existing file-format/compatibility specs before changing runtime behavior.
    A transition that must exclude a continue or an arrival takes the transition lock through `SessionTransition`,
    never its own flock of `continue.lock`.

@@ -39,7 +39,7 @@ module Samagotchi
     # worker or open in a one-turn chi run; +ids+ names them), :folder_gone (its
     # folder isn't there) or :transition_busy (its transition lock not
     # free within LOCK_WAIT: another continue or change of it runs; its
-    # words are SessionTransition::Busy's).
+    # words are SessionTransition::Busy's, naming the holder: +detail+).
     class Refused < StandardError
       attr_reader :session_id, :reason, :ids
 
@@ -60,7 +60,7 @@ module Samagotchi
         when :open_children
           "#{short} has delegates still open that can't move to the next link: #{detail}; " \
           "then continue (or wait for them, stop them or archive them)"
-        when :transition_busy then SessionTransition::Busy.new(@session_id).message
+        when :transition_busy then detail || SessionTransition::Busy.new(@session_id).message
         else "#{short}'s folder #{detail} is gone"
         end
       end
@@ -259,10 +259,10 @@ module Samagotchi
           run_locked(id, successor_id, prompt: prompt, preview: preview, model: model, state_dir: state_dir,
                                        archive_wait: archive_wait, client_id: client_id)
         end
-      rescue SessionTransition::Busy
+      rescue SessionTransition::Busy => e
         return :moved if follow
 
-        raise Refused.new(id, :transition_busy)
+        raise Refused.new(id, :transition_busy, detail: e.message)
       ensure
         drop_unsaved(id, successor_id, state_dir)
       end

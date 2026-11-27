@@ -35,18 +35,52 @@ module Samagotchi
     Token = Data.define(:ids, :kind)
 
     # An exclusive hold not taken by its deadline, or an arrival that met
-    # one it can't name the cause of. It owns its refusal text; a nil
-    # +session_id+ says "this session" (a peer's line, which carries no id).
+    # one. It owns its refusal text, which names the holder (.held) when it
+    # can be told: a continue ("being continued", "as X" once its intent
+    # names the new link), a delete ("being deleted"), else "busy with
+    # another change" (a shared holder, an older chi's, a kind this chi
+    # doesn't name). A nil +session_id+ says "this session" (a peer's line,
+    # which carries no id).
     class Busy < StandardError
       WORDS = { continue: "being continued", delete: "being deleted", nil => "busy with another change" }.freeze
 
-      attr_reader :session_id, :kind
+      # +kind+ the holder's (nil: not told), +successor_id+ the new link a
+      # continue holding it names.
+      attr_reader :session_id, :kind, :successor_id
 
-      def initialize(session_id, kind: nil)
+      def initialize(session_id, kind: nil, successor_id: nil)
         @session_id = session_id
         @kind = kind
-        subject = session_id ? "session #{session_id.to_s[0, 8]}" : "this session"
-        super("#{subject} is #{WORDS.fetch(kind, WORDS[nil])}; try again in a moment")
+        @successor_id = successor_id
+        super("#{words}; try again in a moment")
+      end
+
+      # The refusal of an arrival or a taker that met +session_id+'s lock
+      # held: the one place that says who holds it. The kind the exclusive
+      # holder recorded (SessionTransition.holder) first: a delete is
+      # "being deleted" whatever else is on disk; else a continue in flight
+      # (ContinueIntent.in_flight: an older chi's records no kind) names
+      # its new link.
+      # @return [Busy]
+      def self.held(session_id, state_dir:)
+        kind = SessionTransition.holder(session_id, state_dir: state_dir)
+        return new(session_id, kind: kind) if kind == :delete
+
+        require_relative "continue_intent"
+        successor = session_id && ContinueIntent.in_flight(session_id, state_dir: state_dir)
+        new(session_id, kind: successor ? :continue : kind, successor_id: successor)
+      end
+
+      private
+
+      def words
+        if @successor_id
+          require_relative "session_chain/successor"
+          return SessionChain::Continued.new(@session_id, @successor_id, in_flight: true).message
+        end
+
+        subject = @session_id ? "session #{@session_id.to_s[0, 8]}" : "this session"
+        "#{subject} is #{WORDS.fetch(@kind, WORDS[nil])}"
       end
     end
 
@@ -74,14 +108,16 @@ module Samagotchi
         FileUtils.mkdir_p(File.dirname(path))
         file = File.open(path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held past this loop, closed in the ensure
         taken << [path, file]
-        lock_until(file, ends_at) or raise Busy.new(id, kind: kind)
+        lock_until(file, ends_at) or raise Busy.held(id, state_dir: state_dir)
         holds[path] = true
+        mark(file, kind)
       end
       yield Token.new(ids: ids, kind: kind)
     ensure
-      # Only ids this call took: none of them was held before it.
+      # Only ids this call took: none of them was held before it. A kind is
+      # cleared only from a lock this call held (never another holder's).
       taken&.reverse_each do |path, file|
-        holds.delete(path)
+        mark(file, nil) if holds.delete(path)
         file.close
       end
     end
@@ -103,10 +139,12 @@ module Samagotchi
         next yield(nil) unless file.flock(File::LOCK_EX | File::LOCK_NB)
 
         holds[path] = true
+        mark(file, kind)
         begin
           yield Token.new(ids: [id], kind: kind)
         ensure
           holds.delete(path)
+          mark(file, nil)
         end
       end
     end
@@ -152,6 +190,23 @@ module Samagotchi
       File.open(lock_path(id, state_dir), File::RDONLY) { |file| !file.flock(File::LOCK_SH | File::LOCK_NB) }
     rescue Errno::ENOENT
       false
+    end
+
+    # The kind the exclusive holder of +id+'s lock recorded (#exclusive's
+    # and #try_exclusive's +kind+, written into the lock file while held),
+    # one of Busy::WORDS' kinds: nil when nobody holds it exclusively now (a
+    # shared holder, such as a send, is no transition), or the holder
+    # recorded none this chi names (an older chi, a raw flock). Read only
+    # behind a failed shared try (#held?), so a crash's leftover is never
+    # believed.
+    # @return [Symbol, nil]
+    def holder(id, state_dir:)
+      return nil unless held?(id, state_dir: state_dir)
+
+      recorded = File.read(lock_path(id, state_dir), 64).to_s.strip
+      Busy::WORDS.keys.compact.find { |kind| kind.to_s == recorded }
+    rescue SystemCallError
+      nil
     end
 
     # Whether the current thread holds +id+ exclusively (the registry).
@@ -212,6 +267,18 @@ module Samagotchi
       end
     end
 
+    # Record +kind+ (nil: none) as the holder's in a lock file this thread
+    # holds exclusively (#holder reads it). The file is the lock's only
+    # content: an older chi only flocks it. Never fatal.
+    def mark(file, kind)
+      file.truncate(0)
+      file.rewind
+      file.write(kind.to_s) if kind
+      file.flush
+    rescue IOError, SystemCallError
+      nil
+    end
+
     # This thread's holds.
     def holds
       Thread.current.thread_variable_get(REGISTRY) || Thread.current.thread_variable_set(REGISTRY, {})
@@ -235,6 +302,6 @@ module Samagotchi
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-    private_class_method :lock_path, :open_shared, :holds, :lock_until, :monotonic
+    private_class_method :lock_path, :open_shared, :mark, :holds, :lock_until, :monotonic
   end
 end

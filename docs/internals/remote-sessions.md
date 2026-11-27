@@ -234,7 +234,7 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   (`force` from `req.GET`, no body read) and declared before the plain `/api/sessions/:id` rows. The plain delete
   needs no feature: an older chi web deletes the link plainly (no revive, no undo) and its 200 has no
   `unarchived`/`moved_back` (read as `[]`). The delete refusals reach the CLI with their own reason and message
-  (`continuing`, `delegate_unmovable`, `scheduled`, `chain_scheduled`, `worker_running`, `still_stopping`:
+  (`continuing`, `transition_held`, `delegate_unmovable`, `scheduled`, `chain_scheduled`, `worker_running`, `still_stopping`:
   `Remote#raise_refusal` raises `DeleteRefused` with `ids` and `schedule_id`).
 - **A route that answers more.** `GET /api/sessions/:id/delete_plan` answering for every session (`{chained: false,
   session_id, link}` for one in no chain, and a file-less folder), together with a plain delete that takes the

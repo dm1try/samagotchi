@@ -8,9 +8,12 @@ require "samagotchi/session_chain/delete"
 require "samagotchi/schedules"
 require "samagotchi/child_reports"
 require "samagotchi/tools/task_runtime"
+require_relative "../support/transition_holder"
 
 # A user's delete of a chain link (D2/D5/D7) and of the whole chain (D4).
 RSpec.describe Samagotchi::SessionChain::Delete do
+  include TransitionHolder
+
   let(:manager) { Samagotchi::SessionManager }
   let(:tmpdir) { Dir.mktmpdir("chain-delete") }
   let(:folder) { Dir.mktmpdir("chain-delete-folder") }
@@ -196,13 +199,14 @@ RSpec.describe Samagotchi::SessionChain::Delete do
     end
 
     it "is refused while a continue of it is under way, and while the previous link is being continued" do
+      stub_const("#{described_class}::LOCK_WAIT", 0.1)
       a = make
       b = continue(a.id)
       [b.id, a.id].each do |held|
-        File.open(File.join(dir_of(held), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT) do |lock|
-          lock.flock(File::LOCK_EX)
+        holding_transition(held, state_dir: tmpdir, kind: :continue) do
           expect { delete(b.id) }.to raise_error(manager::DeleteRefused) { |e|
             expect([e.reason, e.session_id]).to eq([:continuing, held])
+            expect(e.message).to eq("session #{held[0, 8]} is being continued; try again in a moment")
           }
         end
       end
@@ -221,6 +225,146 @@ RSpec.describe Samagotchi::SessionChain::Delete do
         expect(e.message).to include(moved.id[0, 8], "older chi worker")
       }
       expect([exists?(b.id), parent_of(moved.id), archived?(a.id)]).to eq([true, b.id, true])
+    end
+  end
+
+  # The transition locks are taken exclusively (kind :delete) with a
+  # deadline, not probed: a send's short shared hold is waited for, a long
+  # one refuses; an arrival during the delete is refused as being deleted.
+  describe "under the transition locks" do
+    # +id+'s lock held shared (a send's hold) on another thread until
+    # +release+ pops.
+    def sharing(id, release)
+      taken = Queue.new
+      thread = Thread.new do
+        Samagotchi::SessionTransition.shared(id, state_dir: tmpdir) do |free|
+          taken << free
+          release.pop
+        end
+      end
+      expect(taken.pop).to be(true)
+      thread
+    end
+
+    it "waits for a send's shared hold, then deletes" do
+      session = make
+      release = Queue.new
+      sender = sharing(session.id, release)
+      Thread.new do
+        sleep 0.3 # sleep-ok: the send holds its lock this long
+        release << true
+      end
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      delete(session.id)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be >= 0.25
+      expect(exists?(session.id)).to be(false)
+    ensure
+      release&.push(true)
+      sender&.join
+    end
+
+    it "refuses busy, nothing changed, when the hold outlives the wait: the link and the chain" do
+      stub_const("#{described_class}::LOCK_WAIT", 0.2)
+      a = make
+      b = continue(a.id)
+      release = Queue.new
+      sender = sharing(b.id, release)
+
+      [-> { delete(b.id) }, -> { manager.delete_chain(b.id, state_dir: tmpdir, stop: true) }].each do |op|
+        expect { op.call }.to raise_error(manager::DeleteRefused) { |e|
+          expect([e.reason, e.session_id]).to eq([:transition_held, b.id])
+          expect(e.message).to eq("session #{b.id[0, 8]} is busy with another change; try again in a moment")
+        }
+      end
+      expect([exists?(a.id), exists?(b.id), archived?(a.id)]).to eq([true, true, true])
+    ensure
+      release&.push(true)
+      sender&.join
+    end
+
+    it "refuses a send during the delete's stop as being deleted, nothing written; the link and its previous held" do
+      a = make
+      b = continue(a.id)
+      own(b.id)
+      seen = {}
+      allow(manager).to receive(:release_for_delete!).and_wrap_original do |original, id, **kw|
+        seen[:held] = [b.id, a.id].map { |sid| Samagotchi::SessionTransition.holder(sid, state_dir: tmpdir) }
+        seen[:send] = Thread.new do
+          manager.deliver_turn(id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> {})
+        end.value
+        locks.pop.release
+        original.call(id, **kw)
+      end
+
+      delete(b.id)
+      expect(seen[:held]).to eq(%i[delete delete])
+      expect(seen[:send]).to be_busy
+      expect(seen[:send].detail).to eq("session #{b.id[0, 8]} is being deleted; try again in a moment")
+      expect(exists?(b.id)).to be(false)
+      expect(Samagotchi::SessionInbox.find_new_input_files(dir_of(a.id))).to be_empty
+    end
+
+    it "refuses at once, without waiting, while a continue holds the link (as before the exclusive hold)" do
+      a = make
+      b = continue(a.id)
+      holding_transition(b.id, state_dir: tmpdir, kind: :continue) do
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        expect { delete(b.id) }.to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:continuing) }
+        expect { manager.delete_chain(b.id, state_dir: tmpdir, stop: true) }
+          .to raise_error(manager::DeleteRefused) { |e| expect(e.reason).to eq(:continuing) }
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      end
+      expect(exists?(b.id)).to be(true)
+    end
+
+    it "refuses a newest link continued while the delete waited, rather than delete it as a middle link" do
+      a = make
+      b = continue(a.id)
+      later = nil
+      waited = false
+      allow(Samagotchi::SessionTransition).to receive(:exclusive).and_wrap_original do |original, ids, **kw, &block|
+        # A continue that held b's lock and ended while the delete waited.
+        if kw[:kind] == :delete && !waited
+          waited = true
+          later = continue(b.id)
+        end
+        original.call(ids, **kw, &block)
+      end
+
+      expect { delete(b.id) }.to raise_error(manager::DeleteRefused) { |e|
+        expect([e.reason, e.message]).to eq([:continuing, "session #{b.id[0, 8]} was continued as #{later.id}"])
+      }
+      expect([exists?(b.id), exists?(later.id)]).to eq([true, true])
+    end
+
+    it "takes the delegates that go with a link, and refuses when one is held" do
+      stub_const("#{described_class}::LOCK_WAIT", 0.1)
+      session = make
+      child = make(parent: session)
+      Samagotchi::ArchiveStore.archive(child.id, state_dir: tmpdir)
+      holding_transition(child.id, state_dir: tmpdir, kind: :delete) do
+        expect { delete(session.id) }.to raise_error(manager::DeleteRefused) { |e|
+          expect([e.reason, e.session_id, e.message])
+            .to eq([:transition_held, child.id, "session #{child.id[0, 8]} is being deleted; try again in a moment"])
+        }
+      end
+      expect([exists?(session.id), exists?(child.id)]).to eq([true, true])
+    end
+
+    it "takes no lock of a session that is gone: its folder is not made again" do
+      session = make
+      child = make(parent: session)
+      Samagotchi::ArchiveStore.archive(child.id, state_dir: tmpdir)
+      allow(described_class).to receive(:link_plan).and_wrap_original do |original, *args, **kw|
+        original.call(*args, **kw).tap do
+          FileUtils.rm_f(Samagotchi::Session.session_file(child.id, state_dir: tmpdir))
+          FileUtils.rm_rf(dir_of(child.id))
+        end
+      end
+
+      delete(session.id)
+      expect([exists?(session.id), exists?(child.id)]).to eq([false, false])
     end
   end
 
@@ -716,9 +860,12 @@ RSpec.describe Samagotchi::SessionChain::Delete do
         a = make
         b = continue(a.id)
         named = start_task(a, "sleep 30.39")
-        allow(manager).to receive(:release_for_delete!).and_return(true)
-        allow(described_class).to receive(:check_chain!).and_wrap_original do |original, *args, **kw|
-          original.call(*args, **kw).tap { start_task(b, "sleep 30.40") }
+        # Started after every check (the second one under the locks too): as
+        # the stop runs.
+        late = nil
+        allow(manager).to receive(:release_for_delete!) do
+          late ||= start_task(b, "sleep 30.40")
+          true
         end
 
         expect do

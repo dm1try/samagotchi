@@ -500,6 +500,7 @@ module Samagotchi
         outcomes << outcome
         prune_after << outcome.entry if outcome.status == "fired" && entry.mode == CHAIN && entry.keep_links.positive?
       end
+      prune_after = prunes_due(prune_after, started) unless dry_run
       links ||= links_now unless prune_after.empty?
       prune_after.each { |entry| prune(entry, links) }
       Tick.new(locked: false, outcomes: dry_run ? outcomes : mark_disabled(outcomes, started, links: links))

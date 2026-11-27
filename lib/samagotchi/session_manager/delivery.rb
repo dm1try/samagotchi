@@ -234,7 +234,7 @@ module Samagotchi
       # @return [DeliverResult] the block's, or the refusal
       private def follow_guard(session_id, state_dir, follow, policy)
         sd = state_dir || Session.default_state_dir
-        held = ->(successor) { held_refusal(session_id, successor, policy) }
+        held = ->(successor) { held_refusal(session_id, successor, policy, sd) }
         SessionInbox::Hold.under(policy, session_id, sd, refused: held) do
           if follow && Session.valid_id?(session_id) && ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd)) &&
              (successor = SessionChain::Successor.of(session_id, state_dir: sd, anchor: false))
@@ -246,14 +246,15 @@ module Samagotchi
       end
 
       # A turn a transition's hold refused: the continue's new link named
-      # (link_continued), else busy (transition_busy, Busy's words).
-      private def held_refusal(session_id, successor, policy)
+      # (link_continued), else busy (transition_busy, Busy's words naming
+      # the holder: Busy.held).
+      private def held_refusal(session_id, successor, policy, state_dir)
         Log.info(:worker, "send_transition_refused", sid: session_id[0, 8], kind: policy.kind,
                                                      successor: successor&.id.to_s[0, 8])
         return continued_refusal(session_id, successor) if successor
 
         DeliverResult.new(status: :refused, code: 409,
-                          ack: { "error" => DeliverResult::BUSY, "detail" => SessionTransition::Busy.new(session_id).message,
+                          ack: { "error" => DeliverResult::BUSY, "detail" => SessionTransition::Busy.held(session_id, state_dir: state_dir).message,
                                  "session_id" => session_id })
       end
 

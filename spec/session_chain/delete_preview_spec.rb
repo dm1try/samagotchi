@@ -3,6 +3,7 @@
 require "json"
 require "tmpdir"
 require "spec_helper"
+require_relative "../support/transition_holder"
 require "samagotchi/session_continue"
 require "samagotchi/session_chain/delete_preview"
 require "samagotchi/schedules"
@@ -10,6 +11,8 @@ require "samagotchi/schedules"
 # What the web's delete sheet shows (GET …/delete_plan): the delete's own
 # plans and refusals, read now.
 RSpec.describe Samagotchi::SessionChain::Delete::Preview do
+  include TransitionHolder
+
   let(:manager) { Samagotchi::SessionManager }
   let(:tmpdir) { Dir.mktmpdir("chain-delete") }
   let(:folder) { Dir.mktmpdir("chain-delete-folder") }
@@ -272,10 +275,20 @@ RSpec.describe Samagotchi::SessionChain::Delete::Preview do
   it "says a continue of the link under way refuses both" do
     a = make
     b = continue(a.id)
-    File.open(File.join(dir_of(b.id), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT) do |lock|
-      lock.flock(File::LOCK_EX)
+    holding_transition(b.id, state_dir: tmpdir, kind: :continue) do
       shown = preview(b.id)
       expect([shown[:link][:refusal][:reason], shown[:chain][:refusal][:reason]]).to eq(%w[continuing continuing])
+    end
+  end
+
+  # Not every holder is a continue (SessionTransition::Busy.held names it).
+  it "says another delete of the link under way refuses both, in its words" do
+    a = make
+    b = continue(a.id)
+    holding_transition(b.id, state_dir: tmpdir, kind: :delete) do
+      shown = preview(b.id)
+      expect([shown[:link][:refusal], shown[:chain][:refusal]].map { |r| r.slice(:reason, :message) })
+        .to all(eq(reason: "transition_held", message: "session #{b.id[0, 8]} is being deleted; try again in a moment"))
     end
   end
 

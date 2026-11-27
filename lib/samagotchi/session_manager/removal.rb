@@ -12,7 +12,10 @@ module Samagotchi
     # read again under the owner lock, no longer holds), :scheduled (an
     # enabled schedule's target, anchor or head: +schedule_id+),
     # :continuing (a continue of +session_id+ is in flight: this link, or
-    # the previous one a delete would bring back), :delegate_unmovable (a
+    # the previous one a delete would bring back), :transition_held (another
+    # change holds its transition lock: a delete, a send's shared hold; the
+    # words SessionTransition::Busy's, naming the holder: .held),
+    # :delegate_unmovable (a
     # delegate the deleted link's continue moved can't go back: +ids+,
     # +detail+ says why), :chain_scheduled (a schedule is on the chain a
     # chain delete would take: +schedule_id+), :protection_unreadable (a
@@ -41,6 +44,13 @@ module Samagotchi
 
       def worker_stopped = !@stopped_worker.nil?
 
+      # A delete's refusal for a transition lock not taken in time
+      # (SessionTransition::Busy, which names the holder): :continuing when
+      # a continue holds it, else :transition_held; Busy's words either way.
+      def self.held(busy)
+        new(busy.session_id, busy.kind == :continue ? :continuing : :transition_held, message: busy.message)
+      end
+
       # This refusal, saying the op stopped +worker_id+'s worker (this
       # session's by default) before the check under the lock refused.
       def with_worker_stopped(worker_id = @session_id)
@@ -58,6 +68,7 @@ module Samagotchi
         when :changed then "session #{@session_id} changed since it was checked"
         when :scheduled then "this session is the target of an enabled schedule#{cancel}"
         when :continuing then "a continue of #{short} is under way; try again in a moment"
+        when :transition_held then "session #{short} is busy with another change; try again in a moment"
         when :delegate_unmovable
           "#{@ids.map { |id| id[0, 8] }.join(", ")}, moved here by the continue, can't go back to the previous link" \
             "#{": #{detail}" if detail}"
@@ -261,8 +272,10 @@ module Samagotchi
       #   the running ones stay; without them (the automatic deletes) they
       #   are left. The result then also has unarchived:, moved_back:,
       #   deleted: and left_running: (ids)
-      # @param refuse_continuing [Boolean] a user's delete refuses
-      #   (:continuing) while a continue of the session is in flight
+      # @param refuse_continuing [Boolean] a user's delete (either keyword
+      #   takes SessionChain::Delete.link, which holds the transition locks
+      #   exclusively and so refuses, :continuing or :transition_held, while a
+      #   continue or another change of the session holds them)
       # @raise [DeleteRefused] also :scheduled for a schedule's anchor or
       #   head, and with the keywords :continuing and :delegate_unmovable
       # @param still [#call, nil] the caller's own check, read again under
@@ -290,8 +303,7 @@ module Samagotchi
         if revive_previous || refuse_continuing
           require_relative "../session_chain/delete"
           return SessionChain::Delete.link(id, state_dir: sd, stop: stop, wait: wait, revive_previous: revive_previous,
-                                               refuse_continuing: refuse_continuing, expect: expect,
-                                               running_tasks: running_tasks)
+                                               expect: expect, running_tasks: running_tasks)
         end
 
         delete_resolved(id, state_dir: sd, stop: stop, wait: wait, purge_runs: purge_runs, allow_scheduled: allow_scheduled,

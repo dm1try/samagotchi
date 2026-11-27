@@ -3,6 +3,7 @@
 require "tmpdir"
 require "json"
 require "spec_helper"
+require_relative "support/transition_holder"
 require "samagotchi/session_retention"
 require "samagotchi/owner_lock"
 require "samagotchi/schedules"
@@ -703,6 +704,69 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(result[:kept]).to eq([newest_real.id])
       expect(result[:deleted]).to contain_exactly(scratch.id, *older.map(&:id))
       expect(File.exist?(File.join(tmpdir, "#{newest_real.id}.json"))).to be(true)
+    end
+  end
+
+  # The sweep takes each session's transition lock exclusively, one try,
+  # before its files go: a continue, a delete or a send holding it now
+  # keeps the session for a later sweep.
+  describe ".apply and a session's transition lock" do
+    include TransitionHolder
+
+    def expired
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      data = JSON.parse(File.read(path))
+      data["updated_at"] = data["created_at"] = (Time.now - (20 * 86_400)).iso8601(3)
+      File.write(path, JSON.generate(data))
+      session
+    end
+
+    it "keeps an expired session while its lock is held (a send's shared hold too), and deletes it once free" do
+      held = expired
+      shared = expired
+      released = Queue.new
+      taken = Queue.new
+      sender = Thread.new do
+        Samagotchi::SessionTransition.shared(shared.id, state_dir: tmpdir) do
+          taken << true
+          released.pop
+        end
+      end
+      taken.pop
+
+      result = holding_transition(held.id, state_dir: tmpdir, kind: :delete) do
+        described_class.apply(state_dir: tmpdir, days: 14, max_count: 500)
+      end
+      expect(result[:kept]).to include(held.id, shared.id)
+      expect(result[:deleted]).to be_empty
+      expect(Samagotchi::Session.exist?(held.id, state_dir: tmpdir)).to be(true)
+
+      released << true
+      sender.join
+      expect(described_class.apply(state_dir: tmpdir, days: 14, max_count: 500)[:deleted]).to contain_exactly(held.id, shared.id)
+    ensure
+      released&.push(true)
+      sender&.join
+    end
+
+    it "keeps an orphan folder whose lock is held" do
+      id = SecureRandom.uuid
+      dir = File.join(tmpdir, id)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "owner.lock"), "")
+      age = Time.now - described_class::EMPTY_GRACE_SECONDS - 60
+      File.utime(age, age, dir)
+
+      result = holding_transition(id, state_dir: tmpdir, kind: :delete) do
+        File.utime(age, age, dir) # the hold's lock file is new: the folder is still an hour old
+        described_class.prune(state_dir: tmpdir)
+      end
+      expect(result[:deleted]).not_to include(id)
+      expect(Dir.exist?(dir)).to be(true)
+      File.utime(age, age, dir)
+      expect(described_class.prune(state_dir: tmpdir)[:deleted]).to include(id)
     end
   end
 
