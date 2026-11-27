@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - `chi send --new --continues last:<id>` (or a chain schedule's firing) racing another
   continue of the same chain no longer fails with "was continued as …"; it follows to the new link.
+- A block fixed in an answer that a hook's display replaced is redrawn right away, not on the next reload; a live answer's bubble shows its time on hover like a reloaded one.
+- A failed block whose fix couldn't be shown no longer stays at "asking for a fix…": it offers Ask in chat.
 
 ## [0.191.0] - 2026-11-27
 

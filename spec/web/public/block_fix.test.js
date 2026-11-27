@@ -20,7 +20,7 @@ function fakeTimers() {
   };
 }
 
-function setup(html, { answers = [], features = ["block_fix"], reads = [], bridgeUp = true, post = null } = {}) {
+function setup(html, { answers = [], features = ["block_fix"], reads = [], bridgeUp = true, post = null, getSession = null } = {}) {
   const root = document.createElement("div");
   root.id = "history";
   root.innerHTML = html;
@@ -35,7 +35,7 @@ function setup(html, { answers = [], features = ["block_fix"], reads = [], bridg
     features: () => features,
     bridgeUp: () => bridgeUp,
     post: async (id, body) => { posts.push({ id, ...body }); return post ? post() : answers.shift() || { status: 202, body: { state: "running" } }; },
-    getSession: async (id, opts) => { reads.push({ id, ...opts }); return reads.answer || { messages: [] }; },
+    getSession: getSession || (async (id, opts) => { reads.push({ id, ...opts }); return reads.answer || { messages: [] }; }),
     composerText: () => "draft",
     fillComposer: (text) => filled.push(text),
     timers,
@@ -253,6 +253,29 @@ test("the worker's word arriving before the POST's 202 (a quick side answer) sti
   }
 });
 
+test("a fixed event redraws a non-newest bubble whose copy source is the message's display (a hook's), not its content", async () => {
+  const reads = [];
+  reads.answer = { messages: [{ role: "assistant", content: "content text", display: "display text", html: "<p>the fixed answer</p>" }] };
+  const html = `<div class="bubble output markdown" data-answer-turn="t1" data-copy-source="display text">${pre("a")}</div>`;
+  const { root, fix } = setup(html, { reads });
+  const el = root.querySelector("pre");
+  fail(el);
+  await settle();
+  // A newer turn's bubble arrives: t1 is no longer the newest answer.
+  const newer = document.createElement("div");
+  newer.className = "bubble output markdown";
+  newer.setAttribute("data-answer-turn", "t2");
+  newer.textContent = "newest";
+  root.append(newer);
+  fix.onEvent({ turn_id: "t1", state: "fixed" });
+  await settle();
+  await settle();
+  const answer = root.querySelector('[data-answer-turn="t1"]');
+  assert.equal(answer.querySelector("p")?.textContent, "the fixed answer");
+  assert.equal(answer.getAttribute("data-copy-source"), "display text");
+  assert.ok(answer.hasAttribute("data-answer-display"));
+});
+
 test("a fixed event for an answer the read doesn't hold (a reminder turn's, read as the newest) leaves it for the next full read", async () => {
   const reads = [];
   reads.answer = { messages: [{ role: "assistant", content: "src t2", html: "<p>the newest</p>" }] };
@@ -261,6 +284,72 @@ test("a fixed event for an answer the read doesn't hold (a reminder turn's, read
   await settle();
   await settle();
   assert.ok(root.querySelector('[data-answer-turn="t1"] pre'));
+});
+
+test("a fixed event whose read throws settles the block to older, not asking", async () => {
+  const s = setup(bubble("t1", pre("a")), { getSession: () => Promise.reject(new Error("offline")) });
+  const el = s.root.querySelector("pre");
+  fail(el);
+  await settle();
+  s.fix.onEvent({ turn_id: "t1", state: "fixed" });
+  await settle();
+  await settle();
+  assert.equal(el.nextElementSibling.dataset.fix, "older");
+});
+
+test("a fixed event whose read has no assistant message with html settles the block to older, not asking", async () => {
+  const s = setup(bubble("t1", pre("a")));
+  const el = s.root.querySelector("pre");
+  fail(el);
+  await settle();
+  s.fix.onEvent({ turn_id: "t1", state: "fixed" });
+  await settle();
+  await settle();
+  assert.equal(el.nextElementSibling.dataset.fix, "older");
+});
+
+test("a fixed event whose read shows another answer settles the block to older, not asking", async () => {
+  const reads = [];
+  reads.answer = { messages: [{ role: "assistant", content: "src t2", html: "<p>the newest</p>" }] };
+  const html = `<div class="bubble output markdown" data-answer-turn="t1" data-copy-source="src t1">${pre("a")}</div>`;
+  const s = setup(html, { reads });
+  const el = s.root.querySelector("pre");
+  fail(el);
+  await settle();
+  const newer = document.createElement("div");
+  newer.className = "bubble output markdown";
+  newer.setAttribute("data-answer-turn", "t2");
+  newer.textContent = "newest";
+  s.root.append(newer);
+  s.fix.onEvent({ turn_id: "t1", state: "fixed" });
+  await settle();
+  await settle();
+  assert.equal(el.nextElementSibling.dataset.fix, "older");
+});
+
+test("a 200-fixed ask whose read has no answer settles the block to older, not asking", async () => {
+  const s = setup(bubble("t1", pre("a")), { answers: [{ status: 200, body: { state: "fixed" } }] });
+  const el = s.root.querySelector("pre");
+  fail(el);
+  await settle();
+  await settle();
+  await settle();
+  assert.equal(el.nextElementSibling.dataset.fix, "older");
+});
+
+test("a session switch during the read leaves the note as it was", async () => {
+  let resolveRead;
+  const held = new Promise((resolve) => { resolveRead = resolve; });
+  const s = setup(bubble("t1", pre("a")), { getSession: () => held });
+  const el = s.root.querySelector("pre");
+  fail(el);
+  await settle();
+  s.fix.onEvent({ turn_id: "t1", state: "fixed" });
+  s.setSession("s2");
+  resolveRead({ messages: [{ role: "assistant", content: "src t1", html: "<p>x</p>" }] });
+  await settle();
+  await settle();
+  assert.equal(el.nextElementSibling.dataset.fix, "asking");
 });
 
 test("no word within 60 s of a 202: today's line and Ask in chat; a session switch drops the timers", async () => {
