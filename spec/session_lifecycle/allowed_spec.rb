@@ -66,6 +66,18 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
     expect(rows.select { |_, each| each.hold == :none }.keys).to match_array(%i[note ring fresh_verdict leave])
   end
 
+  it "generates TRANSITIONING from the hold column: a :shared row is busy in every state, a :none row its state's cell" do
+    shared = rows.select { |_, each| each.hold == :shared }.keys
+    expect(lifecycle::TRANSITIONING).to eq(shared.to_h { |kind| [kind, :busy] })
+    expect(lifecycle::TRANSITIONING).to be_frozen
+    lifecycle::STATES.each do |state|
+      expect(lifecycle.allowed(:send, state, transitioning: true)).to eq(:busy)
+      expect(lifecycle.allowed(:note, state, transitioning: true)).to eq(lifecycle.allowed(:note, state))
+      expect(lifecycle.allowed(:resume, state, transitioning: true)).to eq(lifecycle.allowed(:resume, state))
+    end
+    expect(lifecycle.verdict(:send, :busy)).to eq(:refused)
+  end
+
   it "leaves WakePolicy::ROWS the same frozen table" do
     before = rows
     snapshot = before.transform_values(&:to_h)

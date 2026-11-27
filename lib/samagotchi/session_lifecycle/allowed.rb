@@ -10,8 +10,12 @@ module Samagotchi
     # whoever runs the session next: wait; :gone, :owned and :deleting (a
     # deleter holds the lock) are refusals. (:off and :scratch are
     # op-local: a delivery that asks no worker, a scratch session's file.)
+    # A :shared row's delivery while a transition holds the lock
+    # (SessionInbox::Hold, Delivered#wake) is :busy, or :continued when the
+    # holder is a continue naming its new link (a resolution fact, as
+    # continuing is: TRANSITIONING names :busy).
     DELIVERY_CELLS = { start: :go, live: :go, starting: :wait, stopped: :wait, archived: :wait, none: :wait,
-                       gone: :gone, owned: :owned, deleting: :deleting }.freeze
+                       gone: :gone, owned: :owned, deleting: :deleting, busy: :busy, continued: :continued }.freeze
 
     # The operations that are not inbox deliveries, in the order of LITERAL's
     # rows: resume_session, restart_session, stop_session, archive
@@ -66,5 +70,14 @@ module Samagotchi
       end
       deliveries.merge(literal).freeze
     end.call
+
+    # {op => cell} for the operations that answer otherwise while a
+    # transition holds the session's lock, in every state (it is a fact
+    # beside the state, not one of STATES: any state can be held): each
+    # delivery whose WakePolicy row holds :shared is refused :busy
+    # (SessionInbox::Hold, before its own checks); a :none row answers its
+    # state's cell. The literal operations read no transition lock yet.
+    TRANSITIONING = SessionInbox::WakePolicy::ROWS.filter_map { |kind, policy| [kind, :busy] if policy.shared? }
+                                                  .to_h.freeze
   end
 end

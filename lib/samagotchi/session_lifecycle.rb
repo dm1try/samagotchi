@@ -3,6 +3,7 @@
 require_relative "session"
 require_relative "worker_presence"
 require_relative "continue_intent"
+require_relative "session_transition"
 
 module Samagotchi
   # A session's lifecycle state, derived from what is on disk now: one read of
@@ -27,6 +28,7 @@ module Samagotchi
     autoload :Reading, File.expand_path("session_lifecycle/reading", __dir__)
     autoload :CANONICAL, File.expand_path("session_lifecycle/canonical", __dir__)
     autoload :ALLOWED, File.expand_path("session_lifecycle/allowed", __dir__)
+    autoload :TRANSITIONING, File.expand_path("session_lifecycle/allowed", __dir__)
 
     # The cell words that are no refusal, per operation: a resume that finds
     # a worker there or one being started waits for it; a restart's
@@ -35,8 +37,15 @@ module Samagotchi
 
     module_function
 
+    # @param transitioning [Boolean] a transition holds the session's lock
+    #   (Reading#transitioning): an op TRANSITIONING names answers its cell
+    #   there, whatever the state
     # @return [Symbol] the cell of +op+ in +state+ (ALLOWED)
-    def allowed(op, state) = ALLOWED.fetch(op).fetch(state)
+    def allowed(op, state, transitioning: false)
+      return TRANSITIONING.fetch(op) if transitioning && TRANSITIONING.key?(op)
+
+      ALLOWED.fetch(op).fetch(state)
+    end
 
     # A cell as :go, :wait or :refused: :go and :wait are themselves, an
     # operation's own words (VERDICT_WORDS) theirs, every other a refusal.
@@ -54,7 +63,8 @@ module Samagotchi
     def read(session_id, state_dir: nil, owner: :read)
       sd = state_dir || Session.default_state_dir
       presence = WorkerPresence.read(session_id, state_dir: sd, owner: owner, link: :look)
-      Reading.derive(presence, continuing: ContinueIntent.in_flight(session_id, state_dir: sd))
+      Reading.derive(presence, continuing: ContinueIntent.in_flight(session_id, state_dir: sd),
+                               transitioning: SessionTransition.held?(session_id, state_dir: sd))
     end
   end
 end

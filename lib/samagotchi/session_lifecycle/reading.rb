@@ -13,12 +13,17 @@ module Samagotchi
     # @!attribute continuing [String, nil] ContinueIntent.in_flight's
     #   successor: a fact, not a state (only a send's or a schedule's link
     #   resolution reads it)
-    Reading = Data.define(:state, :presence, :continuing) do
+    # @!attribute transitioning [Boolean] a transition holds the session's
+    #   transition lock now (SessionTransition.held?): a fact, not a state,
+    #   orthogonal to them all; a :shared delivery row answers TRANSITIONING's
+    #   cell then (SessionLifecycle.allowed's transitioning:)
+    Reading = Data.define(:state, :presence, :continuing, :transitioning) do
       # @param presence [WorkerPresence] with its link read
       # @param continuing [String, nil]
+      # @param transitioning [Boolean]
       # @return [Reading]
-      def self.derive(presence, continuing: nil)
-        new(state: state_of(presence), presence: presence, continuing: continuing)
+      def self.derive(presence, continuing: nil, transitioning: false)
+        new(state: state_of(presence), presence: presence, continuing: continuing, transitioning: transitioning)
       end
 
       # The first of STATES whose facts hold. A lock held by someone that is
@@ -60,6 +65,7 @@ module Samagotchi
 
       def facts = presence
       def continuing? = !continuing.nil?
+      def transitioning? = transitioning == true
     end
   end
 end
