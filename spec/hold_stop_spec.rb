@@ -6,6 +6,7 @@ require "samagotchi/reminder_store"
 require "samagotchi/children_status"
 require "samagotchi/task_watch"
 require "samagotchi/tools/task_runtime"
+require "tmpdir"
 
 RSpec.describe Samagotchi::HoldStop do
   let(:reminders) { Samagotchi::ReminderStore.new }
@@ -52,7 +53,7 @@ RSpec.describe Samagotchi::HoldStop do
     allow(Samagotchi::SessionManager).to receive(:stop_session)
 
     expect(stopper.stop_all.delegates).to eq(["c1c1c1c1"])
-    expect(Samagotchi::SessionManager).to have_received(:stop_session).with("c1c1c1c1-1111", state_dir: "/tmp/state")
+    expect(Samagotchi::SessionManager).to have_received(:stop_session).with("c1c1c1c1-1111", state_dir: "/tmp/state", lock_wait: 0)
   end
 
   it "reports nothing for a child a terminal owns, and stops the rest" do
@@ -63,6 +64,38 @@ RSpec.describe Samagotchi::HoldStop do
     expect(Samagotchi::Log).to have_received(:warn)
       .with(:worker, "exit_stop_delegate_failed", child: "c1c1c1c1", error: "Samagotchi::SessionManager::OwnedByTUI",
            msg: "session c1c1c1c1-1111 is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
+  end
+
+  # The worker holds its own owner.lock: a delegate's transition lock is
+  # one try, never a wait (lock order, docs/internals/session-lifecycle.md).
+  it "leaves a delegate another change holds out of the report at once, logged in the holder's words" do
+    state_dir = Dir.mktmpdir("hold-stop")
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: state_dir)
+    session.save(state_dir: state_dir)
+    held = child.with(id: session.id, short_id: session.id[0, 8])
+    stopper = described_class.new(reminder_store: reminders, task_watch: nil, delegates: -> { [held] }, state_dir: state_dir)
+    allow(Samagotchi::Log).to receive(:warn)
+    taken = Queue.new
+    release = Queue.new
+    holder = Thread.new do
+      Samagotchi::SessionTransition.exclusive([session.id], kind: :delete, state_dir: state_dir) do
+        taken << true
+        release.pop
+      end
+    end
+    taken.pop
+    started = SpecWaiting.mono
+
+    expect(stopper.stop_all.delegates).to eq([])
+    expect(SpecWaiting.mono - started).to be < time_bound(1, below: 10)
+    expect(Samagotchi::Log).to have_received(:warn)
+      .with(:worker, "exit_stop_delegate_failed", child: session.id[0, 8], error: "Samagotchi::SessionTransition::Busy",
+                                                  msg: "session #{session.id[0, 8]} is being deleted; try again in a moment")
+    expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: state_dir)).to be(false)
+  ensure
+    release&.push(true)
+    holder&.join
+    FileUtils.rm_rf(state_dir) if state_dir
   end
 
   it "says nothing was stopped when there was nothing to stop" do

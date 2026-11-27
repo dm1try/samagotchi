@@ -75,10 +75,13 @@ module Samagotchi
 
     # The delegate children, stopped as `chi sessions stop` stops a session
     # (SessionManager.stop_session: its turn canceled, its worker TERMed).
-    # One owned by another terminal is left running and said so in the log.
+    # One owned by another terminal, or one whose transition lock another
+    # change holds (one try: this worker holds its own owner.lock, so it
+    # never waits for a transition lock), is left running and said so in
+    # the log.
     def stop_delegates
       @delegates.call.filter_map do |child|
-        SessionManager.stop_session(child.id, state_dir: @state_dir)
+        SessionManager.stop_session(child.id, state_dir: @state_dir, lock_wait: 0)
         child.short_id
       rescue StandardError => e
         Log.warn(:worker, "exit_stop_delegate_failed", child: child.short_id, error: e.class.name, msg: e.message)

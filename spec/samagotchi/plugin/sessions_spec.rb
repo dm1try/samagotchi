@@ -343,7 +343,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
 
       expect(sessions.stop(child.id[0, 8])).to eq(child.id)
-      expect(Samagotchi::SessionManager).to have_received(:stop_session).with(child.id, state_dir: tmpdir, wait: 2)
+      expect(Samagotchi::SessionManager).to have_received(:stop_session).with(child.id, state_dir: tmpdir, wait: 2, lock_wait: 0)
     end
 
     it "refuses a session that isn't its child, an unknown one, a child whose file is corrupt, and one a one-shot owns" do
@@ -364,6 +364,30 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_raise(Samagotchi::SessionManager::OwnedByTUI, child.id)
       expect { sessions.stop(child.id) }.to raise_error(described_class::Error, "session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish")
+    end
+
+    # The worker holds its own owner.lock: it takes a child's transition
+    # lock in one try, never waiting (lock order, docs/internals/session-lifecycle.md).
+    it "refuses a child another change holds at once, in the holder's words, nothing marked" do
+      FileUtils.mkdir_p(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir))
+      taken = Queue.new
+      release = Queue.new
+      holder = Thread.new do
+        Samagotchi::SessionTransition.exclusive([child.id], kind: :delete, state_dir: tmpdir) do
+          taken << true
+          release.pop
+        end
+      end
+      taken.pop
+      started = SpecWaiting.mono
+
+      expect { sessions.stop(child.id) }
+        .to raise_error(described_class::Error, "session #{child.id[0, 8]} is being deleted; try again in a moment")
+      expect(SpecWaiting.mono - started).to be < time_bound(1, below: 10)
+      expect(Samagotchi::Session.stopped_marker?(child.id, state_dir: tmpdir)).to be(false)
+    ensure
+      release&.push(true)
+      holder&.join
     end
   end
 end
