@@ -1981,10 +1981,12 @@ RSpec.describe Samagotchi::Schedules do
       File.write(File.join(folder, Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor_id))
       return unless hold
 
-      path = File.join(folder, Samagotchi::ContinueIntent::LOCK)
-      lock = File.open(path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed after
-      lock.flock(File::LOCK_EX)
-      locks << lock
+      # The continue's lock, and its new link's (ContinueIntent.in_flight).
+      [folder, FileUtils.mkdir_p(Samagotchi::Session.session_dir(successor_id, state_dir: dir)).first].each do |held|
+        lock = File.open(File.join(held, Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed after
+        lock.flock(File::LOCK_EX)
+        locks << lock
+      end
     end
 
     %w[chain same].each do |mode|

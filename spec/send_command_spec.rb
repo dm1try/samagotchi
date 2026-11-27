@@ -56,6 +56,15 @@ RSpec.describe Samagotchi::SendCommand do
 
   def dir_of(session) = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
 
+  # A continue's new link's lock, held as the continue holds it
+  # (ContinueIntent.in_flight names a successor only then, or once saved).
+  def hold_successor_lock(successor)
+    folder = FileUtils.mkdir_p(Samagotchi::Session.session_dir(successor, state_dir: tmpdir)).first
+    File.open(File.join(folder, Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600).tap do |lock| # rubocop:disable Style/FileOpen -- held open on purpose, closed after
+      lock.flock(File::LOCK_EX)
+    end
+  end
+
   # A live worker's Bridge (no turn loop: it only writes input files and
   # announces), with the events its engine sent. +cut+: the outcome its
   # engine's SteerCut#cut_for_steer answers (nil: the real one, :off with no
@@ -681,7 +690,10 @@ RSpec.describe Samagotchi::SendCommand do
           allow(described_class).to receive(:pause)
         end
 
-        after { @lock&.close }
+        after do
+          @lock&.close
+          @successor_lock&.close
+        end
 
         # Once, right after the first head look.
         def after_first_head(&)
@@ -759,6 +771,7 @@ RSpec.describe Samagotchi::SendCommand do
             File.write(File.join(dir_of(old), Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor))
             @lock = File.open(File.join(dir_of(old), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
             @lock.flock(File::LOCK_EX)
+            @successor_lock = hold_successor_lock(successor)
           end
           created = nil
           allow(described_class).to receive(:pause) do
@@ -915,9 +928,13 @@ RSpec.describe Samagotchi::SendCommand do
           File.write(File.join(dir_of(session), Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor))
           @lock = File.open(File.join(dir_of(session), Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
           @lock.flock(File::LOCK_EX)
+          @successor_lock = hold_successor_lock(successor)
         end
 
-        after { @lock&.close }
+        after do
+          @lock&.close
+          @successor_lock&.close
+        end
 
         it "waits a moment, then sends to the new link once it is saved; the old link stays archived" do
           old = archived(make)
