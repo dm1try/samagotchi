@@ -143,7 +143,7 @@ module Samagotchi
       # page prefills (SessionChain.opener_for; null: the page's constant).
       # A model it can't start on is 400 invalid_model, nothing archived.
       # 409 continued (with next_id, the link that continues it already: the
-      # page opens that one), open_children (ids), folder_gone, busy, scratch
+      # page opens that one), open_children (ids), folder_gone, transition_busy, busy, scratch
       # or owned_by_tui.
       def handle_continue(body, prompt, idle)
         given = body["continues"]

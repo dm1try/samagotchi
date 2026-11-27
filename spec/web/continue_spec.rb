@@ -205,6 +205,23 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     expect(body["moved_context"]).to eq("moved" => ["ci"], "stayed" => [{ "name" => "notes", "why" => "pushed" }])
   end
 
+  it "answers 409 transition_busy, archiving nothing, while another holds the previous link's transition lock" do
+    stub_const("Samagotchi::SessionContinue::LOCK_WAIT", 0.02)
+    previous = previous_link
+    dir = Samagotchi::Session.session_dir(previous.id, state_dir: state_dir)
+    FileUtils.mkdir_p(dir)
+    held = File.open(File.join(dir, Samagotchi::SessionTransition::LOCK), File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed in the ensure
+    held.flock(File::LOCK_EX)
+
+    status, body = create(continues: previous.id, idle: true)
+
+    expect(status).to eq(409)
+    expect(body).to include("error" => "transition_busy", "reason" => "transition_busy", "session_id" => previous.id)
+    expect(archived?(previous.id)).to be(false)
+  ensure
+    held&.close
+  end
+
   it "answers 409 open_children naming a delegate still open that can't move (a one-turn chi run holds it)" do
     previous = previous_link
     child = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: folder,

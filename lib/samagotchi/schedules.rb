@@ -80,9 +80,12 @@ module Samagotchi
     # A schedule prompt is a chain link's first message or a turn's prompt: the
     # same limit the note inbox uses.
     PROMPT_MAX_BYTES = SessionInbox::NOTE_MAX_BYTES
-    # A chain firing can wait 30 s for a recap and 5 s for an archive; 5 s
-    # more leaves margin before an unfinished turn is called interrupted.
-    FIRING_TIMEOUT = 40
+    # A chain firing can wait 30 s for a recap (SessionContinue::RECAP_WAIT),
+    # 10 s for the transition locks on each of its 3 tries (LOCK_WAIT,
+    # TRIES: a last: continue that meets another's lock follows it) and 5 s
+    # for an archive; 5 s more leaves margin before an unfinished turn is
+    # called interrupted.
+    FIRING_TIMEOUT = 70
     PENDING_MIN_SECONDS = 10 * 60
     PENDING_MAX_SECONDS = 6 * 60 * 60
     # A disabled notice older than this is dropped, not pushed: a chi web that
@@ -91,8 +94,10 @@ module Samagotchi
     # Refusals that mean "not now" rather than "this schedule is broken".
     # (starting: the link's worker holds no lock yet, e.g. another ticker's
     # firing just continued the chain.)
+    # (transition_busy: a continue of the chain's end held its transition
+    # lock past SessionContinue::LOCK_WAIT.)
     SKIP_REASONS = %w[busy queued offer busy_child queued_child offer_child starting starting_child continued
-                      open_children].freeze
+                      open_children transition_busy].freeze
 
     # The add itself is wrong (no prompt, two recurrence kinds, a scratch
     # target): a usage error, exit 2.
