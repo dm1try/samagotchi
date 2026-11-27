@@ -6,6 +6,7 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/session_continue"
 require "samagotchi/session_chain"
+require "samagotchi/session_chain/delete"
 require "samagotchi/objectives"
 require "samagotchi/note_delivery"
 require "samagotchi/tools/delegate_cursor"
@@ -25,12 +26,38 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
   let(:folder) { Dir.mktmpdir("continue-folder") }
   let(:locks) { [] }
 
-  before { allow(Process).to receive(:spawn).and_return(12_345) }
+  # Every example pins (SessionTransition, docs/internals/session-lifecycle.md
+  # "Locks and crash repair"): nothing a continue runs under its transition
+  # lock takes a shared hold of an id this thread holds (the token says true
+  # there, where the lock file said false before SessionTransition), nor
+  # reaches follow_guard, SessionChain::Delete.link or hold_all.
+  let(:under_lock) { [] }
+
+  before do
+    allow(Process).to receive(:spawn).and_return(12_345)
+    allow(Samagotchi::SessionTransition).to receive(:shared).and_wrap_original do |original, id, **opts, &block|
+      under_lock << [:shared, id] if Samagotchi::SessionTransition.holding?(id, state_dir: opts[:state_dir])
+      original.call(id, **opts, &block)
+    end
+    %i[link hold_all].each do |name|
+      allow(Samagotchi::SessionChain::Delete).to receive(name).and_wrap_original do |original, *args, **opts, &block|
+        under_lock << [name, args.first] if holding_any?
+        original.call(*args, **opts, &block)
+      end
+    end
+    allow(manager).to receive(:follow_guard).and_wrap_original do |original, *args, &block|
+      under_lock << [:follow_guard, args.first] if holding_any?
+      original.call(*args, &block)
+    end
+  end
+
+  def holding_any? = Thread.current.thread_variable_get(Samagotchi::SessionTransition::REGISTRY).to_h.any?
 
   after do
     locks.each(&:release)
     FileUtils.rm_rf(tmpdir)
     FileUtils.rm_rf(folder)
+    expect(under_lock).to eq([])
   end
 
   def make(prompt: "you are coordinator again", parent_id: nil, delegate: false, status: nil, created: nil)
@@ -539,6 +566,23 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       listed = manager.list_sessions(state_dir: tmpdir)
 
       expect(listed.map(&:id)).to include(previous.id)
+    end
+
+    it "leaves a running continue's intent alone when a repair runs on its own thread meanwhile" do
+      previous = make
+      intent_path = File.join(dir_of(previous.id), Samagotchi::SessionContinue::CONTINUE_INTENT)
+      kept = nil
+      allow(manager).to receive(:archive_session).and_wrap_original do |original, *args, **opts|
+        described_class.repair_interrupted(state_dir: tmpdir)
+        kept = File.exist?(intent_path)
+        original.call(*args, **opts)
+      end
+
+      link = continue(previous.id)
+
+      expect(kept).to be(true)
+      expect(load(link.id).continues).to eq(previous.id)
+      expect(archived?(previous.id)).to be(true)
     end
 
     it "unarchives delegates that were archived with an interrupted continuation" do

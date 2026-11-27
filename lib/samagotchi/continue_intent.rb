@@ -1,20 +1,21 @@
 # frozen_string_literal: true
 
-require "fileutils"
 require "json"
 require_relative "atomic_file"
 require_relative "session"
+require_relative "session_transition"
 
 module Samagotchi
   # The files a continue (SessionContinue.run) keeps in the previous link's
-  # folder while it runs: LOCK, held for the whole continue, and FILE, its
+  # folder while it runs: LOCK, held for the whole continue (SessionTransition,
+  # the one code that flocks it), and FILE, its
   # intent (the successor's id), written before the link is archived and
   # removed once the successor is saved or the continue is undone. A send
   # (SessionInbox::Head) and a schedule tick (Schedules#continuing_reason)
   # read them to tell a continue in flight from a link nobody continues.
   module ContinueIntent
-    # One continue of a session at a time.
-    LOCK = "continue.lock"
+    # One continue of a session at a time (SessionTransition::LOCK).
+    LOCK = SessionTransition::LOCK
     # The intent: { successor_id:, previously_archived:, archived_ids: }.
     FILE = "continue.json"
 
@@ -58,44 +59,11 @@ module Samagotchi
 
       dir = Session.session_dir(id, state_dir: state_dir)
       path = File.join(dir, FILE)
-      return nil unless File.file?(path) && locked?(File.join(dir, LOCK))
+      return nil unless File.file?(path) && SessionTransition.held?(id, state_dir: state_dir)
 
       read(path).successor_id
     rescue JSON::ParserError, SystemCallError
       nil
-    end
-
-    # The block under a shared hold of +id+'s continue lock, so no continue
-    # of it starts until the block returns (its exclusive lock waits); the
-    # block's argument is false when a continue holds the lock now (not
-    # waited for: nothing is held then). A followed send's check and the
-    # resume that would un-archive the link run inside it
-    # (SessionManager.deliver_turn's follow:).
-    # @yieldparam held [Boolean]
-    def hold(id, state_dir:)
-      return yield(false) unless Session.valid_id?(id)
-
-      dir = Session.session_dir(id, state_dir: state_dir)
-      FileUtils.mkdir_p(dir)
-      File.open(File.join(dir, LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
-        yield(lock.flock(File::LOCK_SH | File::LOCK_NB) ? true : false)
-      end
-    end
-
-    # Whether +id+'s continue lock is held now, without creating its
-    # session folder or lock file. Read-only callers use this for a preview.
-    def lock_held?(id, state_dir:)
-      return false unless Session.valid_id?(id)
-
-      locked?(File.join(Session.session_dir(id, state_dir: state_dir), LOCK))
-    end
-
-    # Whether a continue holds the lock at +path+: a shared try that fails.
-    # The try is let go at once (the file is closed).
-    def locked?(path)
-      File.open(path, File::RDONLY) { |lock| !lock.flock(File::LOCK_SH | File::LOCK_NB) }
-    rescue Errno::ENOENT
-      false
     end
   end
 end

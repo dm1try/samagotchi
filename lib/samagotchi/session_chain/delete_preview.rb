@@ -106,7 +106,7 @@ module Samagotchi
         end
 
         def refuse_continuing!(id, state_dir)
-          raise SessionManager::DeleteRefused.new(id, :continuing) if ContinueIntent.lock_held?(id, state_dir: state_dir)
+          raise SessionManager::DeleteRefused.new(id, :continuing) if SessionTransition.held?(id, state_dir: state_dir)
         end
 
         def tui!(id, state_dir)
