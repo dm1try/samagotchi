@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A stop or an archive no longer slips into the middle of a continue or a delete: `chi sessions stop`, the web's
+  stop and an archive wait (up to 10 s) for the change to finish, then go on or are refused in its words ("session
+  ab12cd34 is being deleted; try again in a moment").
+
 ## [0.190.1] - 2026-11-26
 
 ### Fixed
