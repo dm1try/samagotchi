@@ -253,6 +253,29 @@ test("the worker's word arriving before the POST's 202 (a quick side answer) sti
   }
 });
 
+test("a fixed event redraws a non-newest bubble whose copy source is the message's display (a hook's), not its content", async () => {
+  const reads = [];
+  reads.answer = { messages: [{ role: "assistant", content: "content text", display: "display text", html: "<p>the fixed answer</p>" }] };
+  const html = `<div class="bubble output markdown" data-answer-turn="t1" data-copy-source="display text">${pre("a")}</div>`;
+  const { root, fix } = setup(html, { reads });
+  const el = root.querySelector("pre");
+  fail(el);
+  await settle();
+  // A newer turn's bubble arrives: t1 is no longer the newest answer.
+  const newer = document.createElement("div");
+  newer.className = "bubble output markdown";
+  newer.setAttribute("data-answer-turn", "t2");
+  newer.textContent = "newest";
+  root.append(newer);
+  fix.onEvent({ turn_id: "t1", state: "fixed" });
+  await settle();
+  await settle();
+  const answer = root.querySelector('[data-answer-turn="t1"]');
+  assert.equal(answer.querySelector("p")?.textContent, "the fixed answer");
+  assert.equal(answer.getAttribute("data-copy-source"), "display text");
+  assert.ok(answer.hasAttribute("data-answer-display"));
+});
+
 test("a fixed event for an answer the read doesn't hold (a reminder turn's, read as the newest) leaves it for the next full read", async () => {
   const reads = [];
   reads.answer = { messages: [{ role: "assistant", content: "src t2", html: "<p>the newest</p>" }] };

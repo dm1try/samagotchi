@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A block fixed in an answer that a hook's display replaced is redrawn right away, not on the next reload; a live answer's bubble shows its time on hover like a reloaded one.
+
 ## [0.191.0] - 2026-11-27
 
 ### Changed

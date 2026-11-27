@@ -59,7 +59,8 @@
     "answerRefsOf",
     "applyFinalAnswer",
     "pairAnswerRefs",
-    "setAnswerRefs"
+    "setAnswerRefs",
+    "writeAnswer"
   ],
   "app.js": [],
   "auth_lost.js": [

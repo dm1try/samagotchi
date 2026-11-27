@@ -1,8 +1,8 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { answerRefsOf, applyFinalAnswer, pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
-import { normalize } from "../../../lib/samagotchi/web/public/format.js";
+import { answerRefsOf, applyFinalAnswer, pairAnswerRefs, setAnswerRefs, writeAnswer } from "../../../lib/samagotchi/web/public/answer_refs.js";
+import { fullTime, normalize } from "../../../lib/samagotchi/web/public/format.js";
 import { boundRef, refActions, refTarget } from "../../../lib/samagotchi/web/public/refs.js";
 import { linkRefs } from "../../../lib/samagotchi/web/public/ref_scan.js";
 
@@ -181,6 +181,39 @@ test("label: the hover title when it differs from the text, never over the eleme
   assert.equal(b.hasAttribute("title"), false);
   assert.equal(el.querySelector("a").getAttribute("title"), "Mine");
   el.remove();
+});
+
+test("writeAnswer: class, copy source, display flag, html, title and refs; the title from at, none when it can't be parsed", () => {
+  const el = bubble("See JIRA-1.");
+  const refs = [issue("JIRA-1")];
+  writeAnswer(el, {
+    role: "assistant", content: "See JIRA-1.", display: "Hook display",
+    html: "<p>See <strong>JIRA-1</strong>.</p>", display_refs: refs, at: "2026-11-27T14:32:05Z",
+  });
+  assert.ok(el.classList.contains("markdown"));
+  assert.equal(el.getAttribute("data-copy-source"), "Hook display");
+  assert.ok(el.hasAttribute("data-answer-display"));
+  assert.equal(el.innerHTML, "<p>See <strong>JIRA-1</strong>.</p>");
+  assert.equal(el.getAttribute("title"), fullTime("2026-11-27T14:32:05Z"));
+  assert.ok(fullTime("2026-11-27T14:32:05Z").length > 0);
+  assert.deepEqual(answerRefsOf(el), refs);
+
+  // No html (web.markdown off): the text and any existing title stay; refs still set.
+  const plain = bubble("plain text");
+  plain.setAttribute("title", "keeping the old one");
+  writeAnswer(plain, { role: "assistant", content: "plain text", display_refs: refs });
+  assert.equal(plain.innerHTML, "plain text");
+  assert.equal(plain.getAttribute("title"), "keeping the old one");
+  assert.deepEqual(answerRefsOf(plain), refs);
+
+  // A non-html at: no title.
+  const noTime = bubble("x");
+  writeAnswer(noTime, { role: "assistant", content: "x", html: "<p>x</p>", at: "" });
+  assert.equal(noTime.getAttribute("title"), null);
+  assert.deepEqual(answerRefsOf(noTime), null);
+  el.remove();
+  plain.remove();
+  noTime.remove();
 });
 
 test("applyFinalAnswer: the last answer's html replaces its streamed bubble's, which takes its refs; a read without refs clears them", () => {
