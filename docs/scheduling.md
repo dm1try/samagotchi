@@ -394,8 +394,20 @@ whole subtree only when every session in it is archived and no worker owns any o
 it, deepest child first and the link last, oldest link first. The delete itself is
 `SessionManager.delete_ids` (the prune keeps its own checks and log tags): each id
 through `delete_session`, and System 1's saved runs and the candidate log purged once
-per link's batch, not once per session. A subtree with a live
-worker or an unarchived descendant is left whole and retried at the next firing. Pruning a link alone would leave its finished
+per link's batch, not once per session. Each link goes under the transition
+locks of it and the link after it (`SessionTransition`, one try, kind `delete`).
+**A link that can't go now holds the prune there**: one not archived (brought back
+by hand), one whose subtree holds a schedule's anchor, head or target (another
+enabled schedule anchored inside the chain, as `schedule_task` from a link does), a
+live worker or an unarchived descendant in its subtree, or its or the next link's
+transition lock held (a send, a continue, a delete). The prune stops below it: that
+link and every newer one stay, and nothing is deleted around it. The entry records
+where it waits (`prune_waiting` in schedules.json: link, reason, since when; no
+history row), `chi schedule list` adds `pruning held at <id>` to the row and `show` a
+line `pruning held at <id>: <reason>  (since …)`, the log says `prune_waiting` once
+per link (not every tick), and every tick tries again, not only after a firing; once
+it gets past, the record goes. A schedule anchored inside the chain holds it until
+that schedule is cancelled. Pruning a link alone would leave its finished
 delegates archived forever with a dangling `parent_id`: archiving a session archives
 its descendants, and archived sessions are outside the retention sweep
 ([sessions.md](sessions.md)), so the delegate pile is the bulk of the archived

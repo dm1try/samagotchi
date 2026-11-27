@@ -551,10 +551,10 @@ past its deadline) is sent once more, as `SessionAccess::Local#answer` does, and
 
 A refusal an exception raises carries, next to `error` and `detail` (the page's words), `message` (the exception's own,
 verbatim) and the fields its class is built from, so a remote client raises the same class with the same text:
-`owned_by_tui` (`session_id`), `worker_running`/`still_stopping` (`DeleteRefused`: `session_id`, `reason`), `busy`/
+`owned_by_tui` (`session_id`), `worker_running`/`still_stopping`/`transition_held` (`DeleteRefused`: `session_id`, `reason`), `busy`/
 `scratch` (`ArchiveRefused`: `session_id`, `reason`, `busy_id`), a restart's `held`/`not_running`/`unsupported`/
 `failed` (`RestartRefused`: `session_id`, `reason`, `version`), a continue's `continued`/`open_children`/`folder_gone`/`transition_busy`
-(`SessionContinue::Refused`: `session_id`, `reason`, `ids`) and `ambiguous_id` (`Session::AmbiguousId`: `ids`).
+(`SessionContinue::Refused`: `session_id`, `reason`, `ids`; `transition_busy`'s `message` names the holder) and `ambiguous_id` (`Session::AmbiguousId`: `ids`).
 A session an id names none of is `404 not_found` with `Session::NotFound`'s words (`no session X`, `#session_not_found`):
 every lookup goes through `Session.resolve!` (an id or a unique prefix), and every surface shows that one message.
 
