@@ -2,6 +2,8 @@
 
 require "tmpdir"
 require "spec_helper"
+require_relative "support/transition_holder"
+require "samagotchi/worker_boot"
 require "samagotchi/bridge"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
@@ -154,6 +156,47 @@ RSpec.describe "discarding an empty session" do
       }
 
       expect(answers).to eq(row.slice(:worker, :sweep))
+    end
+  end
+
+  # The leaving worker's delete (after its owner lock is let go) takes the
+  # session's transition lock exclusively, one try: held, the session stays.
+  describe "under the transition lock" do
+    include TransitionHolder
+
+    def saved(scratch: false)
+      Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: "/tmp", scratch: scratch)
+                         .tap { |s| s.save(state_dir: tmpdir) }
+    end
+
+    def present?(session) = Samagotchi::Session.exist?(session.id, state_dir: tmpdir)
+
+    it "keeps an empty session and a scratch one while a send or a transition holds the lock, deletes them once free" do
+      allow(Samagotchi::SessionManager).to receive(:discardable?).and_return(true)
+      empty = saved
+      scratch = saved(scratch: true)
+      allow(Samagotchi::Log).to receive(:info).and_call_original
+
+      holding_transition(empty.id, state_dir: tmpdir) do
+        Samagotchi::WorkerBoot.send(:discard_left_session, empty.id, state_dir: tmpdir, default_model: model)
+      end
+      Samagotchi::SessionTransition.shared(scratch.id, state_dir: tmpdir) do |free|
+        expect(free).to be(true)
+        Thread.new { Samagotchi::WorkerBoot.send(:delete_left_scratch, scratch.id, state_dir: tmpdir) }.join
+      end
+      expect([present?(empty), present?(scratch)]).to eq([true, true])
+      expect(Samagotchi::Log).to have_received(:info).with(:worker, "kept_session", hash_including(sid: empty.id))
+      expect(Samagotchi::Log).to have_received(:info).with(:worker, "scratch_kept", hash_including(sid: scratch.id))
+
+      Samagotchi::WorkerBoot.send(:discard_left_session, empty.id, state_dir: tmpdir, default_model: model)
+      Samagotchi::WorkerBoot.send(:delete_left_scratch, scratch.id, state_dir: tmpdir)
+      expect([present?(empty), present?(scratch)]).to eq([false, false])
+    end
+
+    it "makes no folder for a scratch session its terminal deleted first" do
+      gone = SecureRandom.uuid
+      Samagotchi::WorkerBoot.send(:delete_left_scratch, gone, state_dir: tmpdir)
+      expect(Dir.exist?(Samagotchi::Session.session_dir(gone, state_dir: tmpdir))).to be(false)
     end
   end
 end
