@@ -146,6 +146,8 @@ module Samagotchi
           options[:no_interrupt] = true if @no_interrupt
           options[:images] = images unless images.empty?
           options[:delivery] = delivery if delivery
+          # Transition hold: worker-side (its live worker's Bridge); over
+          # --remote, chi web's turn route (deliver_turn's :shared seat).
           reply = @client.post_turn(**options)
           if reply.status == 202
             enqueued_id = reply.json&.fetch("enqueued_id", nil)

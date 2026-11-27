@@ -1613,7 +1613,7 @@ module Samagotchi
     end
 
     # Write a turn into this session's input dir, reusing the file IPC the
-    # worker polls. Never calls run_turn across the boundary.
+    # worker polls. Never calls run_turn across the boundary. Hold: worker-side.
     def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [], delivery: nil, author: nil,
                      anchors: nil)
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,

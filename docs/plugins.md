@@ -1529,7 +1529,8 @@ ctx.sessions.stop(id)      # one of this session's own children
 - `send(id, text)` sends a user message to a session (an id or a unique
   prefix); it runs as a turn, and an idle session is woken. A session its
   owner stopped or archived is not: `Error` (`session_stopped` /
-  `session_archived`), nothing sent; nor one being deleted (`session_deleting`). It waits up to
+  `session_archived`), nothing sent; nor one being deleted (`session_deleting`) or held by a transition right now
+  (`link_continued`, `transition_busy`: try again in a moment). It waits up to
   5 s for the session's worker, so call it from an anytime command or a
   thread of your own, never from a tool or hook of a running turn. A
   session a `--non-interactive` one-shot has can't take it.

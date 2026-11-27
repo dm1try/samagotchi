@@ -296,13 +296,14 @@ module Samagotchi
       # @return [BridgeClient::Response, nil] the Bridge's reply; nil when
       #   no worker runs it
       # @raise [SystemCallError, IOError, SocketError] the worker went away
+      # Transition hold: worker-side (Bridge-only: the live worker's own question).
       def answer(id, question_id:, selected:, freeform:, client_id:, within: nil)
         on_worker(id, within: within) do |client|
           client.answer(id: question_id, selected: selected, freeform: freeform, client_id: client_id)
         end
       end
 
-      # The question dismissed on the session's worker; as #answer.
+      # The question dismissed on the session's worker; as #answer (worker-side, no hold).
       def dismiss(id, question_id:)
         on_worker(id) { |client| client.dismiss_question(id: question_id) }
       end
@@ -546,6 +547,7 @@ module Samagotchi
       # @return [String, nil]
       def identity_header = configured_public_url&.identity_header
 
+      # Transition hold: none (a removal; a continue's archive ends every grant).
       # @return [Array<ParticipantView>] the ones it revoked
       def revoke_participants(id = nil, participant: nil)
         Participants.revoke(grants, session_id: id, id: participant, state_dir: state_dir!)
@@ -601,7 +603,8 @@ module Samagotchi
         end
       end
 
-      # Ends the pairing (link.json); the messages stay.
+      # Ends the pairing (link.json); the messages stay. Transition hold: none
+      # (a removal; the new link's pairing is the peer's, Plugin::Peer#tell_moved).
       # @return [Boolean] whether there was one
       def peer_unpair(id, peer) = PeerMailbox.unpair(id, peer, state_dir: state_dir!)
 

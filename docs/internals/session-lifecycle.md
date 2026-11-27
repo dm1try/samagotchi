@@ -159,7 +159,7 @@ of the state), not what WakePolicy does; the literal columns and `SHOWN` are gol
 
 `owner.lock` is the single-owner boundary for an Engine; its flock is released by process death. A starting claim uses
 an atomic link rather than a long-held lock. A continue holds its exclusive `continue.lock` (and its new link's) from after the recap to the end;
-shared holds protect followed sends and chain operations. When chain deletion nests locks, it takes the continue hold
+shared holds protect every `:shared` arrival (the seats, "Arrivals declare their hold") and chain operations. When chain deletion nests locks, it takes the continue hold
 before the `owner.lock` deletion locks. Inside a worker, the lock order is Engine event lock, then
 `WorkerExitClaim`'s mutex. Session saves serialize through their per-session save lock. These locks protect separate
 facts; there is no global lifecycle lock or atomic snapshot across all markers.
