@@ -11,7 +11,7 @@ import { createSessionStore } from "../../../lib/samagotchi/web/public/session_s
 const ID = "d4c5c3af-a814-48dd-a59c-fffa4bc0b094";
 const TURN = "0a1b2c3d-1111-2222-3333-444455556666";
 
-function harness({ target = null, hash = `#/s/${ID}`, allView = false, pagesArea = false, copies = true } = {}) {
+function harness({ target = null, hash = `#/s/${ID}`, copies = true } = {}) {
   const historyEl = document.createElement("div");
   historyEl.innerHTML = `<div class="bubble user" data-turn-id="${TURN}"><div class="user-message">Count the files</div></div>
     <div class="bubble output">The count is wrong in a.rb.</div>
@@ -20,6 +20,7 @@ function harness({ target = null, hash = `#/s/${ID}`, allView = false, pagesArea
   const store = createSessionStore({ initial: { dir: "/Users/sam/app" } });
   store.update({ selected: ID });
   const toasts = [];
+  const kept = [];
   const replaced = [];
   const copied = [];
   const win = {
@@ -30,7 +31,8 @@ function harness({ target = null, hash = `#/s/${ID}`, allView = false, pagesArea
     historyEl, store, claimTarget: () => target,
     toast: (text, action = null, options = {}) => toasts.push({ text, options }),
     copyText: async (text) => { copied.push(text); return copies; },
-    allViewOpen: () => allView, pagesAreaOpen: () => pagesArea, home: "/Users/sam", win,
+    keepSessionHash: (id) => kept.push(id),
+    home: "/Users/sam", win,
   });
   const answer = historyEl.querySelector(".bubble.output");
   const rangeOf = (el, from, to) => {
@@ -39,7 +41,7 @@ function harness({ target = null, hash = `#/s/${ID}`, allView = false, pagesArea
     range.setEnd(el.firstChild, to);
     return range;
   };
-  return { claim, historyEl, store, toasts, replaced, copied, answer, rangeOf };
+  return { claim, historyEl, store, toasts, kept, replaced, copied, answer, rangeOf };
 }
 
 test("with no person invited, Copy link is this page's own claim hash", () => {
@@ -84,36 +86,38 @@ test("Copy link's toast: copied, or the link itself, sticky", async () => {
   refused.historyEl.remove();
 });
 
-test("a pending claim shows once its session is open: the quote marked, the hash the session's again", () => {
+test("a pending claim shows once its session is open: the quote marked, the session's hash kept", () => {
   const h = harness({ hash: `#/s/${ID}?t=0a1b2c3d&q=is+wrong` });
   h.claim.pending({ sessionId: ID, turn: "0a1b2c3d", q: "is wrong", p: "The count " });
   h.claim.showPending();
   assert.ok(h.answer.classList.contains("claim-hit"));
-  assert.deepEqual(h.replaced, [`/?dir=x#/s/${ID}`]);
+  assert.deepEqual(h.kept, [ID]);
+  assert.deepEqual(h.replaced, [], "showPending doesn't write the URL itself: keepSessionHash owns it");
   assert.deepEqual(h.toasts, []);
   // Shown once: a second call does nothing.
   h.answer.classList.remove("claim-hit");
   h.claim.showPending();
   assert.equal(h.answer.classList.contains("claim-hit"), false);
+  assert.deepEqual(h.kept, [ID]);
   h.historyEl.remove();
 });
 
-test("a pending claim on the Pages list (#/pages) or a page (#/p/x) keeps the pages hash", () => {
+test("a pending claim on the Pages list (#/pages) or a page (#/p/x) still shows, leaving the URL to keepSessionHash", () => {
   for (const hash of ["#/pages", "#/p/usage"]) {
-    const h = harness({ hash, pagesArea: true });
+    const h = harness({ hash });
     h.claim.pending({ sessionId: ID, turn: "0a1b2c3d", q: "is wrong", p: "The count " });
     h.claim.showPending();
-    assert.deepEqual(h.replaced, [], `${hash}: the pages hash is not replaced`);
+    assert.deepEqual(h.replaced, [], `${hash}: showPending doesn't write the URL`);
     assert.ok(h.answer.classList.contains("claim-hit"), `${hash}: the claim is still shown`);
     h.historyEl.remove();
   }
 });
 
-test("a pending claim with a session hash still replaces it as today", () => {
+test("a pending claim with a session hash still asks keepSessionHash for the session", () => {
   const h = harness({ hash: `#/s/${ID}?t=0a1b2c3d&q=is+wrong` });
   h.claim.pending({ sessionId: ID, turn: "0a1b2c3d", q: "is wrong", p: "The count " });
   h.claim.showPending();
-  assert.deepEqual(h.replaced, [`/?dir=x#/s/${ID}`]);
+  assert.deepEqual(h.kept, [ID]);
   h.historyEl.remove();
 });
 
@@ -121,14 +125,14 @@ test("a pending claim for another session waits; one not found goes to the top w
   const h = harness();
   h.claim.pending({ sessionId: "another", turn: "0a1b2c3d", q: "is wrong" });
   h.claim.showPending();
+  assert.deepEqual(h.kept, []);
   assert.deepEqual(h.toasts, []);
   h.historyEl.scrollTop = 50;
   h.claim.pending({ sessionId: ID, turn: "99999999", q: "nowhere at all" });
   h.claim.showPending();
   assert.equal(h.historyEl.scrollTop, 0);
   assert.deepEqual(h.toasts, [{ text: "The linked turn isn't in this session.", options: {} }]);
-  // The hash already the session's: left alone.
-  assert.deepEqual(h.replaced, []);
+  assert.deepEqual(h.kept, [ID]);
   h.historyEl.remove();
 });
 

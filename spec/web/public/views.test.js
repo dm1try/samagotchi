@@ -102,6 +102,38 @@ test("the session's hash is replaced, and not written while All sessions is open
   assert.equal(calls.length, 1); // the same hash: no write
 });
 
+test("keepSessionHash: writes the session's hash from a session view; an already-right hash is alone", () => {
+  const { views, calls, location } = harness({ hash: `#/s/${OTHER}`, selected: ID });
+  views.keepSessionHash(ID);
+  assert.deepEqual(calls.filter(([kind]) => kind === "replace"), [["replace", `/?dir=x#/s/${ID}`]]);
+  assert.equal(location.hash, `#/s/${ID}`);
+
+  const same = harness({ hash: `#/s/${ID}`, selected: ID });
+  same.views.keepSessionHash(ID);
+  assert.deepEqual(same.calls.filter(([kind]) => kind === "replace"), []);
+});
+
+test("keepSessionHash: an empty id, All sessions, and a pages view own the URL: no write", () => {
+  const empty = harness({ hash: "", selected: ID });
+  empty.views.keepSessionHash("");
+  assert.deepEqual(empty.calls.filter(([kind]) => kind === "replace"), []);
+
+  const open = harness({ hash: "#/sessions", selected: ID });
+  open.views.keepSessionHash(ID);
+  assert.deepEqual(open.calls.filter(([kind]) => kind === "replace"), []);
+  assert.equal(open.location.hash, "#/sessions");
+
+  const list = harness({ hash: "#/pages", selected: ID, list: true });
+  list.views.keepSessionHash(ID);
+  assert.deepEqual(list.calls.filter(([kind]) => kind === "replace"), []);
+  assert.equal(list.location.hash, "#/pages");
+
+  const page = harness({ hash: "#/p/usage", selected: ID });
+  page.views.keepSessionHash(ID);
+  assert.deepEqual(page.calls.filter(([kind]) => kind === "replace"), []);
+  assert.equal(page.location.hash, "#/p/usage");
+});
+
 test("applyView at #/sessions shows the view in the server's order and refreshes without the stream", () => {
   const { views, calls, store } = harness({ hash: "#/sessions", events: false });
   views.applyView();
