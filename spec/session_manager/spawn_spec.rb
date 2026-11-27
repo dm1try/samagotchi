@@ -8,9 +8,11 @@ require "samagotchi/session_manager"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
+require_relative "../support/transition_holder"
 
 RSpec.describe Samagotchi::SessionManager do
   include_context "session manager files"
+  include TransitionHolder
 
   describe ".live_spawn_pids" do
     before { described_class.forget_spawns }
@@ -27,18 +29,38 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".wake_for_report" do
-    it "pins the known ring/stop window: a stop before resume is cleared and the worker starts (docs/internals/session-lifecycle.md)" do
-      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.save(state_dir: tmpdir)
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+
+    # Closed window (docs/internals/session-lifecycle.md, Open windows):
+    # the wake holds the session's transition lock shared across its decide
+    # and the resume, and a stop takes it exclusively, so a stop that lands
+    # meanwhile comes after the start, whole: its marker stays.
+    it "keeps a stop that lands between its decide and the resume after the start: the marker stays" do
       allow(Process).to receive(:spawn).and_return(20_005)
+      stopper = nil
       allow(described_class).to receive(:start_for_inbox).and_wrap_original do |original, id, **options|
-        Samagotchi::Session.mark_stopped(id, state_dir: tmpdir, now: Time.utc(2020, 1, 1))
+        stopper = Thread.new { described_class.stop_session(id, state_dir: tmpdir, lock_wait: 5) }
+        expect(stopper.join(0.2)).to be_nil # held off by the wake's hold
         original.call(id, **options)
       end
 
       expect(described_class.wake_for_report(session.id, state_dir: tmpdir)).to eq(:woken)
+      join!(stopper, "the stop held off by the wake")
       expect(Process).to have_received(:spawn).once
-      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(false)
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(true)
+    end
+
+    it "answers :busy, starting nothing, while a transition holds the session" do
+      allow(Process).to receive(:spawn).and_return(20_005)
+
+      holding_transition(session.id, state_dir: tmpdir, kind: :stop) do
+        expect(described_class.wake_for_report(session.id, state_dir: tmpdir)).to eq(:busy)
+      end
+      expect(Process).not_to have_received(:spawn)
     end
   end
 

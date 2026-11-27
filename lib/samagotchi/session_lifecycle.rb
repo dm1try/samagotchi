@@ -29,7 +29,7 @@ module Samagotchi
     autoload :CANONICAL, File.expand_path("session_lifecycle/canonical", __dir__)
     autoload :ALLOWED, File.expand_path("session_lifecycle/allowed", __dir__)
     autoload :TRANSITIONING, File.expand_path("session_lifecycle/allowed", __dir__)
-    autoload :HELD_LITERAL, File.expand_path("session_lifecycle/allowed", __dir__)
+    autoload :TAKES_LOCK, File.expand_path("session_lifecycle/allowed", __dir__)
 
     # The cell words that are no refusal, per operation: a resume that finds
     # a worker there or one being started waits for it; a restart's

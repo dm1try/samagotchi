@@ -357,11 +357,14 @@ module Samagotchi
 
       # The wake half of #deliver alone, for a delivery already on disk (a
       # failed continue's previous link with rings that came meanwhile),
-      # under the row's hold as #deliver's.
+      # under the row's hold as #deliver's, or +hold+ instead (:shared: the
+      # ring's wake, SessionManager.wake_for_report, whose row holds none
+      # for its write).
       # @return [Delivered]
-      def wake(kind, target, state_dir: nil, owner: nil, start: nil)
+      def wake(kind, target, state_dir: nil, owner: nil, start: nil, hold: nil)
         sd = state_dir || Session.default_state_dir
         policy = WakePolicy.for(kind)
+        policy = policy.with(hold: hold, hold_reason: nil) if hold
         resolved = Head.resolve(kind, target, state_dir: sd)
         Hold.under(policy, resolved.id, sd, refused: ->(successor) { held(policy, resolved, successor) }) do
           apply(policy, resolved, sd, wake: true, owner: owner, start: start)

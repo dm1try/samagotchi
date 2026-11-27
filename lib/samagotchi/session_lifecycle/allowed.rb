@@ -76,11 +76,14 @@ module Samagotchi
     # beside the state, not one of STATES: any state can be held): each
     # delivery whose WakePolicy row holds :shared is refused :busy
     # (SessionInbox::Hold, before its own checks); a :none row answers its
-    # state's cell. Of the literal operations, a stop takes the lock
-    # exclusively (stop_session: Busy, :busy, nothing marked); the others
-    # read none (archive's column is archivable!, its checks only).
-    HELD_LITERAL = { stop: :busy }.freeze
+    # state's cell. TAKES_LOCK: the operations that take the lock
+    # themselves: a stop, exclusively (stop_session: Busy, nothing marked),
+    # and the ring's column, which is a ring's wake (wake_for_report: shared
+    # across its decide and resume; the ring's write, a :none row, holds
+    # none and still goes in). The other literal operations read none
+    # (archive's column is archivable!, its checks only).
+    TAKES_LOCK = { stop: :busy, ring: :busy }.freeze
     TRANSITIONING = SessionInbox::WakePolicy::ROWS.filter_map { |kind, policy| [kind, :busy] if policy.shared? }
-                                                  .to_h.merge(HELD_LITERAL).freeze
+                                                  .to_h.merge(TAKES_LOCK).freeze
   end
 end
