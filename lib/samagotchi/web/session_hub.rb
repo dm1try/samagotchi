@@ -147,8 +147,7 @@ module Samagotchi
         thread = @thread
         @thread = nil
         thread&.join(@scan_interval + 1.0)
-        schedule_thread = @monitor.synchronize { @schedule_tick_thread }
-        schedule_thread&.join(SCHEDULE_TICK_STOP_WAIT)
+        drain_schedule_tick(timeout: SCHEDULE_TICK_STOP_WAIT)
         sweep_thread = @monitor.synchronize { @sweep_thread }
         sweep_thread&.join(SWEEP_STOP_WAIT)
         nil
@@ -343,6 +342,70 @@ module Samagotchi
         @monitor.synchronize { !@subscribers.delete(handle).nil? }
       end
 
+      # chi web can be the scheduler when the user opts in (schedule.auto_tick):
+      # the same tick cron runs, gated by schedule.tick_interval_minutes and
+      # sharing schedules.lock, so cron and the hub never both fire. The scan
+      # loop only launches one tick at a time; it does not wait for a firing.
+      # The disabled notices any ticker left are pushed from here too, with
+      # auto_tick off as well (#claim_disabled_if_due). Only the scan(tick:
+      # true) path gets here: server.rb's seeding scan(tick: false) runs before
+      # the Notifier subscribes, and a notice claimed then would reach no one.
+      # @return [Thread, nil] the Thread it started, or nil when it started none.
+      def schedule_tick
+        claim_disabled_if_due
+        return nil unless Config.get("schedule.auto_tick")
+
+        now = @now.call
+        @monitor.synchronize do
+          if @schedule_tick_in_flight || (@next_schedule_tick && now < @next_schedule_tick)
+            nil
+          else
+            @next_schedule_tick = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
+            @schedule_tick_in_flight = true
+            @schedule_tick_thread = Thread.new { run_schedule_tick }
+          end
+        end
+      rescue StandardError => e
+        @monitor.synchronize do
+          if @schedule_tick_in_flight && @schedule_tick_thread.nil?
+            @schedule_tick_in_flight = false
+            @next_schedule_tick = nil
+          end
+        end
+        Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
+        nil
+      end
+
+      # The tick's body on the caller's thread (the specs call it directly;
+      # #schedule_tick runs it on its own thread).
+      def run_schedule_tick
+        schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
+        # Stopping kills a condition's CMD (its process group) and runs no more.
+        schedules.tick(now: Time.now, cancelled: -> { stopped? })
+        # Right after the tick, so a turn-off of this tick is pushed now.
+        retry_notices_next_scan if publish_disabled(schedules)
+      rescue StandardError => e
+        Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
+      ensure
+        @monitor.synchronize do
+          @schedule_tick_in_flight = false
+          @schedule_tick_thread = nil
+        end
+      end
+
+      # Whether a schedule tick is at work (started, not finished).
+      def schedule_tick_running?
+        @monitor.synchronize { @schedule_tick_in_flight }
+      end
+
+      # Waits for a running schedule tick to finish (it does not start one).
+      # @return [Boolean] true once no tick is running, else false.
+      def drain_schedule_tick(timeout:)
+        thread = @monitor.synchronize { @schedule_tick_thread }
+        thread&.join(timeout)
+        @monitor.synchronize { !@schedule_tick_in_flight }
+      end
+
       private
 
       def run_loop
@@ -368,53 +431,6 @@ module Samagotchi
         @manager.retention_sweep_if_due(state_dir: @state_dir)
       rescue StandardError => e
         Log.warn(:web, "retention_sweep_failed", error: e.class.name, msg: e.message)
-      end
-
-      # chi web can be the scheduler when the user opts in (schedule.auto_tick):
-      # the same tick cron runs, gated by schedule.tick_interval_minutes and
-      # sharing schedules.lock, so cron and the hub never both fire. The scan
-      # loop only launches one tick at a time; it does not wait for a firing.
-      # The disabled notices any ticker left are pushed from here too, with
-      # auto_tick off as well (#claim_disabled_if_due). Only the scan(tick:
-      # true) path gets here: server.rb's seeding scan(tick: false) runs before
-      # the Notifier subscribes, and a notice claimed then would reach no one.
-      def schedule_tick
-        claim_disabled_if_due
-        return unless Config.get("schedule.auto_tick")
-
-        now = @now.call
-        @monitor.synchronize do
-          return if @schedule_tick_in_flight
-          return if @next_schedule_tick && now < @next_schedule_tick
-
-          @next_schedule_tick = now + (Samagotchi::Schedules.tick_interval_minutes * 60)
-          @schedule_tick_in_flight = true
-          @schedule_tick_thread = Thread.new { run_schedule_tick }
-        end
-      rescue StandardError => e
-        @monitor.synchronize do
-          if @schedule_tick_in_flight && @schedule_tick_thread.nil?
-            @schedule_tick_in_flight = false
-            @next_schedule_tick = nil
-          end
-        end
-        Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
-        nil
-      end
-
-      def run_schedule_tick
-        schedules = Samagotchi::Schedules.new(state_dir: @state_dir)
-        # Stopping kills a condition's CMD (its process group) and runs no more.
-        schedules.tick(now: Time.now, cancelled: -> { stopped? })
-        # Right after the tick, so a turn-off of this tick is pushed now.
-        retry_notices_next_scan if publish_disabled(schedules)
-      rescue StandardError => e
-        Log.warn(:web, "schedule_tick_failed", error: e.class.name, msg: e.message)
-      ensure
-        @monitor.synchronize do
-          @schedule_tick_in_flight = false
-          @schedule_tick_thread = nil
-        end
       end
 
       # Once per schedule.tick_interval_minutes: a lock-free read of
