@@ -86,7 +86,21 @@ module Samagotchi
     #   (input from a person un-archives it): send (and leave) only
     # @!attribute refuse_tui [Boolean] a one-turn chi run's session refuses it
     # @!attribute refuse_scratch [Boolean] a chi scratch session refuses it
-    WakePolicy = Data.define(:kind, :resolves, :starts, :unstops, :starts_archived, :refuse_tui, :refuse_scratch) do
+    # @!attribute hold [Symbol] what the delivery holds of the session's
+    #   transition lock around its check and write (Hold.under, in the
+    #   seats: Dispatch.deliver / .wake, SessionManager.deliver_turn):
+    #   :shared (a transition holding it refuses the delivery, naming the
+    #   continue's new link when one is in flight, else busy) or :none (it
+    #   goes in as before, for +hold_reason+). Every row names it.
+    # @!attribute hold_reason [String, nil] why a :none row takes no hold
+    #   (nil for :shared)
+    WakePolicy = Data.define(:kind, :resolves, :starts, :unstops, :starts_archived, :refuse_tui, :refuse_scratch,
+                             :hold, :hold_reason) do
+      def initialize(hold:, hold_reason: nil, **) = super
+
+      # Whether the delivery takes the transition lock shared.
+      def shared? = hold == :shared
+
       # @return [WakePolicy]
       # @raise [ArgumentError] no such kind
       def self.for(kind) = WakePolicy::ROWS.fetch(kind) { raise ArgumentError, "no inbox kind #{kind.inspect}" }
@@ -154,24 +168,39 @@ module Samagotchi
     # and never un-archives a retired chain).
     WakePolicy::ROWS = {
       send: WakePolicy.new(kind: :send, resolves: :head, starts: true, unstops: true, starts_archived: true,
-                           refuse_tui: true, refuse_scratch: true),
+                           refuse_tui: true, refuse_scratch: true, hold: :shared),
+      # A note's moves are its own: one written before a continue's
+      # NoteMove.move moves, one after is adopted by the new link
+      # (NoteMove.adoption), a failed continue's go back (give_back), and the
+      # new link's boot writes its own (objectives) inside the continue's
+      # hold: a refusal would lose what those already carry.
       note: WakePolicy.new(kind: :note, resolves: :head, starts: false, unstops: false, starts_archived: false,
-                           refuse_tui: true, refuse_scratch: true),
+                           refuse_tui: true, refuse_scratch: true, hold: :none,
+                           hold_reason: "NoteMove moves, adopts and gives back a note written during a continue; " \
+                                        "the new link's boot writes its own inside the continue's hold"),
       push: WakePolicy.new(kind: :push, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
-                           refuse_tui: false, refuse_scratch: false),
+                           refuse_tui: false, refuse_scratch: false, hold: :shared),
       # A peer agent's message (chi peer say, PeerMailbox.post): a push's row.
       peer: WakePolicy.new(kind: :peer, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
-                           refuse_tui: false, refuse_scratch: false),
+                           refuse_tui: false, refuse_scratch: false, hold: :shared),
       ring: WakePolicy.new(kind: :ring, resolves: :reader, starts: true, unstops: false, starts_archived: false,
-                           refuse_tui: false, refuse_scratch: false),
+                           refuse_tui: false, refuse_scratch: false, hold: :none,
+                           hold_reason: "ChildReports rings once, no retry; a continue's ChildMove moves the rings " \
+                                        "(return_rings gives them back), and its undo wakes for them on its own token"),
       fresh_verdict: WakePolicy.new(kind: :fresh_verdict, resolves: :pinned, starts: false, unstops: false,
-                                    starts_archived: false, refuse_tui: false, refuse_scratch: false),
+                                    starts_archived: false, refuse_tui: false, refuse_scratch: false, hold: :none,
+                                    hold_reason: "VerifyFresh.forward writes once, no retry; the verdict is for " \
+                                                 "the card in the parent it names, continued or not, and starts " \
+                                                 "no worker"),
       # Not a delivery: a worker's own leave starting its successor for
       # what waits (input, rings) or a restart (WorkerBoot, after the
       # lock's release). A stop wins; an archived session's input still
       # starts it, as a send's would have.
       leave: WakePolicy.new(kind: :leave, resolves: :pinned, starts: true, unstops: false, starts_archived: true,
-                            refuse_tui: false, refuse_scratch: false),
+                            refuse_tui: false, refuse_scratch: false, hold: :none,
+                            hold_reason: "a respawn after the worker's own release spans two processes (outside " \
+                                         "the lock, D3); a refusal would drop a restart or queued input's start with " \
+                                         "no retry, and a continue stops the worker first (the stop wins)"),
       # A turn delivery's unattended senders (deliver_turn reads the row by
       # the sender, ClientId.wake_kind): they start an idle session as a send
       # does, but a stop and an archive are the owner's (the sender is
@@ -181,7 +210,7 @@ module Samagotchi
       # doesn't name.
       **%i[schedule plugin delegate participant agent automatic].to_h do |kind|
         [kind, WakePolicy.new(kind: kind, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
-                              refuse_tui: true, refuse_scratch: true)]
+                              refuse_tui: true, refuse_scratch: true, hold: :shared)]
       end
     }.freeze
 

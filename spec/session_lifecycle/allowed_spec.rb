@@ -49,6 +49,23 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
     expect(rows.keys.map { |kind| allowed.fetch(kind).fetch(:deleting) }).to all(eq(:deleting))
   end
 
+  # Arrivals declare their hold (docs/internals/session-lifecycle.md, "Adding a transition").
+  it "names every row's transition hold: shared, or none with its reason" do
+    policy = Samagotchi::SessionInbox::WakePolicy
+    row = rows.fetch(:send).to_h.except(:hold, :hold_reason)
+    expect { policy.new(**row) }.to raise_error(ArgumentError, /hold/)
+
+    rows.each do |kind, each|
+      expect(%i[shared none]).to include(each.hold), "ROWS[#{kind.inspect}].hold"
+      if each.hold == :none
+        expect(each.hold_reason.to_s.strip).not_to be_empty, "ROWS[#{kind.inspect}] holds nothing: say why"
+      else
+        expect(each.hold_reason).to be_nil, "ROWS[#{kind.inspect}]"
+      end
+    end
+    expect(rows.select { |_, each| each.hold == :none }.keys).to match_array(%i[note ring fresh_verdict leave])
+  end
+
   it "leaves WakePolicy::ROWS the same frozen table" do
     before = rows
     snapshot = before.transform_values(&:to_h)
