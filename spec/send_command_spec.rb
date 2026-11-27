@@ -620,6 +620,50 @@ RSpec.describe Samagotchi::SendCommand do
       expect(out.string).to eq("#{short(a)}  failed: the session's worker did not answer, so the message was not sent\n")
     end
 
+    # Another transition held the session's lock (DeliverResult#busy?): the
+    # send pauses, then goes again to the same session within CONTINUING_WAIT.
+    describe "to a session a transition holds" do
+      def hold_lock(session)
+        FileUtils.mkdir_p(dir_of(session))
+        File.open(File.join(dir_of(session), Samagotchi::SessionTransition::LOCK), File::RDWR | File::CREAT, 0o600).tap do |lock| # rubocop:disable Style/FileOpen -- held open on purpose, closed by the example
+          lock.flock(File::LOCK_EX)
+        end
+      end
+
+      it "tries again after a pause and sends once the transition let go" do
+        live = make(owner: "worker")
+        serve(live)
+        lock = hold_lock(live)
+        pauses = 0
+        allow(described_class).to receive(:pause) do
+          pauses += 1
+          lock.close unless lock.closed?
+        end
+
+        expect(run("-m", "after the change", live.id)).to eq(0), err.string
+        expect(out.string).to eq("#{short(live)}  sent\n")
+        expect(pauses).to be >= 1
+        expect(inputs_of(live)).to contain_exactly(include("prompt" => "after the change"))
+      ensure
+        lock&.close unless lock&.closed?
+      end
+
+      it "refuses busy once the wait is over, nothing written" do
+        stub_const("#{described_class}::CONTINUING_WAIT", 0.05)
+        allow(described_class).to receive(:pause) { sleep 0.01 } # sleep-ok: the pause itself, so the wait runs out
+        live = make(owner: "worker")
+        serve(live)
+        lock = hold_lock(live)
+
+        expect(run("-m", "too soon", live.id)).to eq(1)
+        expect(out.string).to eq("#{short(live)}  refused: session #{short(live)} is busy with another change; " \
+                                 "try again in a moment\n")
+        expect(inputs_of(live)).to be_empty
+      ensure
+        lock&.close
+      end
+    end
+
     it "reports an unknown or ambiguous id and exits 1" do
       live = make(owner: "worker")
       serve(live)

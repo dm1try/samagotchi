@@ -2071,6 +2071,27 @@ RSpec.describe Samagotchi::Schedules do
       end
     end
 
+    # The target not archived (yet): the turn's own hold meets the
+    # transition (DeliverResult::BUSY), a skip that moves no failure.
+    it "skips a same-mode firing whose turn met a transition holding the target's lock" do
+      Dir.mktmpdir("schedules-busy-fire") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+        continuing(dir, anchor, successor)
+        File.delete(File.join(Samagotchi::Session.session_dir(anchor, state_dir: dir), Samagotchi::ContinueIntent::FILE))
+
+        outcome = schedules.send(:fire_same, entry, links)
+
+        expect([outcome.status, outcome.detail])
+          .to eq(["skipped", "session #{anchor[0, 8]} is busy with another change; try again in a moment"])
+        expect(Samagotchi::SessionInbox.find_new_input_files(Samagotchi::Session.session_dir(anchor, state_dir: dir)))
+          .to be_empty
+      end
+    end
+
     # The tick's listing saw a live target; a continue ended (its successor
     # saved, its intent gone) before the firing's own look: the stale
     # listing says "archived", a fresh walk says where the chain went.

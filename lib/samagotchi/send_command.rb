@@ -820,7 +820,7 @@ module Samagotchi
     # A followed send (a head #target resolved) is refused when a continue
     # took its link since (DeliverResult#continued?): it resolves again
     # (#follow_again) and goes to the new link, until CONTINUING_WAIT after
-    # the first refusal; the old link is never sent to.
+    # the first refusal; never to the old link. A busy one goes again, the same link too.
     # @param target [SessionInbox::Resolved] the session (#target)
     # @yieldparam at [SessionInbox::Resolved] each link about to be sent to
     # @yieldreturn [Boolean] false: nothing is sent (its line printed)
@@ -849,11 +849,11 @@ module Samagotchi
       refs = pass.refs
       delivery = pass.delivery
       result = pass.result
-      if result.continued?
+      if result.continued? || result.busy?
         # Copied in before the refusal: not the old link's to keep.
         @access.discard_images(id, refs)
         deadline ||= monotonic + self.class::CONTINUING_WAIT
-        again = follow_again(target, deadline)
+        again = follow_again(target, deadline, busy: result.busy?)
         return unsent(again) if again.is_a?(Unsent)
         return deliver(again, prompt, deadline: deadline, &before) if again
       end
@@ -1030,12 +1030,12 @@ module Samagotchi
     # (#deliver): Exchange#relocate, until +deadline+. The new link's
     # worker is the continue's spawn to start (#delivery_note).
     # @return [SessionInbox::Resolved, Unsent, nil] nil: out of time
-    def follow_again(refused, deadline)
-      again = exchange.relocate(refused, deadline) { |look| (@continued_here ||= {})[look.target.id] = true }
+    def follow_again(refused, deadline, busy: false)
+      again = exchange.relocate(refused, deadline, busy: busy) { |look| (@continued_here ||= {})[look.target.id] = true }
       return nil unless again
       return unsent_of(again) if again.is_a?(SessionAccess::Exchange::Unsent)
 
-      (@continued_here ||= {})[again.target.id] = true
+      (@continued_here ||= {})[again.target.id] = true unless busy && again.target.id == refused.id
       again.target
     end
 
