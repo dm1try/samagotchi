@@ -560,7 +560,7 @@ instead. Nothing is kept across a re-render: a block failing again is posted aga
 how it went); only the redraw is counted: an answer is read again at most once per turn and block for the page's life
 (the route's 200 `fixed` or the event's), and a block failing after it says a fix didn't help. The stream's `block_fix` handler
 (`stream_handlers.js`, dep `blockFix`) hands the worker's word over: `fixed` re-reads that turn's answer (`getSession(id,
-{tail, turnId})`) and writes the bubble as `applyFinalAnswer` writes it, which can't find it by its old text; `failed`
+{tail, turnId})`) and writes the bubble as `writeAnswer` writes it, which can't find it by its old text; `failed`
 and `dropped` say a fix didn't help. Both 202 answers carry the block's key (`data-block-fix-key`); a keyed event settles
 only that asked block, leaving another block's give-up timer running. A block is marked asked before its POST, since the
 word can come before the 202 (a quick side answer); an event before the 202 or an older worker's keyless 202 keeps the
