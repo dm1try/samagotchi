@@ -101,6 +101,13 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
     flow
   end
 
+  describe "the plugin's spec seam" do
+    it "exposes the servers it configured and the ctx it registered with" do
+      expect(bundle.plugin.servers.map(&:name)).to eq(["linear"])
+      expect(bundle.plugin.ctx).to be(bundle.ctx)
+    end
+  end
+
   describe "a server that answers 401" do
     it "needs sign-in after the first run: /mcp says so and one card offers the command, nothing opened" do
       expect(bundle.run_inits).to eq(["linear needs sign-in (/mcp login linear)"])
@@ -120,7 +127,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       bundle.set(turn_author: nil)
       bundle.fire(:after_turn, status: "completed")
       bundle.fire(:after_turn, status: "completed")
-      bundle.plugin.send(:offer_sign_in, bundle.plugin.instance_variable_get(:@servers).first, bundle.plugin.instance_variable_get(:@ctx))
+      bundle.plugin.send(:offer_sign_in, bundle.plugin.servers.first, bundle.plugin.ctx)
       expect(bundle.cards.count { |c| c[:title] == "linear needs sign-in" }).to eq(1)
     end
 
@@ -128,25 +135,25 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       bundle.set(turn_author: "p:p_0123abcd")
       bundle.run_inits
       plugin = bundle.plugin
-      server = plugin.instance_variable_get(:@servers).first
+      server = plugin.servers.first
       group = bundle.tool_index.sources.first.groups.first
 
       expect(group.error).to eq("linear needs sign-in (the session's owner runs /mcp login linear)")
-      expect(plugin.send(:call, server, Struct.new(:name).new("search"), {}, plugin.instance_variable_get(:@ctx)))
+      expect(plugin.send(:call, server, Struct.new(:name).new("search"), {}, plugin.ctx))
         .to eq("Error: linear needs sign-in: the session's owner signs in")
       bundle.set(turn_author: nil)
-      expect(plugin.send(:call, server, Struct.new(:name).new("search"), {}, plugin.instance_variable_get(:@ctx)))
+      expect(plugin.send(:call, server, Struct.new(:name).new("search"), {}, plugin.ctx))
         .to eq("Error: linear needs sign-in: the user runs /mcp login linear")
     end
 
     it "needs sign-in after the daily refresh of a cached server meets a 401, with no failure card" do
       signed_in!
-      server = bundle.plugin.instance_variable_get(:@servers).first
+      server = bundle.plugin.servers.first
       server.state = :cached
       valid.clear # its token, and the renewed one, refused
       cards = bundle.cards.size
 
-      expect(bundle.plugin.send(:refresh, server, bundle.plugin.instance_variable_get(:@ctx))).to be_nil
+      expect(bundle.plugin.send(:refresh, server, bundle.plugin.ctx)).to be_nil
       expect(server.state).to eq(:needs_sign_in)
       expect(bundle.cards.drop(cards).map { |c| c[:title] }).to eq(["linear needs sign-in"])
     end
@@ -202,7 +209,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       expect(form(requests_to("#{issuer}/token").first)).to include("client_secret" => "DCR-SECRET-1")
 
       valid.replace(["ACCESS-TOKEN-2"])
-      bundle.plugin.instance_variable_get(:@servers).first.client.request("tools/list", nil, timeout: 5)
+      bundle.plugin.servers.first.client.request("tools/list", nil, timeout: 5)
       expect(form(requests_to("#{issuer}/token").last)).to include("grant_type" => "refresh_token", "client_secret" => "DCR-SECRET-1")
       bundle.command("/mcp logout linear")
       expect(form(requests_to("#{issuer}/revoke").first)).to include("client_secret" => "DCR-SECRET-1")
@@ -404,7 +411,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
 
       it "answers one line for an unknown, a local or a static-token server, and for a second login while one waits" do
         bundle.http.stub(:post, "https://api.example.com/mcp", status: 401)
-        bundle.plugin.send(:boot, bundle.plugin.instance_variable_get(:@servers).first, bundle.plugin.instance_variable_get(:@ctx))
+        bundle.plugin.send(:boot, bundle.plugin.servers.first, bundle.plugin.ctx)
 
         expect(bundle.command("/mcp login nope")).to eq("no MCP server nope (linear, local, github)")
         expect(bundle.command("/mcp login local")).to eq("local is a local server: sign-in is for remote ones (url:)")
@@ -553,7 +560,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
       secrets = instance_double(Samagotchi::Plugin::Secrets, get: kept)
       allow(secrets).to receive(:update)
         .and_raise(Samagotchi::Plugin::Secrets::Busy, "secret #{secrets_name} is held by another process (waited 18 s)")
-      token = oauth::Token.new(secrets: secrets, resource: url, http: bundle.plugin.instance_variable_get(:@ctx).http)
+      token = oauth::Token.new(secrets: secrets, resource: url, http: bundle.plugin.ctx.http)
 
       expect(token.call).to eq("ACCESS-TOKEN-1")
       expect { token.refresh_token!("ACCESS-TOKEN-1") }
@@ -565,7 +572,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
 
     it "sends a configured client's secret on a renew only for a sign-in made as that client at that provider" do
       oauth = bundle.namespace::Plugin::OAuth
-      ctx = bundle.plugin.instance_variable_get(:@ctx)
+      ctx = bundle.plugin.ctx
       renew = lambda do |kept_client, kept_issuer|
         bundle.set(secrets: { secrets_name => JSON.generate(access_token: "ACCESS-TOKEN-1", refresh_token: "REFRESH-TOKEN-1",
                                                             resource: url, token_endpoint: "#{issuer}/token",
@@ -583,7 +590,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
 
     it "renews only at a token endpoint the guard lets through: an internal one only on a configured host" do
       oauth = bundle.namespace::Plugin::OAuth
-      ctx = bundle.plugin.instance_variable_get(:@ctx)
+      ctx = bundle.plugin.ctx
       renew = lambda do |endpoint, resource: url, client: nil|
         bundle.set(secrets: { "oauth-#{Digest::SHA256.hexdigest(resource)[0, 16]}" =>
                               JSON.generate(access_token: "ACCESS-TOKEN-1", refresh_token: "REFRESH-TOKEN-1", resource: resource,
@@ -624,7 +631,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
     flow = signed_in!
     exchange = form(requests_to("#{issuer}/token").first)
     valid.replace(["ACCESS-TOKEN-2"]) # a 401: one renew, the request again
-    server = bundle.plugin.instance_variable_get(:@servers).first
+    server = bundle.plugin.servers.first
     expect(server.client.request("tools/list", nil, timeout: 5)["tools"].size).to eq(2)
     expect(form(requests_to("#{issuer}/token").last)).to include("grant_type" => "refresh_token", "resource" => url)
     bundle.command("/mcp logout linear")
@@ -634,7 +641,7 @@ RSpec.describe "The mcp bundle's sign-in", :bundle do
     shown = bundle.cards.map { |c| [c[:title], c[:body]].join(" ") } + bundle.notices.map(&:text) + logged
     secrets.each { |secret| expect(shown.grep(/#{Regexp.escape(secret)}/)).to eq([]), "#{secret} shown" }
     expect(shown.join).not_to include(flow.address)
-    expect(bundle.plugin.inspect + bundle.plugin.instance_variable_get(:@servers).first.token.inspect)
+    expect(bundle.plugin.inspect + bundle.plugin.servers.first.token.inspect)
       .not_to match(/ACCESS-TOKEN|REFRESH-TOKEN/)
   end
 end

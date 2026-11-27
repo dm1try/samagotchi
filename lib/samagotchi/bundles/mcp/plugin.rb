@@ -138,6 +138,8 @@ class Plugin
     @cimd_refused = {}
     @sign_in_cancel = Samagotchi::CancellationController.new
   end
+  # Read by the bundle's specs (the test kit's bundle.plugin, McpPluginOf); chi itself never calls them.
+  attr_reader :servers, :ctx
 
   # The servers' names, never @settings (the raw servers config, env values
   # included): a failing spec prints the plugin.
