@@ -194,10 +194,34 @@ RSpec.describe Samagotchi::SessionTransition do
   end
 
   describe ".shared" do
-    it "is ContinueIntent.hold's: true and created when free, false for an id that isn't one" do
-      expect(shared(low) { |held| [held, held?(low)] }).to eq([true, false])
-      expect(File.file?(lock_file(low))).to be(true)
+    def save_session
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: state_dir)
+      session.id
+    end
+
+    it "is true and creates the lock in a saved session's folder, false for an id that isn't one" do
+      id = save_session
+
+      expect(shared(id) { |held| [held, held?(id)] }).to eq([true, false])
+      expect(File.file?(lock_file(id))).to be(true)
       expect(shared("../x") { |held| held }).to be(false)
+    end
+
+    # S6: a delete that went before the hold must not get its folder back.
+    it "makes no folder for a session that is gone: nothing held, true" do
+      expect(shared(low) { |held| [held, File.exist?(dir_of(low))] }).to eq([true, false])
+      expect(File.exist?(dir_of(low))).to be(false)
+    end
+
+    it "takes back the lock it made when the session's file is gone by the end of the block" do
+      id = save_session
+      shared(id) do |held|
+        expect(held).to be(true)
+        FileUtils.rm_f(File.join(state_dir, "#{id}.json"))
+      end
+
+      expect(File.exist?(dir_of(id))).to be(false)
     end
 
     it "is false while another process holds it exclusively, true beside another shared hold" do
