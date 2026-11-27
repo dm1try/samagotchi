@@ -518,11 +518,18 @@ module Samagotchi
 
       # Stop the worker that owns +id+ or is being started for it (the stop
       # marker: one that takes the lock leaves at once), and wait for both to
-      # be gone.
+      # be gone. A stop that meets another change's transition hold (a plain
+      # delete takes none itself; SessionChain::Delete's pass through) is
+      # the delete's refusal (DeleteRefused.held), not a raw Busy.
       # @return [Boolean] whether no owner and no start was left within +wait+
+      # @raise [DeleteRefused] :continuing / :transition_held
       private def stop_held(id, state_dir:, wait:)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait.to_f
-        return false unless stop_session(id, state_dir: state_dir, wait: wait)
+        begin
+          return false unless stop_session(id, state_dir: state_dir, wait: wait)
+        rescue SessionTransition::Busy => e
+          raise DeleteRefused.held(e)
+        end
 
         while StartingMarker.fresh?(id, state_dir: state_dir) || session_owner(id, state_dir: state_dir)
           return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline

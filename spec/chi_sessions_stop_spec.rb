@@ -100,6 +100,21 @@ RSpec.describe "chi sessions stop" do
         expect(err.string).to eq("Stopped session #{session.id}, but its worker is still shutting down; " \
                                  "try #{via.resume(session.id)} in a moment.\n")
       end
+
+      it "refuses in the holder's words while another change holds the session's transition lock" do
+        { [:delete, nil] => "is being deleted", [:continue, session.id] => "is being continued as #{session.id}" }
+          .each do |(kind, successor), words|
+            out.truncate(0)
+            err.truncate(0)
+            err.rewind
+            allow(Samagotchi::SessionManager).to receive(:stop_session)
+              .and_raise(Samagotchi::SessionTransition::Busy.new(session.id, kind: kind, successor_id: successor))
+
+            expect(stop(session.id)).to eq(1)
+            expect(out.string).to eq("")
+            expect(err.string).to eq("session #{session.id[0, 8]} #{words}; try again in a moment\n")
+          end
+      end
     end
   end
 end

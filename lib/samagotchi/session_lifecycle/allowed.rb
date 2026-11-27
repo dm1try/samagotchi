@@ -76,8 +76,11 @@ module Samagotchi
     # beside the state, not one of STATES: any state can be held): each
     # delivery whose WakePolicy row holds :shared is refused :busy
     # (SessionInbox::Hold, before its own checks); a :none row answers its
-    # state's cell. The literal operations read no transition lock yet.
+    # state's cell. Of the literal operations, a stop takes the lock
+    # exclusively (stop_session: Busy, :busy, nothing marked); the others
+    # read none (archive's column is archivable!, its checks only).
+    HELD_LITERAL = { stop: :busy }.freeze
     TRANSITIONING = SessionInbox::WakePolicy::ROWS.filter_map { |kind, policy| [kind, :busy] if policy.shared? }
-                                                  .to_h.freeze
+                                                  .to_h.merge(HELD_LITERAL).freeze
   end
 end

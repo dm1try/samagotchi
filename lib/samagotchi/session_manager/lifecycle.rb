@@ -11,6 +11,7 @@ require_relative "../reminder_carry"
 require_relative "../session"
 require_relative "../session_inbox"
 require_relative "../session_lifecycle"
+require_relative "../session_transition"
 require_relative "../worker_link"
 require_relative "running_tasks"
 
@@ -93,6 +94,11 @@ module Samagotchi
     # orphan) waits for the worker to let go of the session, here or
     # through chi web (POST …/stop's wait, capped at it).
     STOP_WAIT = 10
+    # How long a stop waits for its session's transition lock (another
+    # change holding it: a continue, a delete, a send's shared hold) before
+    # it is refused (SessionTransition::Busy). An owner-side stop (a worker
+    # stopping its delegates) tries once (0): it holds its own owner.lock.
+    STOP_LOCK_WAIT = 10
     # The cancel reason of a turn a session stop cancels (Bridge::CANCEL_REASONS):
     # not the user's Stop, which only ends the turn ("user").
     STOP_CANCEL_REASON = "session_stopped"
@@ -215,27 +221,57 @@ module Samagotchi
       # A turn still running is canceled first (STOP_CANCEL_WAIT), as the
       # web's Cancel does, with reason STOP_CANCEL_REASON: its worker saves it. The TERM stops (and saves)
       # what still runs (WorkerSignals), with a short grace after the marker.
+      # The mark and the TERM run under the session's transition lock, held
+      # exclusively (kind :stop, +lock_wait+ seconds to take it; one this
+      # thread holds, a continue's or a delete's, passes through), never the
+      # cancel's Bridge wait or the owner wait: a send, a continue or a delete
+      # doesn't interleave with them, and a ring wake's start
+      # (#wake_for_report) comes before the stop or after it, whole.
+      # @param lock_wait [Numeric] 0 from a worker (it holds an owner.lock:
+      #   one try, never a wait)
       # @return [Boolean, nil] with +wait+: whether the owner was gone in time
       # @raise [OwnedByTUI] when the interactive TUI owns the session
-      def stop_session(session_id, state_dir: nil, wait: nil)
+      # @raise [SessionTransition::Busy] another change held the lock
+      #   past +lock_wait+ (its words name the holder); nothing was marked
+      def stop_session(session_id, state_dir: nil, wait: nil, lock_wait: STOP_LOCK_WAIT)
         sd = state_dir || Session.default_state_dir
-        owner = refuse_tui!(session_id, state_dir: sd)
+        refuse_tui!(session_id, state_dir: sd)
 
         cancel_running_turn(session_id, state_dir: sd)
-        # Mark first: a worker that has not taken the lock yet sees it and exits.
-        Session.mark_stopped(session_id, state_dir: sd)
-        # A stop drops the reminders: a restart's hand-off no successor took
-        # yet must not bring them back on the next resume.
-        ReminderCarry.remove(Session.session_dir(session_id, state_dir: sd))
-        # A deleter holding the lock (chi web, the CLI) is no worker to stop.
-        pid = owner&.deleting? ? 0 : owner&.pid.to_i
-        begin
-          Process.kill("TERM", pid) if pid && pid > 0
-        rescue Errno::ESRCH
-          nil # already exited
+        under_stop_lock(session_id, sd, lock_wait) do
+          # The owner read again under the lock: a worker a ring wake started
+          # while the stop waited for it is the one to TERM.
+          owner = refuse_tui!(session_id, state_dir: sd)
+          # Mark first: a worker that has not taken the lock yet sees it and exits.
+          Session.mark_stopped(session_id, state_dir: sd)
+          # A stop drops the reminders: a restart's hand-off no successor took
+          # yet must not bring them back on the next resume.
+          ReminderCarry.remove(Session.session_dir(session_id, state_dir: sd))
+          # A deleter holding the lock (chi web, the CLI) is no worker to stop.
+          pid = owner&.deleting? ? 0 : owner&.pid.to_i
+          begin
+            Process.kill("TERM", pid) if pid && pid > 0
+          rescue Errno::ESRCH
+            nil # already exited
+          end
+          continue_stopped(pid)
         end
-        continue_stopped(pid)
         wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
+      end
+
+      # The block under +session_id+'s transition lock, kind :stop, for a
+      # saved session; a gone one's folder is never made again (the block
+      # alone: Session.mark_stopped's NotFound follows), and a lock file
+      # left for a session deleted meanwhile is taken back.
+      # @raise [SessionTransition::Busy]
+      private def under_stop_lock(session_id, state_dir, lock_wait, &)
+        return yield unless Session.exist?(session_id, state_dir: state_dir)
+
+        begin
+          SessionTransition.exclusive([session_id], kind: :stop, state_dir: state_dir, deadline: lock_wait, &)
+        ensure
+          SessionTransition.forget(session_id, state_dir: state_dir)
+        end
       end
 
       # A stopped worker (SIGSTOP, Ctrl-Z) runs its TERM handler only once

@@ -133,13 +133,14 @@ RSpec.describe "session lifecycle characterization matrix" do
     expect(matrix.size).to be >= 100
   end
 
-  it "drives a held transition lock for real: every :shared delivery busy, every :none one its state's cell" do
+  it "drives a held transition lock for real: every :shared delivery busy, every :none one its state's cell, a stop busy" do
     held = matrix.select { |result| result[:row].transitioning }
     expect(held.map { |result| result[:row].name }.size).to eq(LifecycleMatrix::HELD_ROWS.size)
     shared = Samagotchi::SessionInbox::WakePolicy::ROWS.select { |_, policy| policy.shared? }.keys
     held.each do |result|
       expect(result[:cells].slice(*shared).values.uniq).to eq([:busy]), result[:row].name
       expect(result[:cells][:note]).to eq(Samagotchi::SessionLifecycle.allowed(:note, result[:row].state))
+      expect(result[:cells][:stop]).to eq(:busy), result[:row].name
     end
   end
 

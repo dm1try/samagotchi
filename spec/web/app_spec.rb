@@ -4151,6 +4151,30 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to eq("status" => "stopped", "session_id" => session.id, "released" => false)
     end
 
+    it "answers POST /stop with 409 stop_held in the holder's words while another change holds the session, nothing marked" do
+      stub_const("Samagotchi::SessionManager::STOP_LOCK_WAIT", 0.1)
+      FileUtils.mkdir_p(session_dir)
+      taken = Queue.new
+      release = Queue.new
+      holder = Thread.new do
+        Samagotchi::SessionTransition.exclusive([session.id], kind: :delete, state_dir: state_dir) do
+          taken << true
+          release.pop
+        end
+      end
+      taken.pop
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
+
+      expect(status).to eq(409)
+      expect(JSON.parse(body.first)).to include("error" => "stop_held", "kind" => "delete", "session_id" => session.id,
+                                                "message" => "session #{session.id[0, 8]} is being deleted; try again in a moment")
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: state_dir)).to be(false)
+    ensure
+      release&.push(true)
+      holder&.join
+    end
+
     it "answers POST /stop with 409 and signals nothing" do
       @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
       allow(Process).to receive(:kill)
