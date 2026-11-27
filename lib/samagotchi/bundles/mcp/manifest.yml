@@ -1,13 +1,13 @@
 ---
 name: mcp
-version: 0.9.2
+version: 0.9.3
 scope: system
 description: "Tools from MCP servers (stdio or HTTP): each server in config.yml bundles: mcp: servers: runs for the session; their tools go into chi's tool index: the model searches them with find_tools and calls one with call_tool (<server>/<tool>); /mcp lists them"
 trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:60c177aceec80eb788411fa7efd61fe42803314c6c0e1c62a4e0648c3364b28c
+  sha256: sha256:e970bf7ca9cb15eb77ca6442497fffa19f1ab66bf812e64a259da12b1dce58a9
   # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's, OAuth's HttpClient's).
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf

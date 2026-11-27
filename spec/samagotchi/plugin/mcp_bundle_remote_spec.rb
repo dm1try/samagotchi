@@ -4,12 +4,14 @@ require "spec_helper"
 require_relative "../../support/mcp_bundle"
 require_relative "../../support/fake_provider_server"
 require_relative "../../support/fake_mcp_http_server"
+require_relative "../../support/mcp_plugin_of"
 
 # The mcp bundle's remote servers (url: instead of command:), end to end
 # through an Engine against FakeMcpHttpServer: real sockets, never the
 # network.
 RSpec.describe "The mcp bundle with a remote server" do
   include_context "the mcp bundle in an Engine"
+  include McpPluginOf
 
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
@@ -260,9 +262,9 @@ RSpec.describe "The mcp bundle with a remote server" do
   it "keeps the URL's path and query and the header values out of Server#inspect" do
     fake.merge!("url" => "#{remote.url}?key=QUERY-SECRET", "headers" => { "X-Key" => "HEADER-SECRET" })
     engine
-    plugin = engine.instance_variable_get(:@services).to_a.first.instance_variable_get(:@start).binding.receiver
+    plugin = mcp_plugin_of(engine)
 
-    text = plugin.instance_variable_get(:@servers).first.inspect
+    text = plugin.servers.first.inspect
     expect(text).to start_with("#<Server fake state=running url=http://127.0.0.1:")
     expect(text).not_to match(/QUERY-SECRET|HEADER-SECRET|mcp/)
   end

@@ -6,6 +6,7 @@ require_relative "../../support/mcp_bundle"
 require_relative "../../support/fake_provider_server"
 require_relative "../../support/fake_mcp_http_server"
 require_relative "../../support/fake_oauth_provider"
+require_relative "../../support/mcp_plugin_of"
 
 # The mcp bundle's sign-in end to end, through an Engine: FakeMcpHttpServer
 # answers 401 without a token FakeOAuthProvider issued, ctx.sign_in's
@@ -14,6 +15,7 @@ require_relative "../../support/fake_oauth_provider"
 # sockets, never the network.
 RSpec.describe "The mcp bundle's sign-in, end to end" do
   include_context "the mcp bundle in an Engine"
+  include McpPluginOf
 
   around { |example| FakeProviderServer.without_webmock { example.run } }
   around { |example| with_env("SAMAGOTCHI_KEYCHAIN" => "off") { example.run } }
@@ -104,8 +106,6 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
   end
 
   describe "another session's sign-in" do
-    def plugin_of(on) = on.instance_variable_get(:@services).to_a.first.instance_variable_get(:@start).binding.receiver
-
     def call_on(on, text)
       turn = Samagotchi::TurnContext.none(surface: Samagotchi::Tools::ToolSurface.for(on.instance_variable_get(:@tools)))
       on.instance_variable_get(:@tools)["call_tool"].handler.call(
@@ -168,11 +168,11 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
     it "doesn't flip back to needs sign-in on a 401 for a token older than the kept one (a login meanwhile)" do
       engine
       signed_in!
-      plugin = plugin_of(engine)
-      server = plugin.instance_variable_get(:@servers).first
+      plugin = mcp_plugin_of(engine)
+      server = plugin.servers.first
       late = plugin_module_refused(plugin, "an-older-token")
 
-      expect(plugin.send(:signed_out, server, plugin.instance_variable_get(:@ctx), late)).to be_nil
+      expect(plugin.send(:signed_out, server, plugin.ctx, late)).to be_nil
       expect(server.state).to eq(:running)
       expect(mcp("echo", { "text" => "still" })).to eq("echo: still")
     end
@@ -274,8 +274,8 @@ RSpec.describe "The mcp bundle's sign-in, end to end" do
     engine
     signed_in!
     provider.expire!("ACCESS-1")
-    plugin = engine.instance_variable_get(:@services).to_a.first.instance_variable_get(:@start).binding.receiver
-    token = plugin.instance_variable_get(:@servers).first.token
+    plugin = mcp_plugin_of(engine)
+    token = plugin.servers.first.token
     gate = Queue.new
     threads = Array.new(2) { Thread.new { gate.pop && token.refresh_token!("ACCESS-1") } }
     2.times { gate << true }
