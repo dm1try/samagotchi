@@ -21,6 +21,7 @@ require_relative "../peer_roster"
 require_relative "../peer_say"
 require_relative "../archive_store"
 require_relative "../session_chain"
+require_relative "../session_chain/successor"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
@@ -751,15 +752,14 @@ module Samagotchi
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}
 
-      # The session that continues +id+, or nil; for a schedule's pruned
-      # anchor, the schedule's head (SessionChain::Links#anchor_forward). The
-      # archive check first: a continued link is always archived, and the
+      # The session that continues +id+ (SessionChain::Successor.of: a saved
+      # one, or for a schedule's pruned anchor the schedule's head), or nil.
+      # The archive check first: a continued link is always archived, and the
       # walk loads every session.
       def continued_as(id)
         return nil unless ArchiveStore.archived?(session_dir(id))
 
-        links = SessionChain::Links.new(state_dir: state_dir!)
-        links.next_of(id) || links.anchor_forward(id)
+        SessionChain::Successor.of(id, state_dir: state_dir!)&.id
       end
 
       def state_dir! = @state_dir || Session.default_state_dir

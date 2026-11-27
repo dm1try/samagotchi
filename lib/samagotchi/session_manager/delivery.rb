@@ -3,12 +3,12 @@
 require_relative "../turn_anchors"
 require_relative "../archive_store"
 require_relative "../client_id"
-require_relative "../continue_intent"
 require_relative "../degrade"
 require_relative "../delivery"
 require_relative "../log"
 require_relative "../session"
 require_relative "../session_chain/links"
+require_relative "../session_chain/successor"
 require_relative "../session_inbox"
 require_relative "../session_transition"
 require_relative "../steer"
@@ -220,10 +220,10 @@ module Samagotchi
         SessionTransition.shared(session_id, state_dir: sd) do |held|
           # Not taken: the continue holding it names its successor (its intent).
           successor = if held
-                        SessionChain::Links.new(state_dir: sd).next_of(session_id)
+                        SessionChain::Successor.of(session_id, state_dir: sd, anchor: false)
                       else
-                        ContinueIntent.in_flight(session_id, state_dir: sd)
-                      end
+                        SessionChain::Successor.in_flight(session_id, state_dir: sd)
+                      end&.id
           next yield if held && successor.nil?
 
           words = successor ? "being continued as #{successor[0, 8]}" : "being continued"

@@ -8,6 +8,7 @@ require_relative "session"
 require_relative "session_setup"
 require_relative "session_inbox"
 require_relative "session_chain"
+require_relative "session_chain/successor"
 require_relative "objectives"
 require_relative "child_move"
 require_relative "starting_marker"
@@ -601,11 +602,11 @@ module Samagotchi
     # @raise [Refused, ModelProfile::MissingModel]
     private_class_method def self.check!(previous, state_dir, model: nil)
       # A schedule's pruned anchor counts as continued, by the schedule's
-      # head (Links#anchor_forward): continuing it would start a second
-      # line beside the chain.
-      links = SessionChain::Links.new(state_dir: state_dir)
-      if (following = links.next_of(previous.id) || links.anchor_forward(previous.id))
-        raise Refused.new(previous.id, :continued, ids: [following])
+      # head (Successor via :anchor): continuing it would start a second
+      # line beside the chain. No in-flight look: under the lock (#run_locked)
+      # this continue holds it, and a stale intent names nobody.
+      if (following = SessionChain::Successor.of(previous.id, state_dir: state_dir))
+        raise Refused.new(previous.id, :continued, ids: [following.id])
       end
 
       plan = move_plan!(previous.id, state_dir)
