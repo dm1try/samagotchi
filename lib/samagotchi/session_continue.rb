@@ -247,7 +247,14 @@ module Samagotchi
       return :moved if follow && SessionChain.next_of(id, state_dir: state_dir)
 
       previous = Session.load(id, state_dir: state_dir)
-      checked = check!(previous, state_dir, model: model)
+      # The link may be continued between the next_of look above and this check: move on, not refuse.
+      begin
+        checked = check!(previous, state_dir, model: model)
+      rescue Refused => e
+        raise unless follow && e.reason == :continued
+
+        return :moved
+      end
       # archive_session's refusals that can be known now, before the wait.
       SessionManager.archivable!(id, state_dir, except: checked.plan.move)
       recap_before_archive(id, state_dir, wait: recap_wait)

@@ -1644,6 +1644,31 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       gate << true
     end
 
+    it "moves the last:<id> continue on, not refusing :continued, when the next_of look missed the save" do
+      first = make
+      second = continue(first.id)
+
+      # The other continue is already saved (the chain is first → second),
+      # but this last:<id> continue resolved and looked before that save
+      # landed: the resolve returns first.id and the next_of look misses it.
+      allow(Samagotchi::SessionChain).to receive(:resolve).and_call_original
+      allow(Samagotchi::SessionChain).to receive(:resolve).with("last:#{first.id}", state_dir: tmpdir)
+                                                       .and_return(first.id, second.id)
+      save_missed = true
+      allow(Samagotchi::SessionChain).to receive(:next_of).and_wrap_original do |original, id, **kwargs|
+        if id == first.id && save_missed
+          save_missed = false
+          nil
+        else
+          original.call(id, **kwargs)
+        end
+      end
+
+      link = continue("last:#{first.id}")
+
+      expect(load(link.id).continues).to eq(second.id)
+    end
+
     it "takes the previous link and the new one under one hold: every undo step runs under both, on this thread" do
       previous = make
       child = make(prompt: "a", parent_id: previous.id, delegate: true)
