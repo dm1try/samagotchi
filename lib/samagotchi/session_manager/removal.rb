@@ -91,7 +91,7 @@ module Samagotchi
       attr_reader :session_id, :reason, :busy_id, :tasks, :stopped_worker, :sessions, :stopped_workers
 
       def initialize(session_id, reason, busy_id: nil, tasks: RunningTasks::EMPTY, worker_stopped: false, sessions: nil,
-                     stopped_workers: [])
+                     stopped_workers: [], message: nil)
         @session_id = session_id
         @reason = reason
         @busy_id = busy_id
@@ -99,7 +99,16 @@ module Samagotchi
         @sessions = sessions
         @stopped_workers = stopped_workers
         @stopped_worker = RunningTasks.stopped_worker(session_id, worker_stopped)
-        super(archive_refused_message)
+        super(message || archive_refused_message)
+      end
+
+      # An archive's refusal for a transition lock not taken in time (its
+      # own, or a worker's stop's: SessionTransition::Busy, which names the
+      # holder and the session held): :transition_held, Busy's words;
+      # +stopped_workers+ the workers it stopped before.
+      def self.held(busy, stopped_workers: [])
+        new(busy.session_id, :transition_held, busy_id: busy.session_id, stopped_workers: stopped_workers,
+                                               message: busy.message)
       end
 
       def worker_stopped = !@stopped_worker.nil?
@@ -123,6 +132,11 @@ module Samagotchi
         end
       end
     end
+
+    # How long an archive waits for its tree's transition locks (another
+    # change holding one: a continue, a delete, a send's shared hold) before
+    # it is refused ArchiveRefused :transition_held.
+    ARCHIVE_LOCK_WAIT = 10
 
     # What one archive did: id: the session it was asked for; archived: the
     # ids (it and its delegates) now hidden for good; stopped: the live
@@ -169,16 +183,35 @@ module Samagotchi
           ArchiveRefused.new(id, :tasks_running, tasks: listing, sessions: tree.size)
         end
         stopped = tree.select { |sid| owners[sid] }
-        # With +wait+, stop_session waits for the owner to let go.
-        stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
-        stop_archived_tasks!(id, tree, stopped, sd, running_tasks) if running_tasks.stop?
-        archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
+        done = []
+        # With +wait+, stop_session waits for the owner to let go (its own
+        # transition lock taken for its mark and TERM only).
+        stopped.each do |sid|
+          stop_session(sid, state_dir: sd, wait: wait)
+          done << sid
+        end
+        archived, discarded = under_archive_locks(tree, sd) do
+          stop_archived_tasks!(id, tree, stopped, sd, running_tasks) if running_tasks.stop?
+          tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
+        end
         # A restart's reminders hand-off no successor took (the stop above
         # removes a live one's): archived sessions keep no reminders.
         archived.each { |sid| ReminderCarry.remove(Session.session_dir(sid, state_dir: sd)) }
         # D8: an archive ends the review (unarchiving doesn't restore it).
         Participants.end_sessions(archived, by: "archive", state_dir: sd)
         ArchiveResult.new(id: id, archived: archived, stopped: stopped, discarded: discarded, **running_tasks.result_fields)
+      rescue SessionTransition::Busy => e
+        raise ArchiveRefused.held(e, stopped_workers: done || [])
+      end
+
+      # The block under the exclusive transition locks (kind :archive) of
+      # +tree+'s sessions still on disk (one its stopping worker discarded
+      # gets no folder again), within ARCHIVE_LOCK_WAIT; ids this thread
+      # holds (a continue's previous link) pass through.
+      # @raise [SessionTransition::Busy]
+      private def under_archive_locks(tree, state_dir, &)
+        ids = tree.select { |sid| Session.exist?(sid, state_dir: state_dir) }
+        SessionTransition.exclusive(ids, kind: :archive, state_dir: state_dir, deadline: ARCHIVE_LOCK_WAIT, &)
       end
 
       # An archive's stop, after the workers let go: a stop with +only+
@@ -518,11 +551,18 @@ module Samagotchi
 
       # Stop the worker that owns +id+ or is being started for it (the stop
       # marker: one that takes the lock leaves at once), and wait for both to
-      # be gone.
+      # be gone. A stop that meets another change's transition hold (a plain
+      # delete takes none itself; SessionChain::Delete's pass through) is
+      # the delete's refusal (DeleteRefused.held), not a raw Busy.
       # @return [Boolean] whether no owner and no start was left within +wait+
+      # @raise [DeleteRefused] :continuing / :transition_held
       private def stop_held(id, state_dir:, wait:)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait.to_f
-        return false unless stop_session(id, state_dir: state_dir, wait: wait)
+        begin
+          return false unless stop_session(id, state_dir: state_dir, wait: wait)
+        rescue SessionTransition::Busy => e
+          raise DeleteRefused.held(e)
+        end
 
         while StartingMarker.fresh?(id, state_dir: state_dir) || session_owner(id, state_dir: state_dir)
           return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline

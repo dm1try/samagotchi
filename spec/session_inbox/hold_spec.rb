@@ -149,6 +149,24 @@ RSpec.describe "the seats' transition hold" do
       expect(inputs(session.id)).to be_empty
     end
 
+    it "refuses a push while a stop holds the lock over a crashed continue's intent as being stopped, naming no successor" do
+      successor = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w")
+      successor.save(state_dir: tmpdir)
+      FileUtils.mkdir_p(dir_of(session.id))
+      Samagotchi::ContinueIntent.write(File.join(dir_of(session.id), Samagotchi::ContinueIntent::FILE),
+                                       successor_id: successor.id, previously_archived: [])
+
+      holding_transition(session.id, state_dir: tmpdir, kind: :stop) do
+        result = send_turn
+
+        expect(result).to be_busy
+        expect(result.ack).not_to include("successor_id")
+        expect(result.detail).to eq("session #{session.id[0, 8]} is being stopped; try again in a moment")
+        expect(deliver(:push).first).to have_attributes(status: :refused, wake: :busy)
+      end
+      expect(inputs(session.id)).to be_empty
+    end
+
     it "makes no folder for a session that is gone" do
       gone = SecureRandom.uuid
 

@@ -245,6 +245,35 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.exist?(session_file)).to be false
     end
 
+    # A plain delete (no chain keywords: a scratch's end) takes no transition
+    # lock itself; the stop it makes does, and a held one is the delete's
+    # own refusal, not a raw Busy.
+    it "with stop: refuses as a delete when the stop meets another change's hold, removing nothing" do
+      stub_const("Samagotchi::SessionManager::STOP_LOCK_WAIT", 0.1)
+      spawn_owner
+      allow(Process).to receive(:kill).and_call_original
+      FileUtils.mkdir_p(session_dir)
+      taken = Queue.new
+      release = Queue.new
+      holder = Thread.new do
+        Samagotchi::SessionTransition.exclusive([session.id], kind: :delete, state_dir: tmpdir) do
+          taken << true
+          release.pop
+        end
+      end
+      taken.pop
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, stop: true, wait: 1) }
+        .to raise_error(described_class::DeleteRefused) { |e|
+          expect(e.reason).to eq(:transition_held)
+          expect(e.message).to eq("session #{session.id[0, 8]} is being deleted; try again in a moment")
+        }
+      expect(File.exist?(session_file)).to be true
+    ensure
+      release&.push(true)
+      holder&.join
+    end
+
     it "with stop: removes nothing while the start outlives the wait" do
       Samagotchi::StartingMarker.mark(session.id, state_dir: tmpdir)
 

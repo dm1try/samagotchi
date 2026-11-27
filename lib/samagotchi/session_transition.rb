@@ -37,12 +37,14 @@ module Samagotchi
     # An exclusive hold not taken by its deadline, or an arrival that met
     # one. It owns its refusal text, which names the holder (.held) when it
     # can be told: a continue ("being continued", "as X" once its intent
-    # names the new link), a delete ("being deleted"), else "busy with
-    # another change" (a shared holder, an older chi's, a kind this chi
-    # doesn't name). A nil +session_id+ says "this session" (a peer's line,
+    # names the new link), a delete ("being deleted"), a stop ("being
+    # stopped"), an archive ("being archived"), else "busy with another
+    # change" (a shared holder, an older chi's, a kind this chi doesn't
+    # name). A nil +session_id+ says "this session" (a peer's line,
     # which carries no id).
     class Busy < StandardError
-      WORDS = { continue: "being continued", delete: "being deleted", nil => "busy with another change" }.freeze
+      WORDS = { continue: "being continued", delete: "being deleted", stop: "being stopped", archive: "being archived",
+                nil => "busy with another change" }.freeze
 
       # +kind+ the holder's (nil: not told), +successor_id+ the new link a
       # continue holding it names.
@@ -57,14 +59,15 @@ module Samagotchi
 
       # The refusal of an arrival or a taker that met +session_id+'s lock
       # held: the one place that says who holds it. The kind the exclusive
-      # holder recorded (SessionTransition.holder) first: a delete is
-      # "being deleted" whatever else is on disk; else a continue in flight
+      # holder recorded (SessionTransition.holder) first: a delete, a stop
+      # or an archive is said as such whatever else is on disk (a crashed
+      # continue's intent); else a continue in flight
       # (ContinueIntent.in_flight: an older chi's records no kind) names
       # its new link.
       # @return [Busy]
       def self.held(session_id, state_dir:)
         kind = SessionTransition.holder(session_id, state_dir: state_dir)
-        return new(session_id, kind: kind) if kind == :delete
+        return new(session_id, kind: kind) if SessionTransition.other_than_continue?(kind)
 
         require_relative "continue_intent"
         successor = session_id && ContinueIntent.in_flight(session_id, state_dir: state_dir)
@@ -208,6 +211,11 @@ module Samagotchi
     rescue SystemCallError
       nil
     end
+
+    # Whether +kind+ (#holder's) is a transition this chi names that is no
+    # continue (a delete, a stop, an archive): its hold names no new link,
+    # whatever intent a crashed continue left.
+    def other_than_continue?(kind) = !kind.nil? && kind != :continue
 
     # Whether the current thread holds +id+ exclusively (the registry).
     def holding?(id, state_dir:)

@@ -8,9 +8,11 @@ require "samagotchi/session_manager"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "../support/session_manager_context"
+require_relative "../support/transition_holder"
 
 RSpec.describe Samagotchi::SessionManager do
   include_context "session manager files"
+  include TransitionHolder
 
   describe ".stop_session" do
     it "marks a session as stopped even when pid file does not exist" do
@@ -86,6 +88,98 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "returns true at once when nothing owns the session" do
         expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
+      end
+    end
+
+    # The stop takes the session's transition lock exclusively (kind :stop)
+    # for the mark and the TERM, never across the owner wait
+    # (docs/internals/session-lifecycle.md, "Stops, archives and the ring wake").
+    context "under the transition lock" do
+      let(:session) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+          s.save(state_dir: tmpdir)
+        end
+      end
+      let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+      let(:transition) { Samagotchi::SessionTransition }
+
+      def holder = transition.holder(session.id, state_dir: tmpdir)
+      def stopped? = Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)
+
+      it "holds it as a stop for the mark and the TERM, and lets go before the owner wait" do
+        spawn_owner
+        seen = {}
+        allow(Samagotchi::Session).to receive(:mark_stopped).and_wrap_original do |original, *args, **opts|
+          seen[:mark] = holder
+          original.call(*args, **opts)
+        end
+        allow(Process).to receive(:kill).and_wrap_original do |original, signal, pid|
+          seen[signal] = holder if pid == @owner_pid
+          original.call(signal, pid)
+        end
+        allow(described_class).to receive(:wait_for_owner_release).and_wrap_original do |original, *args, **opts|
+          seen[:wait] = transition.held?(session.id, state_dir: tmpdir)
+          original.call(*args, **opts)
+        end
+
+        expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be(true)
+
+        expect(seen).to eq(mark: :stop, "TERM" => :stop, "CONT" => :stop, wait: false)
+        expect(holder).to be_nil
+      end
+
+      it "refuses with Busy's words when another transition holds it past the wait: nothing marked, nobody signaled" do
+        spawn_owner
+        allow(Process).to receive(:kill).and_call_original
+
+        holding_transition(session.id, state_dir: tmpdir, kind: :delete) do
+          started = SpecWaiting.mono
+          expect { described_class.stop_session(session.id, state_dir: tmpdir, wait: 1, lock_wait: 0.2) }
+            .to raise_error(Samagotchi::SessionTransition::Busy) { |busy|
+              expect(busy).to have_attributes(session_id: session.id, kind: :delete)
+              expect(busy.message).to eq("session #{session.id[0, 8]} is being deleted; try again in a moment")
+            }
+          expect(SpecWaiting.mono - started).to be >= 0.2
+        end
+
+        expect(stopped?).to be(false)
+        expect(Process).not_to have_received(:kill).with("TERM", @owner_pid)
+        expect(described_class.session_owner(session.id, state_dir: tmpdir)&.pid).to eq(@owner_pid)
+      end
+
+      it "waits out a send's short shared hold, then stops" do
+        free = Queue.new
+        holder_thread = Thread.new do
+          transition.shared(session.id, state_dir: tmpdir) do
+            free << true
+            sleep 0.2 # sleep-ok: a send's check and write, held a moment
+          end
+        end
+        free.pop
+        started = SpecWaiting.mono
+
+        described_class.stop_session(session.id, state_dir: tmpdir, lock_wait: 5)
+
+        expect(SpecWaiting.mono - started).to be >= 0.1
+        expect(stopped?).to be(true)
+      ensure
+        holder_thread&.join
+      end
+
+      it "passes through a hold this thread already has (a delete's stop): the holder stays the delete" do
+        transition.exclusive([session.id], kind: :delete, state_dir: tmpdir) do
+          described_class.stop_session(session.id, state_dir: tmpdir, lock_wait: 0)
+          expect(holder).to eq(:delete)
+          expect(transition.holding?(session.id, state_dir: tmpdir)).to be(true)
+        end
+        expect(stopped?).to be(true)
+      end
+
+      it "makes no folder for a session that is gone" do
+        gone = SecureRandom.uuid
+
+        expect { described_class.stop_session(gone, state_dir: tmpdir) }.to raise_error(Samagotchi::Session::NotFound)
+        expect(Dir.exist?(Samagotchi::Session.session_dir(gone, state_dir: tmpdir))).to be(false)
       end
     end
 

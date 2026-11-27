@@ -226,6 +226,25 @@ RSpec.describe Samagotchi::SessionTransition do
         FileUtils.rm_f(File.join(dir_of(low), Samagotchi::ContinueIntent::FILE))
         on_hold(kind: :repair) { expect(busy_words).to eq("session #{low[0, 8]} is busy with another change; try again in a moment") }
       end
+
+      it "names a stop's and an archive's hold, and no continue under them over a crashed continue's intent" do
+        FileUtils.mkdir_p(dir_of(low))
+        Samagotchi::ContinueIntent.write(File.join(dir_of(low), Samagotchi::ContinueIntent::FILE), successor_id: high,
+                                                                                                  previously_archived: [])
+        { stop: "being stopped", archive: "being archived" }.each do |kind, words|
+          # The successor's lock held too: a continue's in-flight shape, but the holder says it is no continue.
+          on_hold(kind: kind, ids: [low, high]) do
+            expect(described_class.holder(low, state_dir: state_dir)).to eq(kind)
+            expect(Samagotchi::ContinueIntent.in_flight(low, state_dir: state_dir)).to be_nil
+            busy = described_class::Busy.held(low, state_dir: state_dir)
+            expect(busy).to have_attributes(kind: kind, successor_id: nil)
+            expect(busy.message).to eq("session #{low[0, 8]} is #{words}; try again in a moment")
+          end
+        end
+        on_hold(kind: :continue, ids: [low, high]) do
+          expect(Samagotchi::ContinueIntent.in_flight(low, state_dir: state_dir)).to eq(high)
+        end
+      end
     end
 
     it "takes the lock once the other holder lets go within the deadline" do

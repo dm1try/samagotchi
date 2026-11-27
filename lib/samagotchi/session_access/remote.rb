@@ -847,7 +847,7 @@ module Samagotchi
         when "tasks_running" then raise tasks_refusal(json, sid)
         when "context_busy" then raise ContextSources::Held, message.to_s
         when "busy", "scratch"
-          raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
+          raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"], message: (message if reason == :transition_held)) if reason
         when "continued", "open_children", "folder_gone", "transition_busy"
           raise SessionContinue::Refused.new(sid, reason, ids: Array(json["ids"]), detail: (message if reason == :transition_busy))
         when "held", "not_running", "unsupported", "failed"
@@ -857,9 +857,9 @@ module Samagotchi
           end
         when "parent_answers_refused", "parent_continue_refused", "no_vision"
           raise Refused.new(message.to_s, code: error)
-        # No model configured there, or --model's host unknown there: what
-        # spawn_session raises here (chi send: could not start a session).
+        # No model configured there, or --model's host unknown there: what spawn_session raises here (chi send: could not start a session).
         when "invalid_model" then raise ModelProfile::MissingModel, message.to_s
+        when "stop_held" then raise SessionTransition::Busy.new(sid, kind: json["kind"]&.to_sym, successor_id: json["successor_id"])
         # A toolkit whose config kit's groups: is invalid there: the same.
         when "toolkit_refused" then raise Toolkit::Refused, message.to_s
         # The grants store doesn't read there: chi share says what it says here.

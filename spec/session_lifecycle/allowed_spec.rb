@@ -68,12 +68,16 @@ RSpec.describe "SessionLifecycle::ALLOWED" do
 
   it "generates TRANSITIONING from the hold column: a :shared row is busy in every state, a :none row its state's cell" do
     shared = rows.select { |_, each| each.hold == :shared }.keys
-    expect(lifecycle::TRANSITIONING).to eq(shared.to_h { |kind| [kind, :busy] })
+    # A stop takes the lock itself (stop_session's exclusive try), and so
+    # does the ring's column, a ring's wake (wake_for_report's shared hold).
+    expect(lifecycle::TAKES_LOCK).to eq(stop: :busy, ring: :busy)
+    expect(lifecycle::TRANSITIONING).to eq(shared.to_h { |kind| [kind, :busy] }.merge(stop: :busy, ring: :busy))
     expect(lifecycle::TRANSITIONING).to be_frozen
     lifecycle::STATES.each do |state|
       expect(lifecycle.allowed(:send, state, transitioning: true)).to eq(:busy)
       expect(lifecycle.allowed(:note, state, transitioning: true)).to eq(lifecycle.allowed(:note, state))
       expect(lifecycle.allowed(:resume, state, transitioning: true)).to eq(lifecycle.allowed(:resume, state))
+      expect(lifecycle.allowed(:stop, state, transitioning: true)).to eq(:busy)
     end
     expect(lifecycle.verdict(:send, :busy)).to eq(:refused)
   end

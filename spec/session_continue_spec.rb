@@ -30,13 +30,20 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
   # "Locks and crash repair"): nothing a continue runs under its transition
   # lock takes a shared hold of an id this thread holds (the token says true
   # there, where the lock file said false before SessionTransition), nor
-  # reaches follow_guard, SessionChain::Delete.link or .chain.
+  # reaches follow_guard, SessionChain::Delete.link or .chain. One shared
+  # hold of a held id is by design: the undo's ring wake (wake_for_rings →
+  # SessionManager.wake_for_report), which passes through on the token.
   let(:under_lock) { [] }
+
+  # Whether a shared hold of a held id comes from the ring wake (above).
+  def self.ring_wake? = caller_locations.any? { |at| at.label.to_s.end_with?("wake_for_report") }
 
   before do
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Samagotchi::SessionTransition).to receive(:shared).and_wrap_original do |original, id, **opts, &block|
-      under_lock << [:shared, id] if Samagotchi::SessionTransition.holding?(id, state_dir: opts[:state_dir])
+      if Samagotchi::SessionTransition.holding?(id, state_dir: opts[:state_dir]) && !self.class.ring_wake?
+        under_lock << [:shared, id]
+      end
       original.call(id, **opts, &block)
     end
     %i[link chain].each do |name|
@@ -1686,7 +1693,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       # The top's pin kept, with this example's record.
       allow(transition).to receive(:shared).and_wrap_original do |original, id, **opts, &block|
         calls << [:shared, Thread.current]
-        under_lock << [:shared, id] if transition.holding?(id, state_dir: opts[:state_dir])
+        under_lock << [:shared, id] if transition.holding?(id, state_dir: opts[:state_dir]) && !self.class.ring_wake?
         original.call(id, **opts, &block)
       end
       booted = nil

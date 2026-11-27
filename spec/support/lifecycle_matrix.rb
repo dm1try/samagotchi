@@ -174,6 +174,10 @@ module LifecycleMatrix
     # stale sidecar, a dropped reminder hand-off): each gets a fresh copy of
     # the row's files.
     WRITING_OPS = %i[resume stop attach leave].freeze
+    # Writing operations that take the transition lock themselves
+    # (stop_session's exclusive try): on a held row they are refused and
+    # write nothing, so they run on the row's own files, whose lock is held.
+    HELD_IN_PLACE = %i[stop].freeze
 
     def lifecycle_ops = Samagotchi::SessionLifecycle::ALLOWED.keys + HUB_OPS
 
@@ -187,6 +191,8 @@ module LifecycleMatrix
       allow(Process).to receive(:kill).with("TERM", anything).and_return(1)
       allow(Process).to receive(:kill).with("CONT", anything).and_return(1)
       allow(Samagotchi::ProcessGroup).to receive(:stopped?).and_return(false)
+      # A held row's stop is refused at once, not after the CLI's wait.
+      stub_const("Samagotchi::SessionManager::STOP_LOCK_WAIT", 0)
       bridge = double("worker bridge")
       allow(bridge).to receive(:request_exit).and_raise(RestartAsked)
       allow(Samagotchi::BridgeClient).to receive(:for_sidecar).and_return(bridge)
@@ -314,6 +320,8 @@ module LifecycleMatrix
     def drive_stop(id, state_dir)
       Samagotchi::SessionManager.stop_session(id, state_dir: state_dir)
       :go
+    rescue Samagotchi::SessionTransition::Busy
+      :busy
     rescue Samagotchi::SessionManager::OwnedByTUI
       :owned_by_tui
     rescue Samagotchi::Session::NotFound
@@ -402,7 +410,7 @@ module LifecycleMatrix
           read = Samagotchi::SessionLifecycle.read(id, state_dir: state_dir)
           cells = lifecycle_ops.to_h do |op|
             dir = state_dir
-            if WRITING_OPS.include?(op)
+            if WRITING_OPS.include?(op) && !(row.transitioning && HELD_IN_PLACE.include?(op))
               dir = "#{state_dir}.#{op}"
               FileUtils.cp_r(state_dir, dir)
             end

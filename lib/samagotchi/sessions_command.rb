@@ -289,7 +289,7 @@ module Samagotchi
         begin
           id = @access.resolve_id(given)
           released = @access.stop(id, wait: Samagotchi::SessionManager::STOP_WAIT)
-        rescue Samagotchi::SessionManager::OwnedByTUI => e
+        rescue Samagotchi::SessionManager::OwnedByTUI, Samagotchi::SessionTransition::Busy => e
           @stdout.flush
           @stderr.puts e.message
           next false

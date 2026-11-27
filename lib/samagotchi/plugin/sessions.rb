@@ -171,10 +171,11 @@ module Samagotchi
 
       # Stop one of this session's own children as `chi sessions stop` does
       # (by session id; no pid is read here), waiting up to STOP_WAIT s for
-      # its worker to let go.
+      # its worker to let go. Its transition lock is one try (this worker
+      # holds its own owner.lock, so it never waits for one).
       # @return [String] the child's id
-      # @raise [Error] not a child of this session, no such session, or a
-      #   one-shot owns it
+      # @raise [Error] not a child of this session, no such session, a
+      #   one-shot owns it, or another change holds it (Busy's words)
       def stop(id)
         state_dir = self.state_dir
         sid = resolve(id, state_dir)
@@ -183,10 +184,12 @@ module Samagotchi
           raise Error, "session #{sid[0, 8]} is not a child of this session"
         end
 
-        SessionManager.stop_session(sid, state_dir: state_dir, wait: STOP_WAIT)
+        SessionManager.stop_session(sid, state_dir: state_dir, wait: STOP_WAIT, lock_wait: 0)
         sid
       rescue SessionManager::OwnedByTUI
         raise Error, "session #{sid[0, 8]} is #{OwnerLock::TUI_BUSY}; let it finish"
+      rescue SessionTransition::Busy => e
+        raise Error, e.message
       end
 
       private

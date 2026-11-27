@@ -260,6 +260,14 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       }
     end
 
+    it "reads an archive's 409 busy transition_held as ArchiveRefused in chi web's words, not a running turn's" do
+      access, = scripted([409, { error: "busy", reason: "transition_held", session_id: "s", busy_id: "s",
+                                 message: "session s is being continued; try again in a moment" }])
+      expect { access.archive("s") }.to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |e|
+        expect([e.reason, e.message]).to eq([:transition_held, "session s is being continued; try again in a moment"])
+      }
+    end
+
     it "gives each new refusal its own reason and message, not a worker running" do
       access, = scripted([409, { error: "continuing", reason: "continuing", session_id: "s",
                                  message: "a continue of s is under way; try again in a moment" }],

@@ -197,15 +197,23 @@ module Samagotchi
       # gone, stopped (the stop marker; the file's status never decides),
       # archived, a scratch session, a one-turn run's or owned, or a
       # continue's new link still taking its delegates (its own spawn
-      # comes): the ring waits on disk for whoever runs it next. A stop
-      # landing between the check and the resume is a small window, left as
-      # is. An archived parent with a later link wakes that link (one hop:
-      # ChildReports reads its predecessor's rings, no further).
+      # comes): the ring waits on disk for whoever runs it next. The check
+      # and the resume run under the session's transition lock, held shared
+      # (SessionInbox.wake's hold: the resolved link's), so a stop (which
+      # takes it exclusively for its mark and TERM) lands before the check
+      # or after the start, never between them; a transition holding it now
+      # leaves the ring on disk (:busy, or :continued naming no one here:
+      # the continue carries the rings). Inside a continue's own hold (its
+      # undo: wake_for_rings) the hold passes through. An archived parent
+      # with a later link wakes that link (one hop: ChildReports reads its
+      # predecessor's rings, no further).
       # @return [Symbol] :woken, or why not (:gone, :deleting: a deleter
-      #   holds its lock, :stopped, :archived, :scratch, :owned, :starting)
+      #   holds its lock, :stopped, :archived, :scratch, :owned, :starting,
+      #   :busy / :continued: a transition holds it)
       def wake_for_report(session_id, state_dir: nil)
         sd = state_dir || Session.default_state_dir
-        outcome = SessionInbox.wake(:ring, session_id, state_dir: sd, owner: ->(id) { session_owner(id, state_dir: sd) }).wake
+        outcome = SessionInbox.wake(:ring, session_id, state_dir: sd, owner: ->(id) { session_owner(id, state_dir: sd) },
+                                                       hold: :shared).wake
         outcome == :live ? :owned : outcome
       end
 

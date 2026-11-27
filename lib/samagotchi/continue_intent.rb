@@ -56,7 +56,9 @@ module Samagotchi
     # or unreadable: no continue holds the lock (a crash left it, and
     # SessionContinue.repair_interrupted undoes it), or another transition
     # holds it over a crashed continue's intent whose successor was never
-    # saved and nobody holds (that continue is not coming back).
+    # saved and nobody holds (that continue is not coming back), or the
+    # holder recorded another kind (a delete, a stop, an archive holding it
+    # over a crashed continue's intent: SessionTransition.holder).
     # @return [String, nil]
     def in_flight(id, state_dir:)
       return nil unless Session.valid_id?(id)
@@ -64,6 +66,7 @@ module Samagotchi
       dir = Session.session_dir(id, state_dir: state_dir)
       path = File.join(dir, FILE)
       return nil unless File.file?(path) && SessionTransition.held?(id, state_dir: state_dir)
+      return nil if SessionTransition.other_than_continue?(SessionTransition.holder(id, state_dir: state_dir))
 
       successor = read(path).successor_id
       return nil unless successor

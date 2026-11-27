@@ -274,6 +274,94 @@ RSpec.describe "Session archive" do
       expect(archived?(scratch)).to be(false)
     end
 
+    # The tree's transition locks, exclusively (kind :archive), for the
+    # task stop and the markers; the workers' stops each take their own
+    # first (stop_session), never held across their owner wait.
+    describe "under the transition locks" do
+      let(:transition) { Samagotchi::SessionTransition }
+
+      def holding_other(id, kind: :delete)
+        FileUtils.mkdir_p(dir_of(Struct.new(:id).new(id)))
+        taken = Queue.new
+        release = Queue.new
+        holder = Thread.new do
+          transition.exclusive([id], kind: kind, state_dir: tmpdir) do
+            taken << true
+            release.pop
+          end
+        end
+        taken.pop
+        yield
+      ensure
+        release&.push(true)
+        holder&.join
+      end
+
+      it "holds every session of the tree as an archive for the markers, and not across the workers' stop" do
+        parent = make
+        child = make(parent: parent)
+        seen = []
+        allow(Samagotchi::ArchiveStore).to receive(:archive).and_wrap_original do |original, id, **opts|
+          seen << [id, transition.holder(parent.id, state_dir: tmpdir), transition.holder(child.id, state_dir: tmpdir)]
+          original.call(id, **opts)
+        end
+
+        Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir)
+
+        expect(seen).to contain_exactly([parent.id, :archive, :archive], [child.id, :archive, :archive])
+        expect([transition.holder(parent.id, state_dir: tmpdir), transition.holder(child.id, state_dir: tmpdir)]).to eq([nil, nil])
+      end
+
+      it "refuses transition_held in the holder's words when another change holds a delegate past the wait, archiving none" do
+        stub_const("Samagotchi::SessionManager::ARCHIVE_LOCK_WAIT", 0.1)
+        parent = make
+        child = make(parent: parent)
+
+        holding_other(child.id) do
+          expect { Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir) }
+            .to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |e|
+              expect(e).to have_attributes(reason: :transition_held, session_id: child.id)
+              expect(e.message).to eq("session #{child.id[0, 8]} is being deleted; try again in a moment")
+            }
+        end
+        expect([archived?(parent), archived?(child)]).to eq([false, false])
+      end
+
+      it "refuses the same way when a live worker's stop meets the hold" do
+        stub_const("Samagotchi::SessionManager::STOP_LOCK_WAIT", 0.1)
+        live = make(owner: "worker")
+        allow(Process).to receive(:kill)
+
+        holding_other(live.id, kind: :continue) do
+          expect { Samagotchi::SessionManager.archive_session(live.id, state_dir: tmpdir) }
+            .to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |e|
+              expect(e).to have_attributes(reason: :transition_held)
+              expect(e.message).to eq("session #{live.id[0, 8]} is being continued; try again in a moment")
+            }
+        end
+        expect(archived?(live)).to be(false)
+        expect(Samagotchi::Session.stopped_marker?(live.id, state_dir: tmpdir)).to be(false)
+      end
+
+      it "makes no folder again for a delegate its stopping worker deleted (discarded)" do
+        parent = make
+        child = make(parent: parent)
+        allow(Samagotchi::ArchiveStore).to receive(:archive).and_call_original
+        allow(Samagotchi::SessionManager).to receive(:descendant_ids).and_wrap_original do |original, *args, **opts|
+          original.call(*args, **opts).tap do
+            # Its worker discards the empty session as the archive stops it.
+            FileUtils.rm_rf(dir_of(child))
+            FileUtils.rm_f(File.join(tmpdir, "#{child.id}.json"))
+          end
+        end
+
+        result = Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir)
+
+        expect(result).to have_attributes(archived: [parent.id], discarded: [child.id])
+        expect(Dir.exist?(dir_of(child))).to be(false)
+      end
+    end
+
     it "raises ArgumentError for an unknown id" do
       expect { Samagotchi::SessionManager.archive_session("nope", state_dir: tmpdir) }.to raise_error(ArgumentError, /no session nope/)
       expect { Samagotchi::SessionManager.unarchive_session("../x", state_dir: tmpdir) }.to raise_error(ArgumentError)

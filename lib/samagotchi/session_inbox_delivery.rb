@@ -299,11 +299,11 @@ module Samagotchi
         SessionTransition.shared(id, state_dir: state_dir) do |free|
           next yield if free
 
-          # A delete holding it names nobody (Busy's "being deleted": a
-          # link being deleted or pruned is not continued anywhere new);
-          # else the holder's in-flight continue first (its new link may
-          # be saved already), then a saved one.
-          next refused.call(nil) if SessionTransition.holder(id, state_dir: state_dir) == :delete
+          # A delete, a stop or an archive holding it names nobody (Busy's
+          # "being deleted": a link being deleted or pruned is not
+          # continued anywhere new); else the holder's in-flight continue
+          # first (its new link may be saved already), then a saved one.
+          next refused.call(nil) if SessionTransition.other_than_continue?(SessionTransition.holder(id, state_dir: state_dir))
 
           refused.call(SessionChain::Successor.in_flight(id, state_dir: state_dir) ||
                        SessionChain::Successor.of(id, state_dir: state_dir, anchor: false))
@@ -357,11 +357,14 @@ module Samagotchi
 
       # The wake half of #deliver alone, for a delivery already on disk (a
       # failed continue's previous link with rings that came meanwhile),
-      # under the row's hold as #deliver's.
+      # under the row's hold as #deliver's, or +hold+ instead (:shared: the
+      # ring's wake, SessionManager.wake_for_report, whose row holds none
+      # for its write).
       # @return [Delivered]
-      def wake(kind, target, state_dir: nil, owner: nil, start: nil)
+      def wake(kind, target, state_dir: nil, owner: nil, start: nil, hold: nil)
         sd = state_dir || Session.default_state_dir
         policy = WakePolicy.for(kind)
+        policy = policy.with(hold: hold, hold_reason: nil) if hold
         resolved = Head.resolve(kind, target, state_dir: sd)
         Hold.under(policy, resolved.id, sd, refused: ->(successor) { held(policy, resolved, successor) }) do
           apply(policy, resolved, sd, wake: true, owner: owner, start: start)
