@@ -374,6 +374,7 @@ module Samagotchi
 
       # The Bridge decides the reason (Bridge::CANCEL_REASONS; anything
       # else is manual) and the reply echoes its choice. No reason: user.
+      # Transition hold: worker-side (Bridge-only: the live worker's turn).
       def handle_cancel(req, id)
         @session_class.load(id, state_dir: default_state_dir)
         return participant_cancel(req, id) unless principal(req).owner?

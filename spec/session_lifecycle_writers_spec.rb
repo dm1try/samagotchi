@@ -50,8 +50,40 @@ module SessionLifecycleWriterCalls
     },
     "ContinueIntent.write" => {
       "lib/samagotchi/session_continue.rb#run_locked" => "Records the successor before archive and the final archived set after it."
+    },
+    # The raw inbox writes: each names the transition hold it runs under
+    # (HOLDS), first. docs/internals/session-lifecycle.md, "Arrivals declare
+    # their hold".
+    "SessionInbox.write_input" => {
+      "lib/samagotchi/session_manager/delivery.rb#write_turn_input" =>
+        "shared: deliver_turn's seat holds the session's lock across the whole delivery (SessionInbox::Hold).",
+      "lib/samagotchi/bridge.rb#enqueue_turn" =>
+        "worker-side: the worker's own Bridge writes its own session's input (an attached TUI's turn, the input fallback)."
+    },
+    "SessionInbox.write_note" => {
+      "lib/samagotchi/note_delivery.rb#deliver" =>
+        "none: the note row (NoteMove moves, adopts and gives back a note written during a continue).",
+      "lib/samagotchi/child_move.rb#note_child" =>
+        "token: a continue's or a delete's undo holds the lock; the new link's boot (ChildMove.adopt) is worker-side.",
+      "lib/samagotchi/context_move.rb#call" =>
+        "token: a continue's carry into its new link (a plugin fork's new session has no transition).",
+      "lib/samagotchi/context_move.rb#carry_unabsorbed_pushes" => "token: a continue's carry into its new link.",
+      "lib/samagotchi/objectives.rb#carry" => "token: a continue's carry into its new link.",
+      "lib/samagotchi/peer_continue.rb#carry" => "token: a continue's carry of the unread peer mail into its new link.",
+      "lib/samagotchi/session_manager/spawn.rb#spawn_session" =>
+        "token: a new session's first note, before its file (a continue's new link under the continue's hold)."
+    },
+    "SessionInbox.write_ring" => {
+      "lib/samagotchi/child_reports.rb#ring" => "none: the ring row (no retry; ChildMove moves rings, return_rings gives them back)."
+    },
+    "SessionInbox.write_output" => {
+      "lib/samagotchi/worker.rb#run_engine_turn" => "worker-side: the worker's own turn's answer file."
     }
   }.freeze
+  # How a raw inbox write's reason starts: the row's hold (shared, none),
+  # under the transition token (a transition's own step), or worker-side
+  # (a worker's own session, Bridge-only arrivals).
+  HOLDS = %w[shared none token worker-side].freeze
 
   class Calls < Prism::Visitor
     attr_reader :found
@@ -91,7 +123,7 @@ module SessionLifecycleWriterCalls
 end
 
 RSpec.describe "session lifecycle marker writers" do
-  it "pins marker writer and remover call sites with reasons (docs/internals/session-lifecycle.md)" do
+  it "pins marker writer and remover call sites, and the raw inbox writes with their hold (docs/internals/session-lifecycle.md)" do
     actual = SessionLifecycleWriterCalls.calls
     unexpected = actual.reject do |api, callsite, _line|
       SessionLifecycleWriterCalls::APIS.fetch(api).key?(callsite)
@@ -108,6 +140,13 @@ RSpec.describe "session lifecycle marker writers" do
     end
     failures.concat(missing.map { |callsite| "#{callsite} is no longer a marker writer/remover call site" })
     failures << "every allow-list entry needs a reason" unless missing_reasons.empty?
+    SessionLifecycleWriterCalls::APIS.select { |api, _| api.start_with?("SessionInbox.write_") }.each do |api, sites|
+      sites.each do |site, reason|
+        next if SessionLifecycleWriterCalls::HOLDS.include?(reason[/\A[a-z-]+(?=:)/])
+
+        failures << "#{site} (#{api}): say its hold first (#{SessionLifecycleWriterCalls::HOLDS.join(", ")})"
+      end
+    end
 
     expect(failures).to be_empty, failures.join("\n")
   end

@@ -174,7 +174,9 @@ or `offer`, or `busy_child`/`queued_child`/`offer_child` (a chain's own running
 delegate refuses the archive, since `archivable!` walks the whole descendant tree),
 `SessionContinue::Refused(:continued)` (a human continued it while we were
 resolving), `:open_children` and `:transition_busy` (another continue of the
-chain's end held its transition lock past the continue's 10 s on each of its tries).
+chain's end held its transition lock past the continue's 10 s on each of its tries), and a
+same-mode turn its target's transition lock refused (`transition_busy`, or `link_continued` naming a
+continue's new link: the turn's own hold, nothing written).
 So is an archived target that a continue is still
 making the next link of (`session 3f9a1c2e is being continued as 7b2d41aa-…; retry at the next tick`): a
 person's `chi send --new --continues` or web `continue →` archives the link before

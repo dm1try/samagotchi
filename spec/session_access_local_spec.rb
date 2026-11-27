@@ -65,6 +65,50 @@ RSpec.describe Samagotchi::SessionAccess::Local do
   # holding the session's transition lock (another thread here, as the
   # continue's own worker-side thread would be) is refused naming the new
   # link, and nothing is written where the continue's carry already read.
+  # S11: the arrivals the inventory missed, under the same hold.
+  describe "a change to what a continue carries, while a transition holds the session's lock" do
+    let(:session) { saved_session }
+    let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir) }
+    let(:busy) { "session #{session.id[0, 8]} is busy with another change; try again in a moment" }
+
+    def source(name)
+      Samagotchi::ContextSources::Source.new(name: name, cmd: "echo hi", every_seconds: 60, why: nil, hint: nil,
+                                             scope: nil, added_by: "spec", created_at: nil)
+    end
+
+    it "refuses a context add and remove, nothing changed; both go once it let go" do
+      push_source(own, "kept")
+      holding_transition(session.id, state_dir: tmpdir) do
+        expect { access.context_add(context_target(session.id), source("new")) }
+          .to raise_error(Samagotchi::ContextSources::Held, busy)
+        expect { access.context_remove(context_target(session.id), "kept") }
+          .to raise_error(Samagotchi::ContextSources::Held, busy)
+      end
+      expect(own.sources.map(&:name)).to eq(["kept"])
+
+      access.context_add(context_target(session.id), source("new"))
+      expect(access.context_remove(context_target(session.id), "kept")).to eq(:removed)
+      expect(own.sources.map(&:name)).to eq(["new"])
+    end
+
+    it "names the continue's new link when one holds it" do
+      successor = SecureRandom.uuid
+      holding_transition(session.id, state_dir: tmpdir, successor: successor) do
+        expect { access.context_add(context_target(session.id), source("new")) }
+          .to raise_error(Samagotchi::ContextSources::Held,
+                          "session #{session.id[0, 8]} is being continued as #{successor}; try again in a moment")
+      end
+    end
+
+    it "refuses an invite, no grant issued" do
+      holding_transition(session.id, state_dir: tmpdir) do
+        expect { access.invite(session.id, name: "Ann") }
+          .to raise_error(Samagotchi::SessionAccess::BadRequest, busy)
+      end
+      expect(access.participants(session.id)).to be_empty
+    end
+  end
+
   describe "while a transition holds the session's lock" do
     let(:session) { saved_session }
     let(:successor) { "7b2d41aa-0000-4000-8000-000000000000" }

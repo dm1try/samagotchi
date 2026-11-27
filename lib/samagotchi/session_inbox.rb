@@ -48,7 +48,7 @@ module Samagotchi
     # The one delivery path (session_inbox_delivery.rb), loaded on first
     # use: the bundle test kit's load budget stays as it was.
     delivery = File.expand_path("session_inbox_delivery", __dir__)
-    %i[Dispatch Delivered Head Resolved WakePolicy].each { |name| autoload name, delivery }
+    %i[Dispatch Delivered Head Hold Resolved WakePolicy].each { |name| autoload name, delivery }
 
     # A delivery of +kind+ to session +target+ (Dispatch.deliver: resolve,
     # refuse, the block's write, one presence read, the WakePolicy's wake).

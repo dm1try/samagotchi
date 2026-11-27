@@ -118,9 +118,19 @@ RSpec.describe Samagotchi::SessionInbox::Head do
 
       @lock = File.open(File.join(dir, Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
       @lock.flock(File::LOCK_EX)
+      # A continue holds its new link's lock too (ContinueIntent.in_flight):
+      # once (a second descriptor of this process would wait on the first).
+      return if @successor_lock || !Samagotchi::Session.valid_id?(successor)
+
+      successor_dir = FileUtils.mkdir_p(Samagotchi::Session.session_dir(successor, state_dir: tmpdir)).first
+      @successor_lock = File.open(File.join(successor_dir, Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600)
+      @successor_lock.flock(File::LOCK_EX)
     end
 
-    after { @lock&.close }
+    after do
+      @lock&.close
+      @successor_lock&.close
+    end
 
     let(:successor) { "7b2d41aa-0000-4000-8000-000000000000" }
 

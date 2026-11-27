@@ -207,6 +207,17 @@ RSpec.describe Samagotchi::SessionAccess::Ask do
       expect(deliveries.map { |id, options| [id, options[:enqueued_id]] }).to eq([[old.id, key], [newer.id, key]])
     end
 
+    it "resends to the same link with the same enqueued id after a transition held it busy" do
+      session = make
+      busy = Samagotchi::SessionManager::DeliverResult.new(
+        status: :refused, code: 409, ack: { "error" => Samagotchi::SessionManager::DeliverResult::BUSY, "detail" => "b" }
+      )
+      worker(busy, accepted(key), reply: "there")
+
+      expect(call(session.id, request_id: "r1").result.text).to eq("there")
+      expect(deliveries.map { |id, options| [id, options[:enqueued_id]] }).to eq([[session.id, key], [session.id, key]])
+    end
+
     it "sends no enqueued_id without one" do
       session = make
       worker(accepted("t1"), reply: "ok")

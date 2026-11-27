@@ -1700,6 +1700,11 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
           adopted = Samagotchi::ChildMove.adopt(link, state_dir: tmpdir)
           notes = Samagotchi::NoteMove.adoption(load(link), state_dir: tmpdir)&.call
           Samagotchi::SessionInbox.write_note(link, text: "objectives", source: "objectives", state_dir: tmpdir)
+          # Through the inbox's seat too: the note row holds nothing (:none), so
+          # the creator's exclusive hold of the new link refuses none of it.
+          seated = Samagotchi::NoteDelivery.deliver(link, text: "seated", source: "objectives", state_dir: tmpdir, pin: true)
+          raise "the boot's note was refused: #{seated.inspect}" unless seated.delivered?
+
           [Thread.current, adopted, notes]
         end
         thread.report_on_exception = false
@@ -1715,7 +1720,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(adopted).to eq([])
       expect(notes.size).to eq(1)
       expect(load(child.id).parent_id).to eq(link.id)
-      expect(notes_of(link.id).map { |note| note[:text] }).to include("late", "objectives")
+      expect(notes_of(link.id).map { |note| note[:text] }).to include("late", "objectives", "seated")
     end
 
     describe "a continue that ends before the new link is saved" do

@@ -7,6 +7,7 @@ require_relative "atomic_file"
 require_relative "participant_messages"
 require_relative "archive_store"
 require_relative "session"
+require_relative "session_transition"
 require_relative "grants"
 require_relative "participant_turn_mode"
 
@@ -122,12 +123,19 @@ module Samagotchi
 
       identity = Grants.clean_identity(identity) unless identity.nil?
       raise Grants::Unbindable if !identity.nil? && public_url&.identity_header.nil?
-      if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
-        raise Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
-      end
 
-      issued = grants.issue(session_id: session_id, name: name, ttl: ttl, cap: cap, identity: identity,
-                            on_write: sidecar_writer(state_dir, [session_id]))
+      # Checked and issued under the session's transition lock shared: a
+      # continue archives the link and ends its grants (end_sessions), so
+      # one issued between the two would outlive the archive.
+      issued = SessionTransition.shared(session_id, state_dir: state_dir) do |free|
+        raise Grants::Invalid, SessionTransition::Busy.new(session_id).message unless free
+        if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: state_dir))
+          raise Grants::Invalid, "session #{session_id[0, 8]} is archived: unarchive it to invite anyone"
+        end
+
+        grants.issue(session_id: session_id, name: name, ttl: ttl, cap: cap, identity: identity,
+                     on_write: sidecar_writer(state_dir, [session_id]))
+      end
       grant = issued.grant
       log(session_id, :issued, state_dir: state_dir, participant: grant.id, name: grant.name,
                                role: grant.role, expires_at: grant.expires_at, cap: grant.spend_cap,

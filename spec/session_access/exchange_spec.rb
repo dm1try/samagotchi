@@ -114,6 +114,13 @@ RSpec.describe Samagotchi::SessionAccess::Exchange do
       expect(pauses).to eq([0.25, 0.25])
     end
 
+    it "answers the same link after a pause when it was refused busy" do
+      access.heads = [resolved(old_id)]
+      again = exchange.relocate(refused, 5.0, busy: true)
+      expect(again.target.id).to eq(old_id)
+      expect(pauses).to eq([0.25])
+    end
+
     it "answers an Unsent when the id no longer resolves" do
       refused = resolved("none", asked: "none")
       expect(exchange.relocate(refused, 5.0)).to have_attributes(reason: :unknown)

@@ -90,20 +90,24 @@ module Samagotchi
       # +refused+'s id (its +asked+) located again after a continue took
       # its link (a DeliverResult#continued?), pausing between looks while
       # it still names that link, until +deadline+ (this clock's seconds).
+      # After a busy refusal (DeliverResult#busy?: another transition held
+      # the link's lock) the first look after a pause is the answer, the
+      # same link again included: the sender tries it again.
       # @param bounded [Boolean] each look's own wait for a continue ends by
       #   +deadline+ too (an ask's one deadline); false, it may wait its
       #   continuing_wait past it (chi send's)
+      # @param busy [Boolean] +refused+ was refused busy
       # @yieldparam located [Located] each look that waited on a continue
       #   (#locate's waited), whichever link it named
       # @return [Located, Unsent, nil] nil: out of time
-      def relocate(refused, deadline, bounded: false)
+      def relocate(refused, deadline, bounded: false, busy: false)
         while @clock.call < deadline && !@cancelled.call
           pause_until(deadline)
           again = locate(refused.asked, deadline: (deadline if bounded))
           return again unless again.is_a?(Located)
 
           yield again if block_given? && again.waited
-          next if again.target.id == refused.id
+          next if !busy && again.target.id == refused.id
 
           return again
         end

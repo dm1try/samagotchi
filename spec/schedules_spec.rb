@@ -1981,10 +1981,12 @@ RSpec.describe Samagotchi::Schedules do
       File.write(File.join(folder, Samagotchi::ContinueIntent::FILE), JSON.generate(successor_id: successor_id))
       return unless hold
 
-      path = File.join(folder, Samagotchi::ContinueIntent::LOCK)
-      lock = File.open(path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed after
-      lock.flock(File::LOCK_EX)
-      locks << lock
+      # The continue's lock, and its new link's (ContinueIntent.in_flight).
+      [folder, FileUtils.mkdir_p(Samagotchi::Session.session_dir(successor_id, state_dir: dir)).first].each do |held|
+        lock = File.open(File.join(held, Samagotchi::ContinueIntent::LOCK), File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed after
+        lock.flock(File::LOCK_EX)
+        locks << lock
+      end
     end
 
     %w[chain same].each do |mode|
@@ -2066,6 +2068,27 @@ RSpec.describe Samagotchi::Schedules do
 
         expect([outcome.status, outcome.detail]).to eq(["skipped", "session #{anchor[0, 8]} is being continued as #{successor}; retry at the next tick"])
         expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+      end
+    end
+
+    # The target not archived (yet): the turn's own hold meets the
+    # transition (DeliverResult::BUSY), a skip that moves no failure.
+    it "skips a same-mode firing whose turn met a transition holding the target's lock" do
+      Dir.mktmpdir("schedules-busy-fire") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: described_class::SAME)
+        links = Samagotchi::SessionChain::Links.new(state_dir: dir)
+        continuing(dir, anchor, successor)
+        File.delete(File.join(Samagotchi::Session.session_dir(anchor, state_dir: dir), Samagotchi::ContinueIntent::FILE))
+
+        outcome = schedules.send(:fire_same, entry, links)
+
+        expect([outcome.status, outcome.detail])
+          .to eq(["skipped", "session #{anchor[0, 8]} is busy with another change; try again in a moment"])
+        expect(Samagotchi::SessionInbox.find_new_input_files(Samagotchi::Session.session_dir(anchor, state_dir: dir)))
+          .to be_empty
       end
     end
 

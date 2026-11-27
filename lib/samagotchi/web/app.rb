@@ -1497,10 +1497,14 @@ module Samagotchi
         return error_response(422, "no_provider", "no installed bundle resolves #{url[0, 200]}") unless resolved
 
         own = ContextSources.session_location(session.id, state_dir: default_state_dir)
-        source = own.add(web_source(resolved, body, own.scope))
+        source = ContextSources.changing(session.id, state_dir: default_state_dir) do
+          own.add(web_source(resolved, body, own.scope))
+        end
         json_response(201, { status: "attached", name: resolved.name, movable: source.movable? })
       rescue ContextProviders::Invalid => e
         error_response(422, "no_provider", e.message)
+      rescue ContextSources::Held => e
+        error_response(423, "context_busy", e.message)
       rescue ContextSources::Invalid => e
         error_response(409, "exists", e.message)
       end
@@ -1552,12 +1556,14 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir)
         attached = find_context(session, name) or return error_response(404, "context_missing", "no source #{name[0, 40]}")
         if attached.location.session?
-          attached.location.remove(attached.name)
+          ContextSources.changing(id, state_dir: default_state_dir) { attached.location.remove(attached.name) }
           json_response(200, { status: "detached", name: attached.name })
         else
           ContextSources.session_location(id, state_dir: default_state_dir).mute(attached.name)
           json_response(200, { status: "muted", name: attached.name })
         end
+      rescue ContextSources::Held => e
+        error_response(423, "context_busy", e.message)
       end
 
       def context_remove_own(id, name)
@@ -1567,6 +1573,8 @@ module Samagotchi
           error_response(409, "project_source", ContextCommand.project_source_message(name))
         else error_response(404, "context_missing", "no source #{name[0, 40]}")
         end
+      rescue ContextSources::Held => e
+        error_response(423, "context_busy", e.message)
       rescue ContextSources::Invalid
         error_response(404, "context_missing", "no source #{name[0, 40]}")
       end

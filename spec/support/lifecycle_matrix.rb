@@ -4,6 +4,8 @@ require "fileutils"
 require "securerandom"
 require "tmpdir"
 require "samagotchi/session_lifecycle"
+require "samagotchi/client_id"
+require "samagotchi/session_transition"
 require "samagotchi/session_manager"
 require "samagotchi/schedules"
 require "samagotchi/worker_boot"
@@ -50,11 +52,14 @@ module LifecycleMatrix
   # :unknown (a lock record still blank); link: :none, :stale, :live,
   # :starting, :stuck, :leaving or :skew; start_after_stop: the starting
   # marker written after the stop (else before it); reachable false with a
-  # note: a combination the code doesn't make, asserted all the same.
+  # note: a combination the code doesn't make, asserted all the same;
+  # transitioning: the session's transition lock held for real, by another
+  # thread, while the row is read and driven (its deliveries then go
+  # through the seats: Drivers#deliver_held).
   Row = Data.define(:name, :exists, :owner, :link, :stop, :start, :archived, :continuing, :start_after_stop,
-                    :reachable, :note) do
+                    :reachable, :note, :transitioning) do
     def initialize(name:, exists:, owner:, link:, stop: false, start: false, archived: false, continuing: false,
-                   start_after_stop: false, reachable: true, note: nil) = super
+                   start_after_stop: false, reachable: true, note: nil, transitioning: false) = super
 
     def owner_record(now = Time.now)
       started = (now - 1).iso8601(3)
@@ -102,7 +107,8 @@ module LifecycleMatrix
 
   # Every row: the owner/link pairs × stop × starting × archived, one
   # absent session, a continue in flight on each archived row with no
-  # owner, and a start marked after the stop on each no-owner row with both.
+  # owner, a start marked after the stop on each no-owner row with both,
+  # and a held transition lock on a few (HELD_ROWS).
   # @return [Array<Row>]
   def rows
     base = PAIRS.flat_map do |owner, link|
@@ -118,8 +124,14 @@ module LifecycleMatrix
     continuing = no_owner.select(&:archived).map { |row| row.with(name: "#{row.name}+continuing", continuing: true) }
     after = no_owner.select { |row| row.stop && row.start }
                     .map { |row| row.with(name: "#{row.name}+start_after_stop", start_after_stop: true) }
-    [Row.new(name: "absent", exists: false, owner: :none, link: :none), *base, *continuing, *after]
+    held = base.select { |row| HELD_ROWS.include?(row.name) }
+               .map { |row| row.with(name: "#{row.name}+transitioning", transitioning: true) }
+    [Row.new(name: "absent", exists: false, owner: :none, link: :none), *base, *continuing, *after, *held]
   end
+
+  # The rows also driven with their transition lock held: idle, archived,
+  # stopped and a live worker's.
+  HELD_ROWS = %w[none+none none+none+archived none+none+stop worker+live].freeze
 
   # The sidecar a row's link stands on: its owner's pid and a port (Live,
   # Skew: protocol newer than this chi), or another pid's (Stale).
@@ -196,7 +208,8 @@ module LifecycleMatrix
 
     # What +op+ answers for session +id+ under +state_dir+, as a cell word
     # (ALLOWED's, SHOWN's for the hub; nil for the hub of an absent session).
-    def drive(op, id, state_dir)
+    def drive(op, id, state_dir, row: nil)
+      return deliver_held(op, id, state_dir) if row&.transitioning && DELIVERY_OPS.include?(op)
       return deliver(op, id, state_dir) if DELIVERY_OPS.include?(op)
 
       send(:"drive_#{op}", id, state_dir)
@@ -207,6 +220,53 @@ module LifecycleMatrix
       Samagotchi::SessionLifecycle::DELIVERY_CELLS.fetch(
         Samagotchi::SessionInbox::WakePolicy.for(kind).decide(presence, wake: true, load: nil)
       )
+    end
+
+    # A delivery through its seat, its row's transition hold taken there:
+    # an inbox kind through SessionInbox.deliver (it writes nothing, asks
+    # for a worker, a start is :woken), a turn delivery's sender through
+    # SessionManager.deliver_turn (a 409 transition_busy is :busy,
+    # link_continued :continued; nothing else is expected while held).
+    def deliver_held(kind, id, state_dir)
+      turn = TURN_SENDERS[kind]
+      unless turn
+        delivered = Samagotchi::SessionInbox.deliver(kind, id, state_dir: state_dir, start: ->(_) { :woken }) { true }
+        return delivered.wake == :woken ? :go : Samagotchi::SessionLifecycle::DELIVERY_CELLS.fetch(delivered.wake)
+      end
+
+      result = Samagotchi::SessionManager.deliver_turn(id, prompt: "matrix", client_id: turn, state_dir: state_dir,
+                                                           bridge: -> {})
+      return :busy if result.busy?
+      return :continued if result.continued?
+
+      raise "a turn from #{kind} went past a held transition lock: #{result.inspect}"
+    end
+
+    # The client id of each turn delivery's sender (ClientId.wake_kind).
+    TURN_SENDERS = { send: "cli:send", schedule: Samagotchi::ClientId.schedule("matrix"),
+                     plugin: Samagotchi::ClientId::PLUGIN, delegate: Samagotchi::ClientId.delegate("abcd1234"),
+                     participant: Samagotchi::ClientId.participant("p_1"), agent: Samagotchi::ClientId.agent("matrix"),
+                     automatic: "someone:else" }.freeze
+
+    # The block with +id+'s transition lock held exclusively by another
+    # thread when +row+ is transitioning (never this one: its own hold
+    # would pass its shared ones through), else as is.
+    def holding_for(row, id, state_dir)
+      return yield unless row.transitioning
+
+      taken = Queue.new
+      release = Queue.new
+      holder = Thread.new do
+        Samagotchi::SessionTransition.exclusive(id, kind: :continue, state_dir: state_dir) do
+          taken << true
+          release.pop
+        end
+      end
+      taken.pop(timeout: 10) or raise "the matrix's transition lock of #{id} was not taken"
+      yield
+    ensure
+      release&.push(true)
+      holder&.join
     end
 
     # A ring's wake (SessionManager.wake_for_report): a start is resume_session's stand-in.
@@ -338,16 +398,18 @@ module LifecycleMatrix
       LifecycleMatrix.rows.each_with_index.map do |row, index|
         stub_row(row)
         id, state_dir = LifecycleMatrix.write(row, File.join(root, index.to_s))
-        read = Samagotchi::SessionLifecycle.read(id, state_dir: state_dir)
-        cells = lifecycle_ops.to_h do |op|
-          dir = state_dir
-          if WRITING_OPS.include?(op)
-            dir = "#{state_dir}.#{op}"
-            FileUtils.cp_r(state_dir, dir)
+        holding_for(row, id, state_dir) do
+          read = Samagotchi::SessionLifecycle.read(id, state_dir: state_dir)
+          cells = lifecycle_ops.to_h do |op|
+            dir = state_dir
+            if WRITING_OPS.include?(op)
+              dir = "#{state_dir}.#{op}"
+              FileUtils.cp_r(state_dir, dir)
+            end
+            [op, drive(op, id, dir, row: row)]
           end
-          [op, drive(op, id, dir)]
+          { row: row, read: read, cells: cells }
         end
-        { row: row, read: read, cells: cells }
       end
     end
   end

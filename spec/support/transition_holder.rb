@@ -8,7 +8,8 @@ require "samagotchi/session_transition"
 # A transition of session +id+ in flight while the block runs: its lock
 # held exclusively by another thread (never the spec's own: a thread that
 # holds it passes through its own shared holds), and, with +successor+, a
-# continue's intent naming it first (ContinueIntent.in_flight reads both).
+# continue's: its intent naming it first and the successor's lock held too
+# (ContinueIntent.in_flight reads all three).
 #
 #   holding_transition(id, state_dir: dir, successor: new_id) { access.peer_say(...) }
 module TransitionHolder
@@ -21,7 +22,7 @@ module TransitionHolder
     taken = Queue.new
     release = Queue.new
     holder = Thread.new do
-      Samagotchi::SessionTransition.exclusive(id, kind: :continue, state_dir: state_dir) do
+      Samagotchi::SessionTransition.exclusive([id, successor].compact, kind: :continue, state_dir: state_dir) do
         taken << true
         release.pop
       end

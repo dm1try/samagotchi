@@ -62,7 +62,7 @@ module Samagotchi
         refused = error == Delivery::QUEUE_UNAVAILABLE["error"] ||
                   error == Delivery::ASK_UNAVAILABLE["error"] ||
                   error == Delivery::PAIR_UNAVAILABLE["error"] ||
-                  continued? || wake_refused? || deleting? || DeliverResult::REMOTE_REFUSALS.include?(error)
+                  continued? || busy? || wake_refused? || deleting? || DeliverResult::REMOTE_REFUSALS.include?(error)
         "#{refused ? "refused" : "failed"}: #{detail || "could not queue it"}"
       end
 
@@ -74,6 +74,11 @@ module Samagotchi
       # A followed send refused: a continue took the archived link it named
       # (deliver_turn's follow:); the sender resolves the head again.
       def continued? = error == DeliverResult::CONTINUED
+
+      # A transition (another change than a continue naming its new link)
+      # held the session's transition lock (DeliverResult::BUSY): nothing
+      # went in; the sender tries again in a moment.
+      def busy? = error == DeliverResult::BUSY
 
       # A stopped or archived session its sender may not wake
       # (DeliverResult::STOPPED / ARCHIVED: only a person's message does).
@@ -98,6 +103,12 @@ module Samagotchi
     # A followed send's refusal (DeliverResult#continued?), here and from a
     # remote's turn route alike.
     DeliverResult::CONTINUED = "link_continued"
+    # Any sender's turn while a transition holds the session's transition
+    # lock and names no continue's new link (DeliverResult#busy?): 409,
+    # nothing written, its detail SessionTransition::Busy's words. The code
+    # a continue's own busy refusal has on the wire too (SessionContinue::
+    # Refused :transition_busy).
+    DeliverResult::BUSY = "transition_busy"
     # An unattended sender's turn (a schedule, a plugin, a delegate
     # follow-up, a participant: ClientId.wake_kind) to a session its owner
     # stopped or archived: refused, nothing written (a 409 from chi web).
@@ -174,7 +185,11 @@ module Samagotchi
       #   continue took since is refused (:refused 409 link_continued, nothing
       #   written: #follow_guard) rather than un-archived beside its new link;
       #   the sender resolves again. Others name the id they mean (the web
-      #   composer, schedules, delegates, plugins, participants).
+      #   composer, schedules, delegates, plugins, participants). Any
+      #   sender's turn is delivered under the session's transition lock
+      #   shared (its row's hold, SessionInbox::Hold): while a transition
+      #   holds it, :refused 409 link_continued naming a continue's new link
+      #   (successor_id), else 409 transition_busy (DeliverResult::BUSY).
       # @param manager [#resume_session, #write_turn_input] this class, or a
       #   stand-in (the web's specs); #session_owner is optional
       # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
@@ -195,7 +210,7 @@ module Samagotchi
                        bridge: nil, enqueued_id: nil)
         raise ArgumentError, "deliver_turn needs the sender's client_id" if client_id.to_s.empty?
 
-        follow_guard(session_id, state_dir, follow) do
+        follow_guard(session_id, state_dir, follow, SessionInbox::WakePolicy.for_sender(client_id)) do
           deliver_turn_now(session_id, prompt: prompt, client_id: client_id, images: images, delivery: delivery,
                                        no_interrupt: no_interrupt, author: author, pending_limit: pending_limit,
                                        anchors: anchors, state_dir: state_dir, manager: manager, bridge: bridge,
@@ -203,39 +218,50 @@ module Samagotchi
         end
       end
 
-      # A followed send (deliver_turn's follow:) to an archived link: refused
-      # when a continue took it (a successor saved, or a continue holding its
-      # lock now: its successor comes), else the delivery under a shared hold
-      # of the continue lock (SessionTransition.shared), so no continue starts
-      # between this check and the input going in. Any other delivery, or
-      # a link not archived, is the block alone. Head.resolve answers the
-      # sender before the delivery: a continue that ends or starts in
-      # between is caught here, and chi send resolves again (SendCommand#target).
+      # The delivery under the sender's row's transition hold
+      # (SessionInbox::Hold.under: SessionTransition.shared, never waited
+      # for), across all of it: the resume, the Bridge's wait and post, the
+      # file and the second liveness check (a frozen worker's post, up to
+      # BridgeClient::READ_TIMEOUT, keeps a continue of the session waiting
+      # that long, and refused busy past its LOCK_WAIT), so no transition
+      # starts between the check and the input going in. Refused, nothing
+      # written, while one holds it: link_continued naming the continue's
+      # new link, else transition_busy. Inside it, a followed send (follow:)
+      # to an archived link a continue took (a successor saved) is refused
+      # too: chi send resolves again (SendCommand#target). Head.resolve
+      # answers the sender before the delivery: a continue that ends or
+      # starts in between is caught here.
       # @return [DeliverResult] the block's, or the refusal
-      private def follow_guard(session_id, state_dir, follow)
+      private def follow_guard(session_id, state_dir, follow, policy)
         sd = state_dir || Session.default_state_dir
-        return yield unless follow && Session.valid_id?(session_id) &&
-                            ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
+        held = ->(successor) { held_refusal(session_id, successor, policy) }
+        SessionInbox::Hold.under(policy, session_id, sd, refused: held) do
+          if follow && Session.valid_id?(session_id) && ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd)) &&
+             (successor = SessionChain::Successor.of(session_id, state_dir: sd, anchor: false))
+            next continued_refusal(session_id, successor)
+          end
 
-        SessionTransition.shared(session_id, state_dir: sd) do |held|
-          # Not taken: the continue holding it names its successor (its intent).
-          successor = if held
-                        SessionChain::Successor.of(session_id, state_dir: sd, anchor: false)
-                      else
-                        SessionChain::Successor.in_flight(session_id, state_dir: sd)
-                      end
-          next yield if held && successor.nil?
-
-          # A held lock with no successor named: Busy's words.
-          words = if successor
-                    "#{SessionChain::Continued.for(session_id, successor).message}; send again in a moment"
-                  else
-                    SessionTransition::Busy.new(session_id).message
-                  end
-          DeliverResult.new(status: :refused, code: 409,
-                            ack: { "error" => DeliverResult::CONTINUED, "detail" => words,
-                                   "session_id" => session_id, "successor_id" => successor&.id }.compact)
+          yield
         end
+      end
+
+      # A turn a transition's hold refused: the continue's new link named
+      # (link_continued), else busy (transition_busy, Busy's words).
+      private def held_refusal(session_id, successor, policy)
+        Log.info(:worker, "send_transition_refused", sid: session_id[0, 8], kind: policy.kind,
+                                                     successor: successor&.id.to_s[0, 8])
+        return continued_refusal(session_id, successor) if successor
+
+        DeliverResult.new(status: :refused, code: 409,
+                          ack: { "error" => DeliverResult::BUSY, "detail" => SessionTransition::Busy.new(session_id).message,
+                                 "session_id" => session_id })
+      end
+
+      private def continued_refusal(session_id, successor)
+        DeliverResult.new(status: :refused, code: 409,
+                          ack: { "error" => DeliverResult::CONTINUED,
+                                 "detail" => "#{SessionChain::Continued.for(session_id, successor).message}; send again in a moment",
+                                 "session_id" => session_id, "successor_id" => successor.id })
       end
 
       private def deliver_turn_now(session_id, prompt:, client_id:, images:, delivery:, no_interrupt:, author:,

@@ -296,13 +296,14 @@ module Samagotchi
       # @return [BridgeClient::Response, nil] the Bridge's reply; nil when
       #   no worker runs it
       # @raise [SystemCallError, IOError, SocketError] the worker went away
+      # Transition hold: worker-side (Bridge-only: the live worker's own question).
       def answer(id, question_id:, selected:, freeform:, client_id:, within: nil)
         on_worker(id, within: within) do |client|
           client.answer(id: question_id, selected: selected, freeform: freeform, client_id: client_id)
         end
       end
 
-      # The question dismissed on the session's worker; as #answer.
+      # The question dismissed on the session's worker; as #answer (worker-side, no hold).
       def dismiss(id, question_id:)
         on_worker(id) { |client| client.dismiss_question(id: question_id) }
       end
@@ -365,9 +366,11 @@ module Samagotchi
 
       # Attaches +source+ to the target's own sources.
       # @return [ContextAdded]
+      # A session's own: under its transition lock (ContextSources.changing).
+      # @raise [ContextSources::Held] a transition holds the session's lock
       def context_add(target, source)
         location = context_location(target)
-        location.add(source.with(scope: location.scope))
+        own_change(target) { location.add(source.with(scope: location.scope)) }
         ContextAdded.new(name: source.name)
       end
 
@@ -461,9 +464,10 @@ module Samagotchi
       # Detaches the target's own source +name+.
       # @return [Symbol] :removed, :project (a session's project has it:
       #   rm --project, or mute it) or :missing
+      # @raise [ContextSources::Held] a transition holds the session's lock
       def context_remove(target, name)
         ContextSources.check_name!(name)
-        return :removed if context_location(target).remove(name)
+        return :removed if own_change(target) { context_location(target).remove(name) }
 
         project = !target.project? && ContextSources.project_location_for(target.project_root,
                                                                           project_id: target.project_id,
@@ -543,6 +547,7 @@ module Samagotchi
       # @return [String, nil]
       def identity_header = configured_public_url&.identity_header
 
+      # Transition hold: none (a removal; a continue's archive ends every grant).
       # @return [Array<ParticipantView>] the ones it revoked
       def revoke_participants(id = nil, participant: nil)
         Participants.revoke(grants, session_id: id, id: participant, state_dir: state_dir!)
@@ -598,7 +603,8 @@ module Samagotchi
         end
       end
 
-      # Ends the pairing (link.json); the messages stay.
+      # Ends the pairing (link.json); the messages stay. Transition hold: none
+      # (a removal; the new link's pairing is the peer's, Plugin::Peer#tell_moved).
       # @return [Boolean] whether there was one
       def peer_unpair(id, peer) = PeerMailbox.unpair(id, peer, state_dir: state_dir!)
 
@@ -817,6 +823,14 @@ module Samagotchi
         return continued_as(id) if free
 
         SessionChain::Successor.of(id, state_dir: state_dir!, in_flight: true) || :busy
+      end
+
+      # The block, for a session target under its transition lock
+      # (ContextSources.changing); a project's as is.
+      def own_change(target, &)
+        return yield if target.project?
+
+        ContextSources.changing(target.session_id, state_dir: state_dir!, &)
       end
 
       def state_dir! = @state_dir || Session.default_state_dir

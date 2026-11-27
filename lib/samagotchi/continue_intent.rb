@@ -50,10 +50,13 @@ module Samagotchi
                  archived_ids: archived)
     end
 
-    # The successor's id of a continue of +id+ in flight: its intent written
-    # and its lock held. nil when there is none, or the intent is stale (no
-    # continue holds the lock: a crash left it, and
-    # SessionContinue.repair_interrupted undoes it) or unreadable.
+    # The successor's id of a continue of +id+ in flight: its intent written,
+    # its lock held, and the successor saved or its lock held too (a
+    # continue holds both). nil when there is none, or the intent is stale
+    # or unreadable: no continue holds the lock (a crash left it, and
+    # SessionContinue.repair_interrupted undoes it), or another transition
+    # holds it over a crashed continue's intent whose successor was never
+    # saved and nobody holds (that continue is not coming back).
     # @return [String, nil]
     def in_flight(id, state_dir:)
       return nil unless Session.valid_id?(id)
@@ -62,7 +65,12 @@ module Samagotchi
       path = File.join(dir, FILE)
       return nil unless File.file?(path) && SessionTransition.held?(id, state_dir: state_dir)
 
-      read(path).successor_id
+      successor = read(path).successor_id
+      return nil unless successor
+      return successor if Session.exist?(successor, state_dir: state_dir) ||
+                          SessionTransition.held?(successor, state_dir: state_dir)
+
+      nil
     rescue JSON::ParserError, SystemCallError
       nil
     end

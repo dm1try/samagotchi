@@ -812,8 +812,7 @@ module Samagotchi
 
       def no_provider?(reply) = reply.error == "no_provider"
 
-      # chi web's 404 not_found detail for a session it doesn't have:
-      # "no session X" (Session::NotFound).
+      # chi web's 404 not_found detail for a missing session: "no session X" (Session::NotFound).
       SESSION_NOT_FOUND = /\Ano session (.+)\z/m
 
       # Session::NotFound for a missing session's 404, else an
@@ -846,6 +845,7 @@ module Samagotchi
           raise SessionManager::DeleteRefused.new(sid, reason || error.to_sym, message: message, ids: ids_of(json["ids"]),
                                                                                schedule_id: json["schedule_id"])
         when "tasks_running" then raise tasks_refusal(json, sid)
+        when "context_busy" then raise ContextSources::Held, message.to_s
         when "busy", "scratch"
           raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
         when "continued", "open_children", "folder_gone", "transition_busy"

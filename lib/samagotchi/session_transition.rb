@@ -114,12 +114,17 @@ module Samagotchi
     # The block under a shared hold of +id+'s lock, so no transition of it
     # starts until the block returns; its argument is false when another
     # holds it exclusively now (not waited for: nothing is held then) or
-    # +id+ isn't a session id, true when this thread holds it. The folder
-    # and lock file are created when missing. A caller that may not write
-    # the session folder (a peer's chi behind the mailbox door: the
-    # sessions folder read-only) holds an existing lock file opened
-    # read-only, and, with none there to open, holds nothing (true): no
-    # transition holds a lock file that isn't there.
+    # +id+ isn't a session id, true when this thread holds it. The lock
+    # file is created when missing, and the folder only for a session whose
+    # file is there: a deleted session's folder is never made again
+    # (nothing is held, true: no transition holds a lock in a folder that
+    # isn't there) and the caller's own gone refusal follows. A lock file this call made for a
+    # session whose file is gone once the block returns (a delete that
+    # removed it meanwhile, a folder with no session) is taken back
+    # (#forget). A caller that may not write the session folder (a peer's
+    # chi behind the mailbox door: the sessions folder read-only) holds an
+    # existing lock file opened read-only, and, with none there to open,
+    # holds nothing (true).
     # @yieldparam held [Boolean]
     # @return the block's value
     def shared(id, state_dir:)
@@ -128,11 +133,13 @@ module Samagotchi
       path = lock_path(id, state_dir)
       return yield(true) if holds.key?(path)
 
-      file = open_shared(path) or return yield(true)
+      made = !File.exist?(path)
+      file = open_shared(id, path, state_dir) or return yield(true)
       begin
         yield(file.flock(File::LOCK_SH | File::LOCK_NB) ? true : false)
       ensure
         file.close
+        forget(id, state_dir: state_dir) if made
       end
     end
 
@@ -183,11 +190,20 @@ module Samagotchi
 
     def lock_path(id, state_dir) = File.join(Session.session_dir(id, state_dir: state_dir), LOCK)
 
-    # #shared's descriptor: made when missing, else (no write access) the
-    # file opened read-only, or nil when it isn't there.
-    def open_shared(path)
-      FileUtils.mkdir_p(File.dirname(path))
-      File.open(path, File::RDWR | File::CREAT, 0o600)
+    # #shared's descriptor: made when missing (its folder too, only for a
+    # session whose file is there), else (no write access) the file opened
+    # read-only, or nil when there is nothing to open.
+    def open_shared(id, path, state_dir)
+      begin
+        File.open(path, File::RDWR | File::CREAT, 0o600)
+      rescue Errno::ENOENT
+        return nil unless Session.exist?(id, state_dir: state_dir)
+
+        FileUtils.mkdir_p(File.dirname(path))
+        File.open(path, File::RDWR | File::CREAT, 0o600)
+      end
+    rescue Errno::ENOENT
+      nil
     rescue Errno::EACCES, Errno::EPERM, Errno::EROFS
       begin
         File.open(path, File::RDONLY)

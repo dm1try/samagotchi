@@ -96,7 +96,8 @@ module Samagotchi
     # (starting: the link's worker holds no lock yet, e.g. another ticker's
     # firing just continued the chain.)
     # (transition_busy: a continue of the chain's end held its transition
-    # lock past SessionContinue::LOCK_WAIT.)
+    # lock past SessionContinue::LOCK_WAIT, or a same-mode turn met a
+    # transition holding its target's lock: DeliverResult::BUSY.)
     SKIP_REASONS = %w[busy queued offer busy_child queued_child offer_child starting starting_child continued
                       open_children transition_busy].freeze
 
@@ -1032,6 +1033,10 @@ module Samagotchi
       elsif result.wake_refused?
         # Stopped (or archived) since the tick's check: a skip, as the check's.
         Outcome.new(id: entry.id, title: entry.title, status: "skipped", detail: result.detail, entry: entry)
+      elsif result.busy? || result.continued?
+        # A transition held the target's lock (a continue naming its new
+        # link, or another change): not now, the next tick tries again.
+        classify(entry, result.continued? ? "continued" : SessionManager::DeliverResult::BUSY, result.detail)
       else
         Outcome.new(id: entry.id, title: entry.title, status: "failed",
                     detail: "the turn was not accepted (#{result.status}: #{result.error || result.detail})", entry: entry)

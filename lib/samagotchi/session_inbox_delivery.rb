@@ -8,6 +8,7 @@ require_relative "worker_presence"
 require_relative "continue_intent"
 require_relative "session_chain/links"
 require_relative "session_chain/successor"
+require_relative "session_transition"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -56,7 +57,9 @@ module Samagotchi
     #   worker comes: it waits for the next start)
     # @!attribute wake [Symbol] WakePolicy#decide's outcome, :woken for a
     #   start made, or the refusal (:gone, :deleting: a deleter holds its
-    #   lock, :owned: a one-turn chi run's, :scratch). :deleting after the
+    #   lock, :owned: a one-turn chi run's, :scratch; a :shared row's
+    #   :continued, a continue holding the transition lock names its new
+    #   link, or :busy, another transition holds it: Hold.under). :deleting after the
     #   write (status :waits) is a delete that took the lock meanwhile: the
     #   file goes with the session (a caller that reports the delivery takes
     #   it back, SessionInbox.withdraw)
@@ -86,7 +89,21 @@ module Samagotchi
     #   (input from a person un-archives it): send (and leave) only
     # @!attribute refuse_tui [Boolean] a one-turn chi run's session refuses it
     # @!attribute refuse_scratch [Boolean] a chi scratch session refuses it
-    WakePolicy = Data.define(:kind, :resolves, :starts, :unstops, :starts_archived, :refuse_tui, :refuse_scratch) do
+    # @!attribute hold [Symbol] what the delivery holds of the session's
+    #   transition lock around its check and write (Hold.under, in the
+    #   seats: Dispatch.deliver / .wake, SessionManager.deliver_turn):
+    #   :shared (a transition holding it refuses the delivery, naming the
+    #   continue's new link when one is in flight, else busy) or :none (it
+    #   goes in as before, for +hold_reason+). Every row names it.
+    # @!attribute hold_reason [String, nil] why a :none row takes no hold
+    #   (nil for :shared)
+    WakePolicy = Data.define(:kind, :resolves, :starts, :unstops, :starts_archived, :refuse_tui, :refuse_scratch,
+                             :hold, :hold_reason) do
+      def initialize(hold:, hold_reason: nil, **) = super
+
+      # Whether the delivery takes the transition lock shared.
+      def shared? = hold == :shared
+
       # @return [WakePolicy]
       # @raise [ArgumentError] no such kind
       def self.for(kind) = WakePolicy::ROWS.fetch(kind) { raise ArgumentError, "no inbox kind #{kind.inspect}" }
@@ -154,24 +171,39 @@ module Samagotchi
     # and never un-archives a retired chain).
     WakePolicy::ROWS = {
       send: WakePolicy.new(kind: :send, resolves: :head, starts: true, unstops: true, starts_archived: true,
-                           refuse_tui: true, refuse_scratch: true),
+                           refuse_tui: true, refuse_scratch: true, hold: :shared),
+      # A note's moves are its own: one written before a continue's
+      # NoteMove.move moves, one after is adopted by the new link
+      # (NoteMove.adoption), a failed continue's go back (give_back), and the
+      # new link's boot writes its own (objectives) inside the continue's
+      # hold: a refusal would lose what those already carry.
       note: WakePolicy.new(kind: :note, resolves: :head, starts: false, unstops: false, starts_archived: false,
-                           refuse_tui: true, refuse_scratch: true),
+                           refuse_tui: true, refuse_scratch: true, hold: :none,
+                           hold_reason: "NoteMove moves, adopts and gives back a note written during a continue; " \
+                                        "the new link's boot writes its own inside the continue's hold"),
       push: WakePolicy.new(kind: :push, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
-                           refuse_tui: false, refuse_scratch: false),
+                           refuse_tui: false, refuse_scratch: false, hold: :shared),
       # A peer agent's message (chi peer say, PeerMailbox.post): a push's row.
       peer: WakePolicy.new(kind: :peer, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
-                           refuse_tui: false, refuse_scratch: false),
+                           refuse_tui: false, refuse_scratch: false, hold: :shared),
       ring: WakePolicy.new(kind: :ring, resolves: :reader, starts: true, unstops: false, starts_archived: false,
-                           refuse_tui: false, refuse_scratch: false),
+                           refuse_tui: false, refuse_scratch: false, hold: :none,
+                           hold_reason: "ChildReports rings once, no retry; a continue's ChildMove moves the rings " \
+                                        "(return_rings gives them back), and its undo wakes for them on its own token"),
       fresh_verdict: WakePolicy.new(kind: :fresh_verdict, resolves: :pinned, starts: false, unstops: false,
-                                    starts_archived: false, refuse_tui: false, refuse_scratch: false),
+                                    starts_archived: false, refuse_tui: false, refuse_scratch: false, hold: :none,
+                                    hold_reason: "VerifyFresh.forward writes once, no retry; the verdict is for " \
+                                                 "the card in the parent it names, continued or not, and starts " \
+                                                 "no worker"),
       # Not a delivery: a worker's own leave starting its successor for
       # what waits (input, rings) or a restart (WorkerBoot, after the
       # lock's release). A stop wins; an archived session's input still
       # starts it, as a send's would have.
       leave: WakePolicy.new(kind: :leave, resolves: :pinned, starts: true, unstops: false, starts_archived: true,
-                            refuse_tui: false, refuse_scratch: false),
+                            refuse_tui: false, refuse_scratch: false, hold: :none,
+                            hold_reason: "a respawn after the worker's own release spans two processes (outside " \
+                                         "the lock, D3); a refusal would drop a restart or queued input's start with " \
+                                         "no retry, and a continue stops the worker first (the stop wins)"),
       # A turn delivery's unattended senders (deliver_turn reads the row by
       # the sender, ClientId.wake_kind): they start an idle session as a send
       # does, but a stop and an archive are the owner's (the sender is
@@ -181,7 +213,7 @@ module Samagotchi
       # doesn't name.
       **%i[schedule plugin delegate participant agent automatic].to_h do |kind|
         [kind, WakePolicy.new(kind: kind, resolves: :pinned, starts: true, unstops: false, starts_archived: false,
-                              refuse_tui: true, refuse_scratch: true)]
+                              refuse_tui: true, refuse_scratch: true, hold: :shared)]
       end
     }.freeze
 
@@ -243,6 +275,38 @@ module Samagotchi
       end
     end
 
+    # What a delivery holds of its session's transition lock (its row's
+    # WakePolicy#hold), taken once in each seat (Dispatch.deliver / .wake,
+    # SessionManager.deliver_turn) around the check, the write and the
+    # start, so no transition (a continue) starts in between; never taken
+    # again inside it (a nested seat on this thread opens a second shared
+    # hold, which a shared one never conflicts with).
+    module Hold
+      module_function
+
+      # The block under +policy+'s hold of +id+, or, when a transition
+      # holds the lock now (not waited for), +refused+ called with who
+      # continues +id+ (the holding continue's new link, in flight, else a
+      # saved successor: SessionChain::Successor) or nil (busy: Busy's
+      # words). A :none row,
+      # or an id that is no session id (the caller's own refusal follows),
+      # is the block alone.
+      # @param refused [#call] (successor) the refusal's value
+      # @return the block's value, or +refused+'s
+      def under(policy, id, state_dir, refused:)
+        return yield unless policy.shared? && Session.valid_id?(id)
+
+        SessionTransition.shared(id, state_dir: state_dir) do |free|
+          next yield if free
+
+          # The holder's in-flight continue first (its new link may be
+          # saved already), then a saved one.
+          refused.call(SessionChain::Successor.in_flight(id, state_dir: state_dir) ||
+                       SessionChain::Successor.of(id, state_dir: state_dir, anchor: false))
+        end
+      end
+    end
+
     # SessionInbox.deliver and SessionInbox.wake.
     module Dispatch
       # What a start each kind makes is logged as (SessionManager.start_for_inbox).
@@ -251,10 +315,11 @@ module Samagotchi
       module_function
 
       # Deliver one +kind+ of thing to session +target+, in this order:
-      # resolve the link (Head.resolve), refuse (WakePolicy#refusal: before
-      # any write), write (the block: the kind's own writer, given the id
-      # it writes under), read the presence once, then decide and apply
-      # (#wake).
+      # resolve the link (Head.resolve), then under the row's transition
+      # hold (Hold.under: refused :continued or :busy while a transition
+      # holds it) refuse (WakePolicy#refusal: before any write), write (the
+      # block: the kind's own writer, given the id it writes under), read
+      # the presence once, then decide and apply (#wake).
       # @param wake [Boolean] the delivery may ask for a worker; the block's
       #   value says whether it does (truthy: asks)
       # @param pin [Boolean] write under +target+ itself, whatever the kind's
@@ -275,22 +340,35 @@ module Samagotchi
         resolved = Resolved.new(id: target, asked: target, via: :pinned) if pin
         resolved ||= Head.resolve(kind, target, state_dir: sd)
         at = policy.resolves == :reader ? resolved.asked : resolved.id
-        if (why = refusal(policy, at, sd, owner))
-          return Delivered.new(kind: kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
+        Hold.under(policy, at, sd, refused: ->(successor) { held(policy, resolved, successor) }) do
+          if (why = refusal(policy, at, sd, owner))
+            next Delivered.new(kind: kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
                                wake: why)
-        end
+          end
 
-        asks = yield(at)
-        apply(policy, resolved, sd, wake: wake && asks ? true : false, owner: owner, start: start)
+          asks = yield(at)
+          apply(policy, resolved, sd, wake: wake && asks ? true : false, owner: owner, start: start)
+        end
       end
 
       # The wake half of #deliver alone, for a delivery already on disk (a
-      # failed continue's previous link with rings that came meanwhile).
+      # failed continue's previous link with rings that came meanwhile),
+      # under the row's hold as #deliver's.
       # @return [Delivered]
       def wake(kind, target, state_dir: nil, owner: nil, start: nil)
         sd = state_dir || Session.default_state_dir
-        apply(WakePolicy.for(kind), Head.resolve(kind, target, state_dir: sd), sd, wake: true, owner: owner,
-                                                                                    start: start)
+        policy = WakePolicy.for(kind)
+        resolved = Head.resolve(kind, target, state_dir: sd)
+        Hold.under(policy, resolved.id, sd, refused: ->(successor) { held(policy, resolved, successor) }) do
+          apply(policy, resolved, sd, wake: true, owner: owner, start: start)
+        end
+      end
+
+      # A delivery a transition's hold refused, nothing written: :continued
+      # (+successor+ names the continue's new link) or :busy.
+      def held(policy, resolved, successor)
+        Delivered.new(kind: policy.kind, id: resolved.id, asked: resolved.asked, via: resolved.via, status: :refused,
+                      wake: successor ? :continued : :busy)
       end
 
       # Every kind reads the presence: a session being deleted refuses

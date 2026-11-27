@@ -100,7 +100,8 @@ module Samagotchi
       # @raise [Error] no such session, a one-shot owns it, it wasn't taken
       #   (a worker older than queueing refuses a queue; a stopped or
       #   archived session: session_stopped / session_archived; one being
-      #   deleted: session_deleting), or delivery is
+      #   deleted: session_deleting; one a transition holds: link_continued,
+      #   transition_busy), or delivery is
       #   :cut or unknown
       def send(id, text, delivery: nil)
         raise Error, "nothing to send" if text.to_s.strip.empty?

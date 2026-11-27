@@ -58,6 +58,21 @@ RSpec.describe Samagotchi::SessionChain::Successor do
     expect(described_class.in_flight(first.id, state_dir: state_dir)).to be_nil
   end
 
+  # S5: a crashed continue's intent read under another transition's hold.
+  it "names nobody for a stale intent under another transition's hold, its successor never saved nor held" do
+    first = link(archived: true)
+    successor = SecureRandom.uuid
+    folder = Samagotchi::Session.session_dir(first.id, state_dir: state_dir)
+    Samagotchi::ContinueIntent.write(File.join(folder, Samagotchi::ContinueIntent::FILE), successor_id: successor,
+                                                                                          previously_archived: [])
+
+    holding_transition(first.id, state_dir: state_dir) do
+      expect(Samagotchi::SessionTransition.held?(first.id, state_dir: state_dir)).to be(true)
+      expect(Samagotchi::ContinueIntent.in_flight(first.id, state_dir: state_dir)).to be_nil
+      expect(described_class.of(first.id, state_dir: state_dir, in_flight: true)).to be_nil
+    end
+  end
+
   it "prefers the saved successor over an intent still on disk" do
     first = link(archived: true)
     second = link(continues: first.id)

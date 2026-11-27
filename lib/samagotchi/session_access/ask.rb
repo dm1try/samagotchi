@@ -132,11 +132,17 @@ module Samagotchi
           start ||= @access.prepare_wait(at.id, session: session)
           more = { enqueued_id: enqueued_id, anchors: anchors }.compact
           result = @exchange.attempt(at, prompt, client_id: client_id, queue: queue, **more).result
-          if result.continued?
+          if result.continued? || result.busy?
             follow_until ||= [@clock.call + continuing_wait, ready_by].min
-            again = @exchange.relocate(at, follow_until, bounded: true)
+            again = @exchange.relocate(at, follow_until, bounded: true, busy: result.busy?)
             return Refused.new(kind: :canceled, session_id: at.id) if cancelled&.call
-            return Refused.new(kind: :continuing, session_id: at.id, message: result.refusal_text) unless again
+
+            unless again
+              # Still busy at the deadline: the busy refusal as it came.
+              return Refused.new(kind: :undelivered, session_id: at.id, result: result) if result.busy?
+
+              return Refused.new(kind: :continuing, session_id: at.id, message: result.refusal_text)
+            end
             return unsent(again, at.id) if again.is_a?(Exchange::Unsent)
 
             at = again.target

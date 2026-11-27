@@ -97,16 +97,16 @@ RSpec.describe "session lifecycle characterization matrix" do
     end
   end
 
-  def expected(op, state)
+  def expected(op, state, transitioning: false)
     key = { hub_status: :status, hub_bridge_up: :bridge_up, hub_live: :live }[op]
-    key ? findings::SHOWN.fetch(state).fetch(key) : Samagotchi::SessionLifecycle.allowed(op, state)
+    key ? findings::SHOWN.fetch(state).fetch(key) : Samagotchi::SessionLifecycle.allowed(op, state, transitioning: transitioning)
   end
 
   def mismatches
     matrix.flat_map do |result|
       row = result[:row]
       result[:cells].filter_map do |op, got|
-        want = expected(op, row.state)
+        want = expected(op, row.state, transitioning: row.transitioning)
         { op: op, row: row, got: got, want: want } unless got == want
       end
     end
@@ -124,12 +124,23 @@ RSpec.describe "session lifecycle characterization matrix" do
   it "reads every row's files as the state its facts derive, continue in flight as a fact" do
     wrong = matrix.reject do |result|
       row = result[:row]
-      result[:read].state == row.state && result[:read].continuing? == row.continuing
+      result[:read].state == row.state && result[:read].continuing? == row.continuing &&
+        result[:read].transitioning? == row.transitioning
     end
 
     expect(wrong.map { |result| "#{result[:row].name}: read #{result[:read].state}, facts #{result[:row].state}" })
       .to be_empty
     expect(matrix.size).to be >= 100
+  end
+
+  it "drives a held transition lock for real: every :shared delivery busy, every :none one its state's cell" do
+    held = matrix.select { |result| result[:row].transitioning }
+    expect(held.map { |result| result[:row].name }.size).to eq(LifecycleMatrix::HELD_ROWS.size)
+    shared = Samagotchi::SessionInbox::WakePolicy::ROWS.select { |_, policy| policy.shared? }.keys
+    held.each do |result|
+      expect(result[:cells].slice(*shared).values.uniq).to eq([:busy]), result[:row].name
+      expect(result[:cells][:note]).to eq(Samagotchi::SessionLifecycle.allowed(:note, result[:row].state))
+    end
   end
 
   it "reaches every state" do
