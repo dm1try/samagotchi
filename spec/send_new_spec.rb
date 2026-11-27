@@ -287,7 +287,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       following = links.first
 
       expect(run("--new", "--continues", previous.id, "-m", "again")).to eq(1)
-      expect(err.string).to include("chi send: refused: #{previous.id[0, 8]} is continued already, by #{following.id[0, 8]}")
+      expect(err.string).to include("chi send: refused: session #{previous.id[0, 8]} was continued as #{following.id}")
       expect(run("--new", "--continues", "feedbeef", "-m", "x")).to eq(1)
       expect(err.string).to include("chi send: no session feedbeef")
       expect(links.size).to eq(1)

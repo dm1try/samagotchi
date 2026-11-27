@@ -176,7 +176,7 @@ delegate refuses the archive, since `archivable!` walks the whole descendant tre
 resolving), `:open_children` and `:transition_busy` (another continue of the
 chain's end held its transition lock past the continue's 10 s on each of its tries).
 So is an archived target that a continue is still
-making the next link of (`being continued as 7b2d41aa; retry at the next tick`): a
+making the next link of (`session 3f9a1c2e is being continued as 7b2d41aa-…; retry at the next tick`): a
 person's `chi send --new --continues` or web `continue →` archives the link before
 its successor is saved, and a tick in that moment sees an archived end
 (`ContinueIntent.in_flight`: the intent written, its lock held). It is checked before

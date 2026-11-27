@@ -34,7 +34,9 @@ module Samagotchi
     # What #exclusive yields: the ids it holds and why.
     Token = Data.define(:ids, :kind)
 
-    # An exclusive hold not taken by its deadline. It owns its refusal text.
+    # An exclusive hold not taken by its deadline, or an arrival that met
+    # one it can't name the cause of. It owns its refusal text; a nil
+    # +session_id+ says "this session" (a peer's line, which carries no id).
     class Busy < StandardError
       WORDS = { continue: "being continued", delete: "being deleted", nil => "busy with another change" }.freeze
 
@@ -43,7 +45,8 @@ module Samagotchi
       def initialize(session_id, kind: nil)
         @session_id = session_id
         @kind = kind
-        super("session #{session_id.to_s[0, 8]} is #{WORDS.fetch(kind, WORDS[nil])}; try again in a moment")
+        subject = session_id ? "session #{session_id.to_s[0, 8]}" : "this session"
+        super("#{subject} is #{WORDS.fetch(kind, WORDS[nil])}; try again in a moment")
       end
     end
 
@@ -112,7 +115,11 @@ module Samagotchi
     # starts until the block returns; its argument is false when another
     # holds it exclusively now (not waited for: nothing is held then) or
     # +id+ isn't a session id, true when this thread holds it. The folder
-    # and lock file are created when missing.
+    # and lock file are created when missing. A caller that may not write
+    # the session folder (a peer's chi behind the mailbox door: the
+    # sessions folder read-only) holds an existing lock file opened
+    # read-only, and, with none there to open, holds nothing (true): no
+    # transition holds a lock file that isn't there.
     # @yieldparam held [Boolean]
     # @return the block's value
     def shared(id, state_dir:)
@@ -121,9 +128,11 @@ module Samagotchi
       path = lock_path(id, state_dir)
       return yield(true) if holds.key?(path)
 
-      FileUtils.mkdir_p(File.dirname(path))
-      File.open(path, File::RDWR | File::CREAT, 0o600) do |file|
+      file = open_shared(path) or return yield(true)
+      begin
         yield(file.flock(File::LOCK_SH | File::LOCK_NB) ? true : false)
+      ensure
+        file.close
       end
     end
 
@@ -174,6 +183,19 @@ module Samagotchi
 
     def lock_path(id, state_dir) = File.join(Session.session_dir(id, state_dir: state_dir), LOCK)
 
+    # #shared's descriptor: made when missing, else (no write access) the
+    # file opened read-only, or nil when it isn't there.
+    def open_shared(path)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.open(path, File::RDWR | File::CREAT, 0o600)
+    rescue Errno::EACCES, Errno::EPERM, Errno::EROFS
+      begin
+        File.open(path, File::RDONLY)
+      rescue Errno::ENOENT, Errno::EACCES
+        nil
+      end
+    end
+
     # This thread's holds.
     def holds
       Thread.current.thread_variable_get(REGISTRY) || Thread.current.thread_variable_set(REGISTRY, {})
@@ -197,6 +219,6 @@ module Samagotchi
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-    private_class_method :lock_path, :holds, :lock_until, :monotonic
+    private_class_method :lock_path, :open_shared, :holds, :lock_until, :monotonic
   end
 end

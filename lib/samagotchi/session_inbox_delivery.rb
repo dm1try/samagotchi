@@ -7,6 +7,7 @@ require_relative "client_id"
 require_relative "worker_presence"
 require_relative "continue_intent"
 require_relative "session_chain/links"
+require_relative "session_chain/successor"
 
 module Samagotchi
   # Loaded on first use: this autoload keeps SessionManager and its ~80
@@ -41,7 +42,7 @@ module Samagotchi
 
       # The refusal of a send whose link is still being continued once the
       # sender's wait is over.
-      def continuing_refusal = "being continued as #{id[0, 8]}; send again in a moment"
+      def continuing_refusal = "#{SessionChain::Continued.new(asked, id, in_flight: true).message}; send again in a moment"
     end
 
     # A delivery's outcome.
@@ -234,7 +235,7 @@ module Samagotchi
       # send to an archived link with a successor is refused, and chi send
       # resolves again).
       def continuing(resolved, state_dir)
-        successor = ContinueIntent.in_flight(resolved.id, state_dir: state_dir)
+        successor = SessionChain::Successor.in_flight(resolved.id, state_dir: state_dir)&.id
         return nil if successor.nil?
 
         via = Session.exist?(successor, state_dir: state_dir) ? :head : :continuing

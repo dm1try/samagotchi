@@ -207,6 +207,19 @@ RSpec.describe Samagotchi::SessionTransition do
       expect(shared(low) { |held| held }).to be(false)
       expect(shared(high) { |held| held }).to be(true)
     end
+
+    # A peer's chi behind the mailbox door sees the sessions folder read-only.
+    it "holds an existing lock read-only when the folder can't be written, and nothing when there is none" do
+      hold_elsewhere(low)
+      FileUtils.mkdir_p(dir_of(high))
+      FileUtils.chmod("a-w", [dir_of(low), lock_file(low), dir_of(high)])
+
+      expect(shared(low) { |held| held }).to be(false)
+      expect(shared(high) { |held| held }).to be(true)
+      expect(File.exist?(lock_file(high))).to be(false)
+    ensure
+      FileUtils.chmod("u+w", [dir_of(low), lock_file(low), dir_of(high)].select { |f| File.exist?(f) })
+    end
   end
 
   describe ".forget" do

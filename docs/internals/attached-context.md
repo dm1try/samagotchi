@@ -207,7 +207,9 @@ second note; `words` is the few words `chi send --new --continues` prints; `to_h
 [peers.md](peers.md), A continue.)
 
 The refusal side: a push into a session that has been continued is refused with the next link's id
-(`context_continued`, chi web 410, `chi context push` exit 1), from `SessionAccess` (`session_access.rb`) and chi web's push route (`web/session_access_routes.rb`).
+(`context_continued`, chi web 410, `chi context push` exit 1; `in_flight` when a continue holding its transition lock
+names it), or busy while another change holds that lock (423 `context_busy`); the check and the write run under a
+shared hold of it (`SessionAccess::Local#context_push`). From `SessionAccess` (`session_access.rb`) and chi web's push route (`web/session_access_routes.rb`).
 
 ## Gates and config
 

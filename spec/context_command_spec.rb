@@ -6,8 +6,11 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/context_command"
 require_relative "support/remote_backend"
+require_relative "support/transition_holder"
 
 RSpec.describe Samagotchi::ContextCommand do
+  include TransitionHolder
+
   let(:tmpdir) { Dir.mktmpdir("context-command") }
   let(:state_dir) { File.join(tmpdir, "state", "samagotchi", "sessions") }
   let(:repo) { File.join(tmpdir, "app").tap { |dir| FileUtils.mkdir_p(File.join(dir, ".git")) } }
@@ -229,10 +232,22 @@ RSpec.describe Samagotchi::ContextCommand do
         link.save(state_dir: state_dir)
 
         expect(run("push", "notes", "-m", "later", a.id)).to eq(1)
-        expect(err.string).to include("chi context push: #{a.id[0, 8]} was continued as #{link.id}: notes stays with the " \
+        expect(err.string).to include("chi context push: session #{a.id[0, 8]} was continued as #{link.id}: notes stays with the " \
                                       "session it was attached to; attach it to #{link.id} (or pair again with " \
                                       "#{link.id}) and push there")
         expect(own(a).snapshot("notes").text).to eq("late")
+      end
+
+      it "refuses a push while another change holds the session's transition lock, writing nothing" do
+        a = make
+        run("add", "notes", "--push", a.id)
+        reset_out
+
+        status = holding_transition(a.id, state_dir: state_dir) { run("push", "notes", "-m", "late", a.id) }
+
+        expect(status).to eq(1)
+        expect(err.string).to include("chi context push: session #{a.id[0, 8]} is busy with another change; try again in a moment")
+        expect(own(a).snapshot("notes").text).to be_nil
       end
 
       it "pushes into the project's source a session sees" do

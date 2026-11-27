@@ -101,7 +101,8 @@ module Samagotchi
         paired = session_access.peer_pair(id, name, address: address, from: from)
         return json_response(200, { status: "paired", link: paired.link.to_h }) if paired.status == :paired
 
-        json_response(409, { status: paired.status.to_s, next_id: paired.next_id, detail: paired.refusal }.compact)
+        json_response(409, { status: paired.status.to_s, next_id: paired.next_id, in_flight: (true if paired.in_flight),
+                             detail: paired.refusal }.compact)
       end
 
       # POST /api/sessions/:id/peers/:name/say {text, summary, wake, re,
@@ -120,7 +121,9 @@ module Samagotchi
 
         said = session_access.peer_say(id, name, text: body["text"], summary: string_or_nil(body["summary"]),
                                                  wake: body["wake"] == true, re: string_or_nil(body["re"]), wait: wait)
-        json_response(said.received? ? 200 : 409, said.to_h.merge("line" => said.line(name)))
+        line = said.line(name)
+        # An older chi --remote knows no busy status: it prints the detail.
+        json_response(said.received? ? 200 : 409, said.to_h.merge("line" => line, **(said.status == :busy ? { "detail" => line } : {})))
       rescue PeerMailbox::Invalid => e
         error_response(400, "invalid_text", e.message)
       end

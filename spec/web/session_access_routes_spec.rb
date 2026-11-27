@@ -14,6 +14,7 @@ require "samagotchi/archive_store"
 require "samagotchi/worker_sidecar"
 require "socket"
 require_relative "../support/worker_links"
+require_relative "../support/transition_holder"
 
 # chi web's routes for chi's session commands run against another machine
 # (Web::SessionAccessRoutes, the remote-sessions plan's P2): resolve, the
@@ -21,6 +22,7 @@ require_relative "../support/worker_links"
 # the create, turn, answer, delete and context changes they need.
 RSpec.describe Samagotchi::Web::App, "session access routes" do
   include WorkerLinks
+  include TransitionHolder
 
   around do |example|
     Dir.mktmpdir("web-access") do |tmp|
@@ -410,6 +412,18 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(call("#{path}/notes/push", method: "POST", body: { text: "late" }))
         .to eq([410, { "error" => "context_continued", "next_id" => link.id,
                        "detail" => Samagotchi::SessionAccess::ContextPush.continued_message("notes", session.id, link.id) }])
+      expect(location.snapshot("notes").text).to be_nil
+    end
+
+    it "answers 423 context_busy for a push while another change holds the session's transition lock" do
+      call(path, method: "POST", body: { name: "notes", push: true })
+
+      answer = holding_transition(session.id, state_dir: state_dir) do
+        call("#{path}/notes/push", method: "POST", body: { text: "late" })
+      end
+
+      expect(answer).to eq([423, { "error" => "context_busy",
+                                   "detail" => "session #{session.id[0, 8]} is busy with another change; try again in a moment" }])
       expect(location.snapshot("notes").text).to be_nil
     end
 

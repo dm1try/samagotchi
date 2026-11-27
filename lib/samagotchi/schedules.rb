@@ -18,6 +18,7 @@ require_relative "delivery"
 require_relative "log"
 require_relative "session"
 require_relative "session_chain"
+require_relative "session_chain/successor"
 require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "session_row"
@@ -929,8 +930,8 @@ module Samagotchi
     # listing doesn't have yet; the next tick's walk reaches it. Else nil. A
     # stale intent (no continue holds the lock) is nil: archived it stays.
     def continuing_reason(link)
-      successor = ContinueIntent.in_flight(link, state_dir: @state_dir)
-      successor && "being continued as #{successor[0, 8]}; retry at the next tick"
+      successor = SessionChain::Successor.in_flight(link, state_dir: @state_dir)
+      successor && "#{SessionChain::Continued.for(link, successor).message}; retry at the next tick"
     end
 
     # Which chain an entry belongs to, for the one-firing-per-chain-per-tick

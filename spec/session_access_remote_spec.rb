@@ -170,6 +170,20 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /answered 410 gone: other/)
     end
 
+    it "maps a push's in-flight 410 and a 423 context_busy (another 423 is a refusal)" do
+      fetched = Samagotchi::ContextSources::Fetched.new(text: "x", summary: nil, wake: false, hint: nil)
+      access, = scripted([410, { error: "context_continued", next_id: "n-1", in_flight: true, detail: "…" }])
+      expect(access.context_push(target, "notes", fetched))
+        .to eq(Samagotchi::SessionAccess::ContextPush.new(status: :continued, next_id: "n-1", in_flight: true))
+
+      access, = scripted([423, { error: "context_busy", detail: "session s-1 is busy" }])
+      expect(access.context_push(target, "notes", fetched)).to eq(Samagotchi::SessionAccess::ContextPush.new(status: :busy))
+
+      access, = scripted([423, { error: "locked", detail: "other" }])
+      expect { access.context_push(target, "notes", fetched) }
+        .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /answered 423 locked: other/)
+    end
+
     it "matches no_provider by code" do
       url = "https://nope.example/1"
       expected = "no installed bundle on studio resolves #{url} (chi bundle install github-pr there for GitHub PRs)"
@@ -897,6 +911,20 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to eq("this session was continued as n-1: say it there")
       access, = scripted([404, { error: "not_found", detail: "no session s-1" }])
       expect(access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil).status).to eq(:gone)
+    end
+
+    it "reads an in-flight continued say and pair, and a busy one" do
+      access, = scripted([409, { status: "continued", next_id: "n-1", in_flight: true }])
+      expect(access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil).line("claude"))
+        .to eq("this session is being continued as n-1: say it there in a moment")
+      access, = scripted([409, { status: "busy", detail: "this session is busy with another change; try again in a moment" }])
+      expect(access.peer_say("s-1", "claude", text: "hi", summary: nil, wake: true, re: nil).status).to eq(:busy)
+
+      access, = scripted([409, { status: "continued", next_id: "n-1", in_flight: true }])
+      expect(access.peer_pair("s-1", "claude", address: nil, from: nil))
+        .to have_attributes(status: :continued, next_id: "n-1", in_flight: true)
+      access, = scripted([409, { status: "busy", detail: "…" }])
+      expect(access.peer_pair("s-1", "claude", address: nil, from: nil).status).to eq(:busy)
     end
 
     it "pairs, refuses an old worker, unpairs and lists" do

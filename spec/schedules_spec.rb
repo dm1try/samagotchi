@@ -2001,7 +2001,7 @@ RSpec.describe Samagotchi::Schedules do
 
           outcome = schedules.tick(now: Time.now + 60).outcomes.first
 
-          expect([outcome.status, outcome.detail]).to eq(["skipped", "being continued as 7b2d41aa; retry at the next tick"])
+          expect([outcome.status, outcome.detail]).to eq(["skipped", "session #{anchor[0, 8]} is being continued as #{successor}; retry at the next tick"])
           expect(schedules.lookup(entry.id)).to have_attributes(failures: 0, skips: 1, head: anchor, next_due: entry.next_due)
           expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)).to eq([anchor])
           expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
@@ -2064,7 +2064,7 @@ RSpec.describe Samagotchi::Schedules do
 
         outcome = schedules.send(:fire_same, entry, links)
 
-        expect([outcome.status, outcome.detail]).to eq(["skipped", "being continued as 7b2d41aa; retry at the next tick"])
+        expect([outcome.status, outcome.detail]).to eq(["skipped", "session #{anchor[0, 8]} is being continued as #{successor}; retry at the next tick"])
         expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
       end
     end

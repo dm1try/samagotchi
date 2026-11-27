@@ -1273,7 +1273,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
         expect(e).to have_attributes(reason: :continued, ids: [link.id])
-        expect(e.message).to eq("#{previous.id[0, 8]} is continued already, by #{link.id[0, 8]}; " \
+        expect(e.message).to eq("session #{previous.id[0, 8]} was continued as #{link.id}; " \
                                 "continue that one (or last:#{previous.id[0, 8]})")
       }
       expect(Process).to have_received(:spawn).once
@@ -1293,7 +1293,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
         expect { described_class.run(chain.anchor, state_dir: dir, recap_wait: 0) }
           .to raise_error(Samagotchi::SessionContinue::Refused) { |e|
             expect(e).to have_attributes(reason: :continued, ids: [chain.head])
-            expect(e.message).to eq("#{short} is continued already, by #{chain.head[0, 8]}; continue that one (or last:#{short})")
+            expect(e.message).to eq("session #{short} was continued as #{chain.head}; continue that one (or last:#{short})")
           }
         expect(Process).not_to have_received(:spawn)
         expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:continues)).not_to include(chain.anchor)
@@ -1539,8 +1539,60 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(refused.status).to eq(:refused)
       expect(refused.ack).to include("error" => Samagotchi::SessionManager::DeliverResult::CONTINUED,
                                      "session_id" => previous.id, "successor_id" => link.id)
-      expect(refused.ack["detail"]).to eq("being continued as #{link.id[0, 8]}; send again in a moment")
+      expect(refused.ack["detail"]).to eq("session #{previous.id[0, 8]} is being continued as #{link.id}; send again in a moment")
       expect(Samagotchi::SessionInbox.find_new_input_files(dir_of(previous.id))).to eq([])
+    end
+
+    # N1: a peer's say made while the continue holds the lock (its carry
+    # has read the old mailbox) is refused naming the new link; the old
+    # mailbox gets nothing nobody would read.
+    it "refuses a peer say during the transition, naming the new link, the old mailbox untouched" do
+      previous = make
+      Samagotchi::PeerMailbox.pair(previous.id, "claude", address: nil, from: "spec", state_dir: tmpdir)
+      before = Samagotchi::PeerMailbox.serials(previous.id, "claude", state_dir: tmpdir)
+      said = nil
+      # Archived, the new link not saved yet: no link names it continued,
+      # only the held lock and the intent do (the window a say got lost in).
+      allow(manager).to receive(:archive_session).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap do
+          thread = Thread.new do
+            Samagotchi::SessionAccess::Local.new(state_dir: tmpdir)
+                                            .peer_say(previous.id, "claude", text: "late answer", summary: nil, wake: false, re: nil)
+          end
+          thread.report_on_exception = false
+          said = thread.value
+        end
+      end
+
+      link = continue(previous.id)
+
+      expect(said).to have_attributes(status: :continued, next_id: link.id, in_flight: true)
+      expect(Samagotchi::PeerMailbox.serials(previous.id, "claude", state_dir: tmpdir)).to eq(before)
+    end
+
+    # The new link's lock is the continue's too until it ends: a pair with
+    # the new link before then (a peer told of the move at once) is busy,
+    # nothing written; the worker's spawn is the continue's last step, so
+    # the hold ends right after it.
+    it "answers a peer pair with the new link busy until the continue ends, writing no pairing" do
+      previous = make
+      paired = nil
+      allow(Process).to receive(:spawn) do
+        link_id = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).find { |id| id != previous.id }
+        thread = Thread.new do
+          Samagotchi::SessionAccess::Local.new(state_dir: tmpdir).peer_pair(link_id, "claude", address: nil, from: "spec")
+        end
+        thread.report_on_exception = false
+        paired = [link_id, thread.value]
+        12_345
+      end
+
+      link = continue(previous.id)
+
+      expect(paired).to eq([link.id, Samagotchi::PeerPaired.new(status: :busy)])
+      expect(Samagotchi::PeerMailbox.link(link.id, "claude", state_dir: tmpdir)).to be_nil
+      expect(Samagotchi::SessionAccess::Local.new(state_dir: tmpdir).peer_pair(link.id, "claude", address: nil, from: "spec").status)
+        .to eq(:paired)
     end
 
     it "refuses busy, starting nothing, when another holds the lock past the wait, and leaves no folder behind" do

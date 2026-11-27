@@ -789,7 +789,7 @@ RSpec.describe Samagotchi::SendCommand do
           end
 
           expect(run("-m", "too soon", old.id)).to eq(1)
-          expect(out.string).to eq("#{short(old)}  refused: being continued; send again in a moment\n")
+          expect(out.string).to eq("#{short(old)}  refused: session #{short(old)} is busy with another change; try again in a moment\n")
           expect(inputs_of(old)).to be_empty
           expect(archived?(old)).to be(true)
         end
@@ -973,9 +973,9 @@ RSpec.describe Samagotchi::SendCommand do
           continuing(old)
 
           expect(run("--wait", "--format", "json", "-m", "too soon", old.id)).to eq(1)
-          expect(err.string).to eq("#{short(old)}  refused: being continued as 7b2d41aa; send again in a moment\n")
+          expect(err.string).to eq("#{short(old)}  refused: session #{short(old)} is being continued as #{successor}; send again in a moment\n")
           expect(JSON.parse(out.string)).to eq("status" => "error", "session_id" => nil, "asked" => old.id,
-                                               "detail" => "#{short(old)}  refused: being continued as 7b2d41aa; send again in a moment")
+                                               "detail" => "#{short(old)}  refused: session #{short(old)} is being continued as #{successor}; send again in a moment")
         end
 
         it "refuses after the wait, nothing written, the old link still archived" do
@@ -985,7 +985,7 @@ RSpec.describe Samagotchi::SendCommand do
           continuing(old)
 
           expect(run("-m", "too soon", old.id)).to eq(1)
-          expect(out.string).to eq("#{short(old)}  refused: being continued as 7b2d41aa; send again in a moment\n")
+          expect(out.string).to eq("#{short(old)}  refused: session #{short(old)} is being continued as #{successor}; send again in a moment\n")
           expect(inputs_of(old)).to be_empty
           expect(archived?(old)).to be(true)
         end

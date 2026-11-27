@@ -514,8 +514,11 @@ module Samagotchi
         when :missing then error_response(404, "context_missing", "no source #{name[0, 40]}")
         when :not_push then error_response(409, "not_push", SessionAccess::ContextPush.not_push_message(name))
         when :continued
-          json_response(410, { error: "context_continued", next_id: pushed.next_id,
-                               detail: SessionAccess::ContextPush.continued_message(name, id, pushed.next_id) })
+          json_response(410, { error: "context_continued", next_id: pushed.next_id, in_flight: (true if pushed.in_flight),
+                               detail: SessionAccess::ContextPush.continued_message(name, id, pushed.next_id,
+                                                                                    in_flight: pushed.in_flight) }.compact)
+        # 423, not 409: an older chi --remote reads any 409 as not_push.
+        when :busy then error_response(423, "context_busy", SessionAccess::ContextPush.busy_message(id))
         else json_response(200, { status: "pushed", name: name, before: pushed.before, revision: pushed.revision,
                                   changed: pushed.before != pushed.revision }.merge(pushed.wake ? { wake: pushed.wake } : {}))
         end

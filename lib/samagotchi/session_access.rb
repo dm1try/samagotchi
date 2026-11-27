@@ -269,13 +269,15 @@ module Samagotchi
 
     # chi context push's outcome: :pushed (+before+ the revision it had,
     # +revision+ the new one), :missing (no such source), :not_push (a
-    # command source, whose text is its command's) or :continued (the
-    # session was continued, as +next_id+: nothing was written). +wake+:
+    # command source, whose text is its command's), :continued (the
+    # session was continued, as +next_id+, or is being continued, +in_flight+:
+    # nothing was written) or :busy (another change of the session holds
+    # its transition lock: nothing was written). +wake+:
     # what a push that asked for a wake did (SessionInbox.deliver :push:
     # :woken, :live, :stopped, :starting, :archived, :scratch, :owned,
     # :gone), nil when it asked none (or an older chi web's answer has none).
-    ContextPush = Data.define(:status, :before, :revision, :next_id, :wake) do
-      def initialize(status:, before: nil, revision: nil, next_id: nil, wake: nil) = super
+    ContextPush = Data.define(:status, :before, :revision, :next_id, :wake, :in_flight) do
+      def initialize(status:, before: nil, revision: nil, next_id: nil, wake: nil, in_flight: false) = super
 
       # What chi context push adds to its line for the wake, else nil.
       def wake_line = ContextPush::WAKE_LINES[wake]
@@ -289,9 +291,17 @@ module Samagotchi
       # writer holds the old id, and nothing reads a continued session.
       # Generic (the CLI and chi web load no plugins): a peer's skill owns
       # its re-pair.
-      def self.continued_message(name, id, next_id)
-        "#{id.to_s[0, 8]} was continued as #{next_id}: #{name} stays with the session it was attached to; " \
-          "attach it to #{next_id} (or pair again with #{next_id}) and push there"
+      def self.continued_message(name, id, next_id, in_flight: false)
+        require_relative "session_chain/successor"
+        "#{SessionChain::Continued.new(id, next_id, in_flight: in_flight).message}: #{name} stays with the session it " \
+          "was attached to; attach it to #{next_id} (or pair again with #{next_id}) and push there" \
+          "#{" in a moment" if in_flight}"
+      end
+
+      # Why a push into session +id+ was refused as :busy.
+      def self.busy_message(id)
+        require_relative "session_transition"
+        SessionTransition::Busy.new(id).message
       end
     end
 

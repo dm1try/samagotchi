@@ -108,7 +108,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
 
     expect(status).to eq(409)
     expect(body).to include("error" => "continued", "next_id" => first["id"])
-    expect(body["detail"]).to include("continued already, by #{first["id"][0, 8]}")
+    expect(body["detail"]).to include("was continued as #{first["id"]}")
   end
 
   it "refuses dir, llm_context or thinking beside continues, a continues that is no id, and an unknown session" do

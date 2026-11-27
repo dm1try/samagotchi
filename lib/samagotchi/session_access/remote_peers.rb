@@ -24,8 +24,8 @@ module Samagotchi
           link = PeerMailbox::PeerLink.from_h(reply.json["link"]) or raise RemoteFailed, "#{@entry.label}: no link in its answer"
           PeerPaired.new(status: :paired, link: link)
         when 409
-          status = %w[continued old_worker].find { |known| known == reply.json["status"] } or raise_refusal(reply)
-          PeerPaired.new(status: status.to_sym, next_id: reply.json["next_id"]&.to_s)
+          status = %w[continued busy old_worker].find { |known| known == reply.json["status"] } or raise_refusal(reply)
+          PeerPaired.new(status: status.to_sym, next_id: reply.json["next_id"]&.to_s, in_flight: reply.json["in_flight"] == true)
         else raise_refusal(reply)
         end
       end
