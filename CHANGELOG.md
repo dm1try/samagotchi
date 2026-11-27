@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi send --new --continues last:<id>` (or a chain schedule's firing) racing another
+  continue of the same chain no longer fails with "was continued as …"; it follows to the new link.
+
 ## [0.191.0] - 2026-11-27
 
 ### Changed
