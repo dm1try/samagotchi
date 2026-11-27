@@ -56,7 +56,9 @@ lost: it is a note, and the user's next message lets chi read it. The skills say
 `chi send` past it.
 
 A say is refused, with nothing written, for: no such session; a session being deleted; a continued one (`this
-session was continued as <id>: say it there`); not paired (`not paired: run the pair script`); an older worker
+session was continued as <id>: say it there`); one being continued right now (`this session is being continued as
+<id>: say it there in a moment`: its new link is not saved yet); one busy with another change (`this session is busy
+with another change; try again in a moment`); not paired (`not paired: run the pair script`); an older worker
 (`restart the session`); 200 messages chi hasn't read yet.
 
 Through `--remote NAME` (or `CHI_REMOTE`) the remote's chi web does the say and the wait, and returns the line.

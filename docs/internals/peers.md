@@ -56,14 +56,26 @@ which posts `…/peers/NAME/say` with its `wait`: chi web waits, and its read ti
 1. Refused before anything is written: no session, continued (with the next id), no `link.json`, a live worker
    without the `peer_mail` Bridge feature (`WorkerLink.live_features`, read only), `UNTAKEN_MAX` (200) untaken
    messages or noted receipts.
-2. `SessionInbox.deliver(:peer)` (`WakePolicy::ROWS[:peer]`, the push row; `START_EVENTS[:peer] =
+2. Under a shared hold of the session's transition lock (`SessionTransition.shared`, `Local#moved_on`), the
+   continued check again, then the delivery (step 3): a continue holding the lock (from after its recap through
+   `PeerContinue`'s carry) refuses the say `:continued` naming its new link (`SessionChain::Successor.of` with
+   `in_flight: true`; the line `this session is being continued as <id>: say it there in a moment`, `in_flight`
+   on the wire), or `:busy` (`SessionTransition::Busy`'s words) when the holder names none. So a say never lands
+   in a mailbox the carry already read (N1). The feature probe before and the receipt wait after stay outside the
+   hold; the delivery's worker start (`resume_session`, a spawn) is inside it.
+3. `SessionInbox.deliver(:peer)` (`WakePolicy::ROWS[:peer]`, the push row; `START_EVENTS[:peer] =
    :peer_woke_session`): a session gone or being deleted refuses before its block writes. Inside the block:
    the lock, the serial, the write, the trim. The block's "asks for a worker" is the message's own `wake`: no
    `context.wake`, no 10-minute window.
-3. The line (`PeerSay`): what the say saw at once (a running turn, a stopped or archived session, a one-turn run,
+4. The line (`PeerSay`): what the say saw at once (a running turn, a stopped or archived session, a one-turn run,
    a failed start), else a receipt read every 250 ms within the wait, then the peer's other held receipts.
 
-`chi peer pair` makes the old-worker and continued checks too, with the same sentences (`PeerPaired`).
+`chi peer pair` makes the old-worker and continued checks too, with the same sentences (`PeerPaired`), and writes
+`link.json` under the same shared hold (`:continued` in flight, `:busy`). A context push into the session's own
+source does too (`Local#context_push`: 410 `context_continued` with `in_flight`, 423 `context_busy`). The continued
+words are `SessionChain::Continued`'s, one wording for every refusal of a continued link ("this session" in a
+peer's line: the installed skills look for `this session was continued as <id>`). Wire: an older chi `--remote`
+reads a busy say or pair as a refusal with its detail, a busy push as `answered 423 context_busy: …`.
 
 ## The worker's mail path
 

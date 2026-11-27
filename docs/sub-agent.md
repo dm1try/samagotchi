@@ -297,7 +297,7 @@ answers from any local process.
   lines name both, `3f9a1c2e → 7b2d41aa (continued)`. `chi answer` and `--wait --turn T` take that `session_id` (a `--turn` of the
   old link, from before the continue, waits on the old link). A send while the
   continue itself runs waits a moment for the new link, else exits 1 with
-  `being continued as <id>; send again in a moment`.
+  `session <old> is being continued as <id>; send again in a moment`.
 - An answer to a question that is no longer open (you answered it in the web
   first) isn't sent; `chi answer` says so and waits for what comes next. Its
   JSON then has `"answered_here": false` (absent when the answer went in), so

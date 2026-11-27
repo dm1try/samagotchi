@@ -331,7 +331,7 @@ link's id (`chi context push` exits 1; chi web answers 410
 `context_continued`):
 
 ```
-chi context push: 3f2a9c1e was continued as 7b1d…: notes stays with the session it was attached to; attach it to 7b1d… (or pair again with 7b1d…) and push there
+chi context push: session 3f2a9c1e was continued as 7b1d…: notes stays with the session it was attached to; attach it to 7b1d… (or pair again with 7b1d…) and push there
 ```
 
 An archived session that nobody continued takes pushes as before; a schedule's anchor whose successor a prune deleted counts as continued by the schedule's head ([sessions.md](sessions.md), *Session chains* → Which link).
