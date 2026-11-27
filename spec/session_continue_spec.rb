@@ -1543,6 +1543,33 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(Samagotchi::SessionInbox.find_new_input_files(dir_of(previous.id))).to eq([])
     end
 
+    # N1: a peer's say made while the continue holds the lock (its carry
+    # has read the old mailbox) is refused naming the new link; the old
+    # mailbox gets nothing nobody would read.
+    it "refuses a peer say during the transition, naming the new link, the old mailbox untouched" do
+      previous = make
+      Samagotchi::PeerMailbox.pair(previous.id, "claude", address: nil, from: "spec", state_dir: tmpdir)
+      before = Samagotchi::PeerMailbox.serials(previous.id, "claude", state_dir: tmpdir)
+      said = nil
+      # Archived, the new link not saved yet: no link names it continued,
+      # only the held lock and the intent do (the window a say got lost in).
+      allow(manager).to receive(:archive_session).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap do
+          thread = Thread.new do
+            Samagotchi::SessionAccess::Local.new(state_dir: tmpdir)
+                                            .peer_say(previous.id, "claude", text: "late answer", summary: nil, wake: false, re: nil)
+          end
+          thread.report_on_exception = false
+          said = thread.value
+        end
+      end
+
+      link = continue(previous.id)
+
+      expect(said).to have_attributes(status: :continued, next_id: link.id, in_flight: true)
+      expect(Samagotchi::PeerMailbox.serials(previous.id, "claude", state_dir: tmpdir)).to eq(before)
+    end
+
     it "refuses busy, starting nothing, when another holds the lock past the wait, and leaves no folder behind" do
       previous = make
       raw_lock(previous.id)

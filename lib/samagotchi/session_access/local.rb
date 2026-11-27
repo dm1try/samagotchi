@@ -22,6 +22,7 @@ require_relative "../peer_say"
 require_relative "../archive_store"
 require_relative "../session_chain"
 require_relative "../session_chain/successor"
+require_relative "../session_transition"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
@@ -373,15 +374,37 @@ module Samagotchi
       # New text for the target's --push source +name+. Refused, nothing
       # written, when the session was continued (its writer holds a stale
       # id): a source of its own, or none of the name. A project's source
-      # takes it (the next link sees it too).
+      # takes it (the next link sees it too). The session's own source is
+      # checked again and written under a shared hold of its transition lock
+      # (SessionTransition.shared), so a continue (which moves its sources)
+      # can't start in between; one holding the lock now refuses it, naming
+      # its new link (:continued, in flight) or :busy.
       # @param fetched [ContextSources::Fetched]
       # @return [ContextPush]
       def context_push(target, name, fetched)
         attached = context_attached(target, name)
-        if !target.project? && (attached.nil? || attached.location.session?) &&
-           (next_id = continued_as(target.session_id))
-          return ContextPush.new(status: :continued, next_id: next_id)
+        sid = target.session_id
+        own = !target.project? && (attached.nil? || attached.location.session?)
+        return context_push_to(target, name, fetched, attached) unless own
+
+        if (successor = continued_as(sid))
+          return ContextPush.new(status: :continued, next_id: successor.id, in_flight: successor.in_flight?)
         end
+        # Its file is gone: no hold (it would make the folder again).
+        return context_push_to(target, name, fetched, attached) unless Session.exist?(sid, **dir)
+
+        SessionTransition.shared(sid, state_dir: state_dir!) do |free|
+          case (moved = moved_on(sid, free))
+          when :busy then next ContextPush.new(status: :busy)
+          when SessionChain::Successor
+            next ContextPush.new(status: :continued, next_id: moved.id, in_flight: moved.in_flight?)
+          end
+
+          context_push_to(target, name, fetched, attached)
+        end
+      end
+
+      private def context_push_to(target, name, fetched, attached)
         return ContextPush.new(status: :missing) unless attached
         return ContextPush.new(status: :not_push) unless attached.source.push?
 
@@ -542,27 +565,37 @@ module Samagotchi
       # Pairs +peer+ with session +id+ (link.json). Refused, nothing
       # written, when the session was continued or a live worker of it
       # doesn't take the peer mail (a pairing to it would look done and
-      # not work).
+      # not work). The pairing is written under a shared hold of the
+      # session's transition lock, checked again there (#moved_on): a
+      # continue holding it refuses the pair, naming its new link.
       # @return [PeerPaired]
       # @raise [PeerMailbox::Invalid] a bad name
       # @raise [Session::NotFound] no such session
       def peer_pair(id, peer, address:, from:)
         PeerMailbox.check_name!(peer)
         raise Session::NotFound, id unless Session.exist?(id, **dir)
-        if (next_id = continued_as(id))
-          return PeerPaired.new(status: :continued, next_id: next_id)
+        if (successor = continued_as(id))
+          return PeerPaired.new(status: :continued, next_id: successor.id, in_flight: successor.in_flight?)
         end
         return PeerPaired.new(status: :old_worker) if old_peer_worker?(id)
 
-        link = PeerMailbox.pair(id, peer, address: address, from: from, state_dir: state_dir!)
-        location = ContextSources.session_location(id, state_dir: state_dir!)
-        # These are exactly the bundles' LEGACY_INBOX and LEGACY_OUTBOX names.
-        ["#{peer}-inbox", "#{peer}-outbox"].each do |name|
-          location.remove(name)
-        rescue SystemCallError
-          nil
+        SessionTransition.shared(id, state_dir: state_dir!) do |free|
+          case (moved = moved_on(id, free))
+          when :busy then next PeerPaired.new(status: :busy)
+          when SessionChain::Successor
+            next PeerPaired.new(status: :continued, next_id: moved.id, in_flight: moved.in_flight?)
+          end
+
+          link = PeerMailbox.pair(id, peer, address: address, from: from, state_dir: state_dir!)
+          location = ContextSources.session_location(id, state_dir: state_dir!)
+          # These are exactly the bundles' LEGACY_INBOX and LEGACY_OUTBOX names.
+          ["#{peer}-inbox", "#{peer}-outbox"].each do |name|
+            location.remove(name)
+          rescue SystemCallError
+            nil
+          end
+          PeerPaired.new(status: :paired, link: link)
         end
-        PeerPaired.new(status: :paired, link: link)
       end
 
       # Ends the pairing (link.json); the messages stay.
@@ -575,8 +608,11 @@ module Samagotchi
       # A message from +peer+ into session +id+, as a delivery
       # (SessionInbox.deliver :peer): refused before anything is written
       # for a gone session, a continued one, no pairing, a live worker
-      # without the peer mail, UNTAKEN_MAX unread; else written inside the
-      # delivery's block (a session being deleted refuses first), which
+      # without the peer mail, UNTAKEN_MAX unread; else, under a shared hold
+      # of the session's transition lock (checked again there, #moved_on: a
+      # continue holding it refuses the say, naming its new link, so no
+      # message lands in a mailbox its carry already read), written inside
+      # the delivery's block (a session being deleted refuses first), which
       # asks for a worker by the message's own +wake+ alone (no
       # context.wake, no window). Then what chi did, at once when it can't
       # answer yet, else the receipt within +wait+ seconds (a look every
@@ -588,8 +624,8 @@ module Samagotchi
         PeerMailbox.check_name!(peer)
         PeerMailbox.checked_text(text)
         return PeerSay.new(status: :gone) unless Session.exist?(id, **dir)
-        if (next_id = continued_as(id))
-          return PeerSay.new(status: :continued, next_id: next_id)
+        if (successor = continued_as(id))
+          return PeerSay.new(status: :continued, next_id: successor.id, in_flight: successor.in_flight?)
         end
         return PeerSay.new(status: :not_paired) unless PeerMailbox.link(id, peer, state_dir: state_dir!)
         return PeerSay.new(status: :old_worker) if old_peer_worker?(id)
@@ -597,10 +633,18 @@ module Samagotchi
         message = nil
         start_failed = false
         delivered = begin
-          SessionInbox.deliver(:peer, id, state_dir: state_dir!) do
-            message = PeerMailbox.post(id, peer, text: text, summary: summary, wake: wake, re: re, state_dir: state_dir!,
-                                                 taken: PeerReceipts.taken(id, peer, state_dir: state_dir!))
-            message.wake
+          SessionTransition.shared(id, state_dir: state_dir!) do |free|
+            case (moved = moved_on(id, free))
+            when :busy then return PeerSay.new(status: :busy)
+            when SessionChain::Successor
+              return PeerSay.new(status: :continued, next_id: moved.id, in_flight: moved.in_flight?)
+            end
+
+            SessionInbox.deliver(:peer, id, state_dir: state_dir!) do
+              message = PeerMailbox.post(id, peer, text: text, summary: summary, wake: wake, re: re, state_dir: state_dir!,
+                                                   taken: PeerReceipts.taken(id, peer, state_dir: state_dir!))
+              message.wake
+            end
           end
         rescue PeerMailbox::Full
           return PeerSay.new(status: :full)
@@ -756,10 +800,23 @@ module Samagotchi
       # one, or for a schedule's pruned anchor the schedule's head), or nil.
       # The archive check first: a continued link is always archived, and the
       # walk loads every session.
+      # @return [SessionChain::Successor, nil]
       def continued_as(id)
         return nil unless ArchiveStore.archived?(session_dir(id))
 
-        SessionChain::Successor.of(id, state_dir: state_dir!)&.id
+        SessionChain::Successor.of(id, state_dir: state_dir!)
+      end
+
+      # Inside SessionTransition.shared(+id+) (+free+: the shared hold was
+      # taken): why an arrival can't be written now — a Successor (a saved
+      # one; or, when a continue holds the lock, the one its intent names)
+      # or :busy (held, nobody named: another change, or a continue before
+      # its intent or after its undo). nil: it goes in.
+      # @return [SessionChain::Successor, :busy, nil]
+      def moved_on(id, free)
+        return continued_as(id) if free
+
+        SessionChain::Successor.of(id, state_dir: state_dir!, in_flight: true) || :busy
       end
 
       def state_dir! = @state_dir || Session.default_state_dir

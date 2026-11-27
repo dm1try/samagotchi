@@ -10,11 +10,14 @@ require "samagotchi/session_manager"
 require "samagotchi/worker_link"
 require "samagotchi/archive_store"
 require "samagotchi/peer_mailbox"
+require_relative "../support/transition_holder"
 
 # chi web's …/peers routes: the peers model from the two stores (no
 # worker), a message's text, Unpair, and the remote's pair and say (the
 # say's wait on the server). All the owner's.
 RSpec.describe Samagotchi::Web::App, "peers" do
+  include TransitionHolder
+
   let(:tmpdir) { Dir.mktmpdir("web-peers") }
   let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions").tap { |d| FileUtils.mkdir_p(d) } }
   let(:session) do
@@ -177,6 +180,19 @@ RSpec.describe Samagotchi::Web::App, "peers" do
         .to match([409, include("status" => "not_paired", "line" => "not paired: run the pair script")])
       expect(call("#{base}/claude/say", method: "POST", body: { text: "", wake: true }).first).to eq(400)
       expect(call("#{base}/claude/say", method: "POST", body: { text: "hi", wake: true, wait: 99 }).first).to eq(400)
+    end
+
+    it "refuses a say and a pair while another change holds the session's transition lock: 409 busy, with a detail" do
+      busy = "this session is busy with another change; try again in a moment"
+      said, paired = holding_transition(session.id, state_dir: state_dir) do
+        [call("#{base}/claude/say", method: "POST", body: { text: "hi", wake: true }),
+         call("#{base}/codex/pair", method: "POST", body: {})]
+      end
+
+      expect(said).to match([409, include("status" => "busy", "line" => busy, "detail" => busy)])
+      expect(paired).to eq([409, { "status" => "busy", "detail" => busy }])
+      expect(Samagotchi::PeerMailbox.serials(session.id, "claude", state_dir: state_dir)).to be_empty
+      expect(Samagotchi::PeerMailbox.link(session.id, "codex", state_dir: state_dir)).to be_nil
     end
   end
 end

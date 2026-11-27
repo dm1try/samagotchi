@@ -34,7 +34,9 @@ module Samagotchi
     # What #exclusive yields: the ids it holds and why.
     Token = Data.define(:ids, :kind)
 
-    # An exclusive hold not taken by its deadline. It owns its refusal text.
+    # An exclusive hold not taken by its deadline, or an arrival that met
+    # one it can't name the cause of. It owns its refusal text; a nil
+    # +session_id+ says "this session" (a peer's line, which carries no id).
     class Busy < StandardError
       WORDS = { continue: "being continued", delete: "being deleted", nil => "busy with another change" }.freeze
 
@@ -43,7 +45,8 @@ module Samagotchi
       def initialize(session_id, kind: nil)
         @session_id = session_id
         @kind = kind
-        super("session #{session_id.to_s[0, 8]} is #{WORDS.fetch(kind, WORDS[nil])}; try again in a moment")
+        subject = session_id ? "session #{session_id.to_s[0, 8]}" : "this session"
+        super("#{subject} is #{WORDS.fetch(kind, WORDS[nil])}; try again in a moment")
       end
     end
 

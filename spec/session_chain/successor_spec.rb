@@ -4,12 +4,14 @@ require "securerandom"
 require "tmpdir"
 require "spec_helper"
 require_relative "../support/pruned_anchor"
+require_relative "../support/transition_holder"
 require "samagotchi/session_chain/successor"
 require "samagotchi/session_transition"
 
 # "Is this link continued, and by whom": the one answer (N2).
 RSpec.describe Samagotchi::SessionChain::Successor do
   include PrunedAnchor
+  include TransitionHolder
 
   let(:root) { Dir.mktmpdir("chain-successor") }
   let(:state_dir) { File.join(root, "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
@@ -24,30 +26,7 @@ RSpec.describe Samagotchi::SessionChain::Successor do
     end
   end
 
-  # A continue of +id+ in flight: its intent naming +successor+, its lock
-  # held exclusively by another thread until the block returns.
-  def in_flight(id, successor, &block)
-    dir = FileUtils.mkdir_p(Samagotchi::Session.session_dir(id, state_dir: state_dir)).first
-    Samagotchi::ContinueIntent.write(File.join(dir, Samagotchi::ContinueIntent::FILE),
-                                     successor_id: successor, previously_archived: [])
-    holding(id, &block)
-  end
-
-  def holding(id)
-    taken = Queue.new
-    release = Queue.new
-    holder = Thread.new do
-      Samagotchi::SessionTransition.exclusive(id, kind: :continue, state_dir: state_dir) do
-        taken << true
-        release.pop
-      end
-    end
-    taken.pop
-    yield
-  ensure
-    release << true
-    holder.join
-  end
+  def in_flight(id, successor, &) = holding_transition(id, state_dir: state_dir, successor: successor, &)
 
   it "names a saved successor via :next, archived or not" do
     first = link(archived: true)

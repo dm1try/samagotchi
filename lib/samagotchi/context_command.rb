@@ -237,7 +237,11 @@ module Samagotchi
           error_line("#{command_name}: #{SessionAccess::ContextPush.not_push_message(name)}")
           next false
         when :continued
-          error_line("#{command_name}: #{SessionAccess::ContextPush.continued_message(name, target.session_id, pushed.next_id)}")
+          error_line("#{command_name}: #{SessionAccess::ContextPush.continued_message(name, target.session_id, pushed.next_id,
+                                                                                      in_flight: pushed.in_flight)}")
+          next false
+        when :busy
+          error_line("#{command_name}: #{SessionAccess::ContextPush.busy_message(target.session_id)}")
           next false
         end
 

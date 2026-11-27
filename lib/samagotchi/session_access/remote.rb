@@ -622,7 +622,8 @@ module Samagotchi
         when 410
           raise_refusal(reply) unless reply.error == "context_continued"
 
-          ContextPush.new(status: :continued, next_id: reply.json["next_id"].to_s)
+          ContextPush.new(status: :continued, next_id: reply.json["next_id"].to_s, in_flight: reply.json["in_flight"] == true)
+        when 423 then reply.error == "context_busy" ? ContextPush.new(status: :busy) : raise_refusal(reply)
         when 400 then raise ContextSources::Invalid, reply.json["detail"].to_s
         else raise_refusal(reply)
         end

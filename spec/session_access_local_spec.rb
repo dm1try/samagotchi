@@ -12,12 +12,14 @@ require "socket"
 require_relative "support/worker_links"
 require_relative "support/worker_fixtures"
 require_relative "support/pruned_anchor"
+require_relative "support/transition_holder"
 
 # SessionAccess::Local: this machine's sessions, the calls the session
 # commands made before the seam (their own specs cover the behaviour).
 RSpec.describe Samagotchi::SessionAccess::Local do
   include WorkerLinks
   include WorkerFixtures
+  include TransitionHolder
 
   let(:tmpdir) { Dir.mktmpdir("session-access") }
   let(:access) { described_class.new(state_dir: tmpdir) }
@@ -59,6 +61,76 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     end
   end
 
+  # N1: a peer say, a peer pair or a context push that meets a continue
+  # holding the session's transition lock (another thread here, as the
+  # continue's own worker-side thread would be) is refused naming the new
+  # link, and nothing is written where the continue's carry already read.
+  describe "while a transition holds the session's lock" do
+    let(:session) { saved_session }
+    let(:successor) { "7b2d41aa-0000-4000-8000-000000000000" }
+    let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir) }
+
+    before do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("context.wake").and_return(false)
+      Samagotchi::PeerMailbox.pair(session.id, "claude", address: nil, from: "spec", state_dir: tmpdir)
+      push_source(own, "notes")
+      access.context_push(context_target(session.id), "notes", fetched("before", wake: false))
+    end
+
+    def held(intent: true, &) = holding_transition(session.id, state_dir: tmpdir, successor: (successor if intent), &)
+
+    def mailbox = Dir.glob(File.join(Samagotchi::PeerMailbox.root(state_dir: tmpdir), "**", "*")).select { |f| File.file?(f) }
+                     .to_h { |f| [f, File.binread(f)] }
+
+    def say = access.peer_say(session.id, "claude", text: "an answer", summary: nil, wake: false, re: nil)
+
+    it "refuses a say naming the continue's new link, in flight, and writes nothing into the mailbox" do
+      before = mailbox
+      said = held { say }
+
+      expect(said).to have_attributes(status: :continued, next_id: successor, in_flight: true)
+      expect(said.line("claude")).to eq("this session is being continued as #{successor}: say it there in a moment")
+      expect(mailbox).to eq(before)
+      expect(say.status).to eq(:received)
+    end
+
+    it "refuses a pair naming the new link and writes no pairing" do
+      Samagotchi::PeerMailbox.unpair(session.id, "claude", state_dir: tmpdir)
+      paired = held { access.peer_pair(session.id, "claude", address: nil, from: "spec") }
+
+      expect(paired).to have_attributes(status: :continued, next_id: successor, in_flight: true)
+      expect(paired.refusal).to eq("this session is being continued as #{successor}: pair with it in a moment")
+      expect(Samagotchi::PeerMailbox.link(session.id, "claude", state_dir: tmpdir)).to be_nil
+    end
+
+    it "refuses a push into the session's own source naming the new link, its text unchanged" do
+      revision = own.snapshot("notes").revision
+      pushed = held { access.context_push(context_target(session.id), "notes", fetched("after", wake: false)) }
+
+      expect(pushed).to have_attributes(status: :continued, next_id: successor, in_flight: true)
+      expect(Samagotchi::SessionAccess::ContextPush.continued_message("notes", session.id, successor, in_flight: true))
+        .to start_with("session #{session.id[0, 8]} is being continued as #{successor}: notes stays")
+      expect(own.snapshot("notes")).to have_attributes(text: "before", revision: revision)
+    end
+
+    it "says Busy's words when the holder names no successor, writing nothing" do
+      before = mailbox
+      results = held(intent: false) do
+        [say, access.peer_pair(session.id, "claude", address: nil, from: "spec"),
+         access.context_push(context_target(session.id), "notes", fetched("after", wake: false))]
+      end
+
+      expect(results.map(&:status)).to eq(%i[busy busy busy])
+      expect(results[0].line("claude")).to eq("this session is busy with another change; try again in a moment")
+      expect(results[1].refusal).to eq("this session is busy with another change; try again in a moment")
+      expect(Samagotchi::SessionAccess::ContextPush.busy_message(session.id))
+        .to eq("session #{session.id[0, 8]} is busy with another change; try again in a moment")
+      expect(mailbox).to eq(before)
+      expect(own.snapshot("notes").text).to eq("before")
+    end
+  end
+
   describe "#peer_pair" do
     it "removes only the paired peer's legacy context sources after pairing" do
       session = saved_session
@@ -75,7 +147,8 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       names = %w[claude-inbox claude-outbox unrelated]
       names.each { |name| push_source(own, name) }
 
-      allow(access).to receive(:continued_as).with(session.id).and_return("continued-id")
+      allow(access).to receive(:continued_as).with(session.id)
+                                             .and_return(Samagotchi::SessionChain::Successor.new(id: "continued-id", via: :next))
       expect(access.peer_pair(session.id, "claude", address: nil, from: "spec").status).to eq(:continued)
       expect(own.sources.map(&:name)).to eq(names)
 

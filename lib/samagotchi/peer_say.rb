@@ -3,6 +3,7 @@
 require_relative "peer_mailbox"
 require_relative "peer_receipts"
 require_relative "session_chain/successor"
+require_relative "session_transition"
 
 module Samagotchi
   # What chi peer say tells the peer, in chi's own words: the message's
@@ -13,7 +14,9 @@ module Samagotchi
   # #line, so a --remote say prints the remote's line.
   #
   # +status+: :received, or a refusal (nothing written): :gone (no such
-  # session), :deleting, :continued (+next_id+), :not_paired, :old_worker
+  # session), :deleting, :continued (+next_id+; +in_flight+ while its
+  # continue runs: the new link is not saved yet), :busy (another change
+  # of the session holds its transition lock), :not_paired, :old_worker
   # (a live worker without the peer mail), :full (UNTAKEN_MAX unread).
   # +serial+: the message's. +wake+: what the say saw at once, when it
   # didn't wait: :running (a turn runs), :starting, :stopped, :archived,
@@ -23,14 +26,15 @@ module Samagotchi
   # without one. +earlier+: [[serial, reason]…] of the peer's other held
   # messages. +turns+: the wakes in a row that a held receipt's reason
   # names (peer turns or max wakes), as configured where the say ran.
-  PeerSay = Data.define(:status, :serial, :wake, :receipt, :earlier, :next_id, :turns) do
-    def initialize(status:, serial: nil, wake: nil, receipt: nil, earlier: [], next_id: nil, turns: nil) = super
+  PeerSay = Data.define(:status, :serial, :wake, :receipt, :earlier, :next_id, :turns, :in_flight) do
+    def initialize(status:, serial: nil, wake: nil, receipt: nil, earlier: [], next_id: nil, turns: nil,
+                   in_flight: false) = super
 
     def received? = status == :received
 
     # The line for +peer+ (its name): "#12 received · woke chi".
     def line(peer)
-      return PeerSay.refusal(status, peer, next_id) unless received?
+      return PeerSay.refusal(status, peer, next_id, in_flight: in_flight) unless received?
 
       parts = ["##{serial} received", tail(peer)]
       parts << "also held: #{PeerSay.held_list(earlier)}" unless earlier.empty?
@@ -39,7 +43,7 @@ module Samagotchi
 
     def to_h
       { "status" => status.to_s, "serial" => serial, "wake" => wake&.to_s, "receipt" => receipt&.to_h,
-        "earlier" => earlier, "next_id" => next_id, "turns" => turns }.compact
+        "earlier" => earlier, "next_id" => next_id, "turns" => turns, "in_flight" => (true if in_flight) }.compact
     end
 
     # The JSON a chi web answered (#to_h); nil for another shape.
@@ -51,20 +55,29 @@ module Samagotchi
       new(status: data["status"].to_sym, serial: (data["serial"] if data["serial"].is_a?(Integer)),
           wake: (data["wake"].to_sym if PeerSay::WAKES.include?(data["wake"].to_s)),
           receipt: PeerReceipts::Receipt.from_h(data["receipt"]), earlier: earlier,
-          next_id: data["next_id"]&.to_s, turns: (data["turns"] if data["turns"].is_a?(Integer)))
+          next_id: data["next_id"]&.to_s, turns: (data["turns"] if data["turns"].is_a?(Integer)),
+          in_flight: data["in_flight"] == true)
     end
 
     # The words of a refused say, nothing written.
-    def self.refusal(status, peer, next_id)
+    def self.refusal(status, peer, next_id, in_flight: false)
       case status
       when :gone then "no such session"
       when :deleting then "this session is being deleted"
-      when :continued then "#{SessionChain::Continued.new(nil, next_id).message}: say it there"
+      when :continued then PeerSay.continued(next_id, in_flight, "say it there")
+      when :busy then SessionTransition::Busy.new(nil).message
       when :not_paired then "not paired: run the pair script"
       when :old_worker then "this session's chi is older than chi peer: restart the session (chi sessions restart)"
       when :full then "chi has #{PeerMailbox::UNTAKEN_MAX} unread messages from #{peer}"
       else status.to_s
       end
+    end
+
+    # A continued link's refusal (SessionChain::Continued, "this session"),
+    # then what to do: +what+ there, once the new link is saved when its
+    # continue still runs.
+    def self.continued(next_id, in_flight, what)
+      "#{SessionChain::Continued.new(nil, next_id, in_flight: in_flight).message}: #{what}#{" in a moment" if in_flight}"
     end
 
     # "#10, #11 (paused)", a run of one reason at a time.
@@ -112,20 +125,21 @@ module Samagotchi
   PeerSay::POLL_SECONDS = 0.25
 
   # What chi peer pair did: :paired (+link+), or a refusal (nothing
-  # written): :continued (+next_id+), :old_worker (a live worker without
-  # the peer mail).
-  PeerPaired = Data.define(:status, :link, :next_id) do
-    def initialize(status:, link: nil, next_id: nil) = super
+  # written): :continued (+next_id+, +in_flight+ as PeerSay's), :busy,
+  # :old_worker (a live worker without the peer mail).
+  PeerPaired = Data.define(:status, :link, :next_id, :in_flight) do
+    def initialize(status:, link: nil, next_id: nil, in_flight: false) = super
 
     def refusal
       case status
-      when :continued then "#{SessionChain::Continued.new(nil, next_id).message}: pair with it"
+      when :continued then PeerSay.continued(next_id, in_flight, "pair with it")
+      when :busy then SessionTransition::Busy.new(nil).message
       when :old_worker then PeerSay.refusal(:old_worker, nil, nil)
       end
     end
   end
 
-  PeerSay::STATUSES = %w[received gone deleting continued not_paired old_worker full].freeze
+  PeerSay::STATUSES = %w[received gone deleting continued busy not_paired old_worker full].freeze
   PeerSay::WAKES = %w[running starting stopped archived owned start_failed no_turn not_running deleting].freeze
   # The setting a peer_turns hold names (WorkerWakes::PEER_TURNS_KEY: the
   # CLI loads no worker).
