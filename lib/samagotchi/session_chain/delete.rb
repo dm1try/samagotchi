@@ -5,12 +5,12 @@ require "json"
 require_relative "links"
 require_relative "../archive_store"
 require_relative "../child_move"
-require_relative "../continue_intent"
 require_relative "../continued_from"
 require_relative "../note_move"
 require_relative "../owner_lock"
 require_relative "../session"
 require_relative "../session_protection"
+require_relative "../session_transition"
 require_relative "../starting_marker"
 require_relative "../worker_presence"
 
@@ -110,7 +110,7 @@ module Samagotchi
       #   one's removal under its lock)
       def link(id, state_dir:, stop:, wait:, revive_previous:, refuse_continuing:, expect: nil,
                running_tasks: SessionManager::RunningTasks::Policy::IGNORE)
-        ContinueIntent.hold(id, state_dir: state_dir) do |held|
+        SessionTransition.shared(id, state_dir: state_dir) do |held|
           raise SessionManager::DeleteRefused.new(id, :continuing) if refuse_continuing && !held
 
           plan = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: revive_previous)
@@ -122,7 +122,7 @@ module Samagotchi
           # Taken before the link's file goes: after it, a continue of the
           # previous link would no longer be refused. The plan is made again
           # under it.
-          ContinueIntent.hold(plan.previous, state_dir: state_dir) do |previous_held|
+          SessionTransition.shared(plan.previous, state_dir: state_dir) do |previous_held|
             raise SessionManager::DeleteRefused.new(plan.previous, :continuing) unless previous_held
 
             again = link_plan(id, state_dir: state_dir, links: Links.new(state_dir: state_dir), undo: true)
@@ -378,7 +378,7 @@ module Samagotchi
       def hold_all(ids, state_dir, &block)
         return yield if ids.empty?
 
-        ContinueIntent.hold(ids.first, state_dir: state_dir) do |held|
+        SessionTransition.shared(ids.first, state_dir: state_dir) do |held|
           raise SessionManager::DeleteRefused.new(ids.first, :continuing) unless held
 
           hold_all(ids.drop(1), state_dir, &block)

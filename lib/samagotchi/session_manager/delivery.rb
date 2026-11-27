@@ -3,13 +3,13 @@
 require_relative "../turn_anchors"
 require_relative "../archive_store"
 require_relative "../client_id"
-require_relative "../continue_intent"
 require_relative "../degrade"
 require_relative "../delivery"
 require_relative "../log"
 require_relative "../session"
 require_relative "../session_chain/links"
 require_relative "../session_inbox"
+require_relative "../session_transition"
 require_relative "../steer"
 require_relative "../worker_link"
 require_relative "../worker_presence"
@@ -205,7 +205,7 @@ module Samagotchi
       # A followed send (deliver_turn's follow:) to an archived link: refused
       # when a continue took it (a successor saved, or a continue holding its
       # lock now: its successor comes), else the delivery under a shared hold
-      # of the continue lock (ContinueIntent.hold), so no continue starts
+      # of the continue lock (SessionTransition.shared), so no continue starts
       # between this check and the input going in. Any other delivery, or
       # a link not archived, is the block alone. Head.resolve answers the
       # sender before the delivery: a continue that ends or starts in
@@ -216,7 +216,7 @@ module Samagotchi
         return yield unless follow && Session.valid_id?(session_id) &&
                             ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
 
-        ContinueIntent.hold(session_id, state_dir: sd) do |held|
+        SessionTransition.shared(session_id, state_dir: sd) do |held|
           successor = SessionChain::Links.new(state_dir: sd).next_of(session_id) if held
           next yield if held && successor.nil?
 

@@ -16,6 +16,7 @@ require_relative "note_move"
 require_relative "peer_continue"
 require_relative "archive_store"
 require_relative "continue_intent"
+require_relative "session_transition"
 require_relative "continued_from"
 require_relative "recap_store"
 require_relative "bridge_client"
@@ -63,8 +64,6 @@ module Samagotchi
     # How long #run waits for the previous link's worker to write its
     # recap (IdleRecap's own request timeout).
     RECAP_WAIT = 30.0
-    # In the previous link's folder: one continue of a session at a time.
-    LOCK = ContinueIntent::LOCK
     # A durable record in the previous link's folder, written before archive
     # (a send in flight reads it: ContinueIntent.in_flight).
     CONTINUE_INTENT = ContinueIntent::FILE
@@ -147,9 +146,9 @@ module Samagotchi
     Checked = Data.define(:plan, :choice)
 
     # Repair an interrupted continue before showing sessions or starting
-    # another continue. An active continue holds LOCK, so its intent is left
-    # alone; after a crash, an unsaved successor means the previous link is
-    # unarchived.
+    # another continue. An active continue holds its transition lock
+    # (SessionTransition), so its intent is left alone; after a crash, an
+    # unsaved successor means the previous link is unarchived.
     def self.repair_interrupted(state_dir:)
       return unless Dir.exist?(state_dir)
 
@@ -221,13 +220,10 @@ module Samagotchi
       end
     end
 
+    # The block under the previous link's transition lock, waited for
+    # (no deadline).
     private_class_method def self.with_lock(id, state_dir, &)
-      dir = Session.session_dir(id, state_dir: state_dir)
-      FileUtils.mkdir_p(dir)
-      File.open(File.join(dir, LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
-        lock.flock(File::LOCK_EX)
-        yield
-      end
+      SessionTransition.exclusive([id], kind: :continue, state_dir: state_dir, &)
     end
 
     private_class_method def self.run_locked(id, prompt:, preview:, model:, state_dir:, recap_wait:, archive_wait:, client_id:)
@@ -276,9 +272,9 @@ module Samagotchi
     end
 
     private_class_method def self.repair_intent(session, state_dir, path, sessions)
-      lock_path = File.join(Session.session_dir(session.id, state_dir: state_dir), LOCK)
-      File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
-        next unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+      # Not taken (a continue runs, on this thread too): its intent is left.
+      SessionTransition.try_exclusive(session.id, kind: :repair, state_dir: state_dir) do |token|
+        next unless token
         next unless File.file?(path)
 
         intent = ContinueIntent.read(path)
