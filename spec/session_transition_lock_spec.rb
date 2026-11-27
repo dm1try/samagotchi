@@ -14,7 +14,9 @@ module SessionTransitionLockNames
   # Reads of the name outside OWNER that flock nothing, with their reason.
   ALLOWED = {
     "lib/samagotchi/continue_intent.rb#<top>" => "ContinueIntent::LOCK = SessionTransition::LOCK: the name for readers " \
-                                                 "(specs holding a raw lock), never opened here."
+                                                 "(specs holding a raw lock), never opened here.",
+    "lib/samagotchi/session_manager/emptiness.rb#<top>" => "EMPTY_SKELETON_FILES lists the lock file's name: a " \
+                                                           "folder holding only it is empty; never opened there."
   }.freeze
 
   class Names < Prism::Visitor
