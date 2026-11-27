@@ -1570,6 +1570,31 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect(Samagotchi::PeerMailbox.serials(previous.id, "claude", state_dir: tmpdir)).to eq(before)
     end
 
+    # The new link's lock is the continue's too until it ends: a pair with
+    # the new link before then (a peer told of the move at once) is busy,
+    # nothing written; the worker's spawn is the continue's last step, so
+    # the hold ends right after it.
+    it "answers a peer pair with the new link busy until the continue ends, writing no pairing" do
+      previous = make
+      paired = nil
+      allow(Process).to receive(:spawn) do
+        link_id = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id).find { |id| id != previous.id }
+        thread = Thread.new do
+          Samagotchi::SessionAccess::Local.new(state_dir: tmpdir).peer_pair(link_id, "claude", address: nil, from: "spec")
+        end
+        thread.report_on_exception = false
+        paired = [link_id, thread.value]
+        12_345
+      end
+
+      link = continue(previous.id)
+
+      expect(paired).to eq([link.id, Samagotchi::PeerPaired.new(status: :busy)])
+      expect(Samagotchi::PeerMailbox.link(link.id, "claude", state_dir: tmpdir)).to be_nil
+      expect(Samagotchi::SessionAccess::Local.new(state_dir: tmpdir).peer_pair(link.id, "claude", address: nil, from: "spec").status)
+        .to eq(:paired)
+    end
+
     it "refuses busy, starting nothing, when another holds the lock past the wait, and leaves no folder behind" do
       previous = make
       raw_lock(previous.id)
