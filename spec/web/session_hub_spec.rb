@@ -801,12 +801,12 @@ RSpec.describe Samagotchi::Web::SessionHub do
       ticked = Queue.new
       allow(schedules).to receive(:tick) { ticked << true }
 
-      hub.send(:schedule_tick)
+      hub.schedule_tick
       pop!(ticked, "schedule tick to start")
-      wait_for("schedule tick to finish") { !hub.instance_variable_get(:@schedule_tick_in_flight) }
+      expect(hub.drain_schedule_tick(timeout: 5)).to be(true)
       expect(schedules).to have_received(:tick).once
 
-      hub.send(:schedule_tick) # still inside the interval: the hub does not tick twice
+      hub.schedule_tick # still inside the interval: the hub does not tick twice
       expect(schedules).to have_received(:tick).once
     end
 
@@ -824,7 +824,6 @@ RSpec.describe Samagotchi::Web::SessionHub do
 
       first_scan = Thread.new { hub.scan; first_scan_done << true }
       pop!(started, "schedule tick to start")
-      tick_thread = hub.instance_variable_get(:@schedule_tick_thread)
       pop!(first_scan_done, "scan with a running schedule tick")
 
       clock[0] += 301
@@ -833,12 +832,12 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(schedules).to have_received(:tick).once
 
       release << true
-      join!(tick_thread, "schedule tick")
+      expect(hub.drain_schedule_tick(timeout: 5)).to be(true)
       join!(first_scan, "first hub scan")
       join!(second_scan, "second hub scan")
     ensure
       release << true if release
-      [tick_thread, first_scan, second_scan].compact.each { |thread| join!(thread, "schedule hub thread") }
+      [first_scan, second_scan].compact.each { |thread| join!(thread, "schedule hub thread") }
     end
 
     it "joins the running schedule tick when stopping" do
@@ -851,15 +850,14 @@ RSpec.describe Samagotchi::Web::SessionHub do
         release.pop(timeout: 5)
       end
 
-      hub.send(:schedule_tick)
+      thread = hub.schedule_tick
       expect(started.pop(timeout: 2)).to be(true)
-      tick_thread = hub.instance_variable_get(:@schedule_tick_thread)
       stopper = Thread.new { hub.stop; stopped << true }
 
       expect(stopped.pop(timeout: 0.05)).to be_nil
       release << true
       expect(stopped.pop(timeout: 2)).to be(true)
-      expect(tick_thread).not_to be_alive
+      expect(thread).not_to be_alive
     ensure
       release << true if release
       stopper&.join
@@ -871,7 +869,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       cancel = nil
       allow(schedules).to receive(:tick) { |now:, cancelled:| cancel = cancelled }
 
-      hub.send(:run_schedule_tick)
+      hub.run_schedule_tick
       expect(cancel.call).to be(false)
       hub.stop
       expect(cancel.call).to be(true)
@@ -902,7 +900,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       entry, session, at = disabled_by_cron
       expect(Samagotchi::Log).not_to receive(:warn).with(:web, "schedule_tick_failed", anything)
 
-      hub.send(:run_schedule_tick)
+      hub.run_schedule_tick
 
       expect(disabled_events.map(&:data)).to eq([
         { id: entry.id, title: "Heartbeat", kind: "skipped", count: 12, reason: "the session is running a turn",
@@ -915,9 +913,9 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.subscribe(->(event) { events << event })
       disabled_by_cron
 
-      hub.send(:schedule_tick)
-      wait_for("schedule tick to finish") { !hub.instance_variable_get(:@schedule_tick_in_flight) }
-      hub.send(:run_schedule_tick)
+      hub.schedule_tick
+      expect(hub.drain_schedule_tick(timeout: 5)).to be(true)
+      hub.run_schedule_tick
 
       expect(disabled_events.size).to eq(1)
     end
@@ -927,8 +925,8 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.subscribe(->(event) { events << event })
       entry, = disabled_by_cron
 
-      hub.send(:schedule_tick)
-      hub.send(:schedule_tick)
+      hub.schedule_tick
+      hub.schedule_tick
 
       expect(disabled_events.map { |event| event.data[:id] }).to eq([entry.id])
       expect(schedules).not_to have_received(:tick)
@@ -956,19 +954,19 @@ RSpec.describe Samagotchi::Web::SessionHub do
 
       File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         lock.flock(File::LOCK_EX)
-        hub.send(:schedule_tick)
+        hub.schedule_tick
         expect(disabled_events).to eq([])
       end
       clock[0] += 1
-      hub.send(:schedule_tick)
+      hub.schedule_tick
       expect(disabled_events.map { |event| event.data[:id] }).to eq([entry.id])
 
       allow(schedules).to receive(:claim_disabled_notices).and_call_original
       clock[0] += 1
-      hub.send(:schedule_tick)
+      hub.schedule_tick
       expect(schedules).not_to have_received(:claim_disabled_notices)
       clock[0] += 300
-      hub.send(:schedule_tick)
+      hub.schedule_tick
       expect(schedules).to have_received(:claim_disabled_notices).once
     end
 
@@ -979,7 +977,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(Samagotchi::Log).to receive(:warn).with(:web, "schedule_notices_failed",
                                                      hash_including(error: "Samagotchi::Schedules::Corrupt"))
 
-      hub.send(:schedule_tick)
+      hub.schedule_tick
       expect(disabled_events).to eq([])
     end
 
@@ -989,7 +987,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       allow(Samagotchi::Log).to receive(:warn)
       [nil, Queue.new].each do |result|
         allow(schedules).to receive(:tick).and_return(result)
-        hub.send(:run_schedule_tick)
+        hub.run_schedule_tick
       end
 
       expect(events.map(&:type)).not_to include("schedule_disabled")
@@ -999,9 +997,72 @@ RSpec.describe Samagotchi::Web::SessionHub do
     it "never ticks when auto_tick is off" do
       hub, schedules = hub_with(false)
 
-      hub.send(:schedule_tick)
-      hub.send(:schedule_tick)
+      hub.schedule_tick
+      hub.schedule_tick
       expect(schedules).not_to have_received(:tick)
+    end
+
+    it "returns the thread it started, or nil when it started none" do
+      hub, schedules = hub_with(true)
+      started = Queue.new
+      release = Queue.new
+      allow(schedules).to receive(:tick) do
+        started << true
+        release.pop(timeout: 5)
+      end
+
+      thread = hub.schedule_tick
+      expect(thread).to be_a(Thread)
+      expect(started.pop(timeout: 2)).to be(true)
+      expect(hub.schedule_tick).to be_nil # a tick is in flight
+
+      release << true
+      expect(hub.drain_schedule_tick(timeout: 5)).to be(true)
+
+      off_hub, = hub_with(false)
+      expect(off_hub.schedule_tick).to be_nil
+    ensure
+      release << true if release
+    end
+
+    it "schedule_tick_running? is true while the tick waits and false after" do
+      hub, schedules = hub_with(true)
+      started = Queue.new
+      release = Queue.new
+      allow(schedules).to receive(:tick) do
+        started << true
+        release.pop(timeout: 5)
+      end
+
+      hub.schedule_tick
+      expect(started.pop(timeout: 2)).to be(true)
+      expect(hub.schedule_tick_running?).to be(true)
+
+      release << true
+      expect(hub.drain_schedule_tick(timeout: 5)).to be(true)
+      expect(hub.schedule_tick_running?).to be(false)
+    ensure
+      release << true if release
+    end
+
+    it "drain_schedule_tick returns false while the tick waits and true once it is released" do
+      hub, schedules = hub_with(true)
+      started = Queue.new
+      release = Queue.new
+      allow(schedules).to receive(:tick) do
+        started << true
+        release.pop(timeout: 5)
+      end
+
+      hub.schedule_tick
+      expect(started.pop(timeout: 2)).to be(true)
+
+      expect(hub.drain_schedule_tick(timeout: 0.05)).to be(false)
+
+      release << true
+      expect(hub.drain_schedule_tick(timeout: 5)).to be(true)
+    ensure
+      release << true if release
     end
   end
 end
