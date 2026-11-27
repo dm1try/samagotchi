@@ -334,6 +334,10 @@ link's id (`chi context push` exits 1; chi web answers 410
 chi context push: session 3f2a9c1e was continued as 7b1d…: notes stays with the session it was attached to; attach it to 7b1d… (or pair again with 7b1d…) and push there
 ```
 
+A session being continued right now (its new link not saved yet) is refused the same way, `is being continued as`
+and `… push there in a moment`; one busy with another change (its transition lock held) is refused with `chi context
+push: session 3f2a9c1e is busy with another change; try again in a moment` (chi web answers 423 `context_busy`).
+
 An archived session that nobody continued takes pushes as before; a schedule's anchor whose successor a prune deleted counts as continued by the schedule's head ([sessions.md](sessions.md), *Session chains* → Which link).
 
 ### Peers and a continue
