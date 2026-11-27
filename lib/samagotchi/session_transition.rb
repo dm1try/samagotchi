@@ -168,6 +168,6 @@ module Samagotchi
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-    private_class_method :holds, :lock_until, :monotonic
+    private_class_method :lock_path, :holds, :lock_until, :monotonic
   end
 end
