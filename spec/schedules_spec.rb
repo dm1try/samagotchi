@@ -4,6 +4,7 @@ require "securerandom"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/schedules"
+require "samagotchi/session_continue"
 require "samagotchi/continue_intent"
 require "samagotchi/memory_usage"
 require "samagotchi/session_manager"
@@ -2473,6 +2474,45 @@ RSpec.describe Samagotchi::Schedules do
       expect(fired.status).to eq("pending")
       expect(Time.iso8601(schedules.lookup(entry.id).next_due)).to eq(Time.local(2026, 11, 16, 9, 0))
     end
+  end
+
+  # Lifecycle C phase 3: a chain firing's continue that meets another
+  # holding the chain end's transition lock past its wait (each of its
+  # tries) is a skip, the occurrence kept; the firing limit covers the waits.
+  it "skips a chain firing whose continue finds the transition lock held, and fires at the next tick" do
+    Dir.mktmpdir("schedules-transition-busy") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      allow(Samagotchi::SessionContinue).to receive(:run).and_wrap_original do |original, *args, **opts|
+        original.call(*args, **opts, lock_wait: 0.02)
+      end
+      lock_dir = Samagotchi::Session.session_dir(anchor, state_dir: dir)
+      FileUtils.mkdir_p(lock_dir)
+      held = File.open(File.join(lock_dir, Samagotchi::SessionTransition::LOCK), File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed below
+      held.flock(File::LOCK_EX)
+
+      outcome = schedules.tick(now: Time.now + 120).outcomes.first
+
+      expect(outcome).to have_attributes(status: "skipped",
+                                         detail: "session #{anchor[0, 8]} is busy with another change; try again in a moment")
+      after = schedules.lookup(entry.id)
+      expect([after.skips, after.failures, after.enabled]).to eq([1, 0, true])
+      expect(Samagotchi::Session.list(state_dir: dir, include_archived: true).map(&:id)).to eq([anchor])
+      expect(Samagotchi::ArchiveStore.archived?(lock_dir)).to be(false)
+
+      held.close
+      expect(schedules.tick(now: Time.now + 240).outcomes.first.status).to eq("pending")
+    ensure
+      held&.close
+    end
+  end
+
+  it "gives a chain firing time for the recap, the transition lock on each try and the archive before it is interrupted" do
+    continue = Samagotchi::SessionContinue
+    expect(described_class::FIRING_TIMEOUT).to be > continue::RECAP_WAIT + (continue::TRIES * continue::LOCK_WAIT) + 5
   end
 
   it "keeps an accepted schedule turn pending until that turn completes" do

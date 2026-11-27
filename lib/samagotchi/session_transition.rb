@@ -143,6 +143,35 @@ module Samagotchi
       Session.valid_id?(id) && holds.key?(lock_path(id, state_dir))
     end
 
+    # Take back the lock file #exclusive left in the folder of a session
+    # with no session file (a continue's successor never saved, a link
+    # deleted while a continue waited for it), and the folder when that
+    # leaves it empty: an empty folder holding only the lock is no session.
+    # Only when nobody holds it (one try; held, it stays) and this thread
+    # doesn't; a saved session's lock is never touched.
+    # @return [Boolean] whether the lock file went
+    def forget(id, state_dir:)
+      return false unless Session.valid_id?(id) && !Session.exist?(id, state_dir: state_dir)
+
+      path = lock_path(id, state_dir)
+      return false if holds.key?(path)
+
+      gone = File.open(path, File::RDWR) do |file|
+        next false unless file.flock(File::LOCK_EX | File::LOCK_NB)
+
+        File.unlink(path)
+        true
+      end
+      begin
+        Dir.rmdir(File.dirname(path))
+      rescue Errno::ENOTEMPTY, Errno::EEXIST, Errno::ENOENT
+        nil
+      end
+      gone
+    rescue Errno::ENOENT
+      false
+    end
+
     def lock_path(id, state_dir) = File.join(Session.session_dir(id, state_dir: state_dir), LOCK)
 
     # This thread's holds.

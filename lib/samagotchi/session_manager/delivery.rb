@@ -3,6 +3,7 @@
 require_relative "../turn_anchors"
 require_relative "../archive_store"
 require_relative "../client_id"
+require_relative "../continue_intent"
 require_relative "../degrade"
 require_relative "../delivery"
 require_relative "../log"
@@ -217,7 +218,12 @@ module Samagotchi
                             ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
 
         SessionTransition.shared(session_id, state_dir: sd) do |held|
-          successor = SessionChain::Links.new(state_dir: sd).next_of(session_id) if held
+          # Not taken: the continue holding it names its successor (its intent).
+          successor = if held
+                        SessionChain::Links.new(state_dir: sd).next_of(session_id)
+                      else
+                        ContinueIntent.in_flight(session_id, state_dir: sd)
+                      end
           next yield if held && successor.nil?
 
           words = successor ? "being continued as #{successor[0, 8]}" : "being continued"

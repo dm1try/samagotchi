@@ -1472,6 +1472,277 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     end
   end
 
+  # The transition lock (SessionTransition): taken after the recap, for the
+  # previous link and the new link's reserved id at once, everything checked
+  # again under it (docs/internals/session-lifecycle.md, "Locks and crash repair").
+  describe "the transition lock" do
+    let(:transition) { Samagotchi::SessionTransition }
+    let(:raw_locks) { [] }
+
+    after { raw_locks.each(&:close) }
+
+    def held?(id) = transition.holding?(id, state_dir: tmpdir)
+
+    # +id+'s lock held on another descriptor of this process (a holder the
+    # continue's thread can't pass through, as another process's).
+    def raw_lock(id)
+      FileUtils.mkdir_p(dir_of(id))
+      raw_locks << File.open(File.join(dir_of(id), transition::LOCK), File::RDWR | File::CREAT, 0o600).tap do |file| # rubocop:disable Style/FileOpen -- held open on purpose, closed in the after hook
+        file.flock(File::LOCK_EX)
+      end
+    end
+
+    # A person's followed send (chi send to the head), from another thread
+    # as chi web's request thread would, with no Bridge to wait for.
+    def followed_send(id)
+      thread = Thread.new do
+        manager.deliver_turn(id, prompt: "one more", client_id: Samagotchi::ClientId::CLI_SEND, follow: true,
+                                 state_dir: tmpdir, bridge: -> {})
+      end
+      thread.report_on_exception = false
+      thread.value
+    end
+
+    def notes_of(id)
+      Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f) }
+    end
+
+    def folders = Dir.children(tmpdir).select { |name| Samagotchi::Session.valid_id?(name) }.sort
+
+    it "is not held during the recap: a followed send to the previous link goes in, and the archive refuses as before" do
+      previous = make
+      seen = {}
+      allow(described_class).to receive(:recap_before_archive) do
+        seen[:held] = transition.held?(previous.id, state_dir: tmpdir)
+        seen[:send] = followed_send(previous.id)
+      end
+
+      expect { continue(previous.id) }.to raise_error(manager::ArchiveRefused)
+
+      expect(seen[:held]).to be(false)
+      expect(seen[:send].status).to eq(:accepted)
+      expect(Samagotchi::SessionInbox.find_new_input_files(dir_of(previous.id)).size).to eq(1)
+      expect(archived?(previous.id)).to be(false)
+      expect(folders).to eq([previous.id])
+    end
+
+    it "refuses a followed send during the transition, naming the new link" do
+      previous = make
+      refused = nil
+      allow(Process).to receive(:spawn) do
+        refused = followed_send(previous.id)
+        12_345
+      end
+
+      link = continue(previous.id)
+
+      expect(refused.status).to eq(:refused)
+      expect(refused.ack).to include("error" => Samagotchi::SessionManager::DeliverResult::CONTINUED,
+                                     "session_id" => previous.id, "successor_id" => link.id)
+      expect(refused.ack["detail"]).to eq("being continued as #{link.id[0, 8]}; send again in a moment")
+      expect(Samagotchi::SessionInbox.find_new_input_files(dir_of(previous.id))).to eq([])
+    end
+
+    it "refuses busy, starting nothing, when another holds the lock past the wait, and leaves no folder behind" do
+      previous = make
+      raw_lock(previous.id)
+      # The new link's id sorts first: its folder and lock are made before
+      # the previous link's lock is found held.
+      allow(SecureRandom).to receive(:uuid).and_call_original
+      allow(SecureRandom).to receive(:uuid).and_return("00000000-0000-4000-8000-000000000000")
+
+      expect { continue(previous.id, lock_wait: 0.05) }.to raise_error(described_class::Refused) do |error|
+        expect(error.reason).to eq(:transition_busy)
+        expect(error.message).to eq("session #{previous.id[0, 8]} is busy with another change; try again in a moment")
+      end
+      expect(archived?(previous.id)).to be(false)
+      expect(folders).to eq([previous.id])
+    end
+
+    it "follows a last:<id> continue that met another continue's lock to that one's new link" do
+      first = make
+      gate = Queue.new
+      archives = 0
+      allow(transition).to receive(:exclusive).and_wrap_original do |original, *args, **opts, &block|
+        original.call(*args, **opts, &block)
+      rescue Samagotchi::SessionTransition::Busy
+        gate << true
+        raise
+      end
+      allow(manager).to receive(:archive_session).and_wrap_original do |original, *args, **opts|
+        SpecWaiting.pop!(gate, "the second continue to meet the lock", timeout: 30) if (archives += 1) == 1
+        original.call(*args, **opts)
+      end
+      holding = Thread.new { continue(first.id) }
+      wait_for("the first continue to hold the lock", timeout: 10) { transition.held?(first.id, state_dir: tmpdir) }
+
+      followed = continue("last:#{first.id}", lock_wait: 0.3)
+
+      second = join!(holding, "the first continue").value
+      expect(load(followed.id).continues).to eq(second.id)
+      expect(load(second.id).continues).to eq(first.id)
+    ensure
+      gate << true
+    end
+
+    it "takes the previous link and the new one under one hold: every undo step runs under both, on this thread" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      Samagotchi::SessionInbox.write_note(previous.id, text: "waiting", state_dir: tmpdir)
+      allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
+      allow(Samagotchi::ChildMove).to receive(:apply).and_wrap_original do |original, ids, **kwargs|
+        original.call(ids, **kwargs).tap do
+          Samagotchi::SessionInbox.write_ring(dir_of(kwargs[:from]), child_id: child.id, why: "turn_end") if kwargs[:undo]
+        end
+      end
+      steps = []
+      link_id = nil
+      record = lambda do |name|
+        link_id ||= Samagotchi::SessionChain.next_of(previous.id, state_dir: tmpdir)
+        steps << [name, held?(previous.id), link_id && held?(link_id)]
+      end
+      [[Samagotchi::ChildMove, :return_rings], [Samagotchi::NoteMove, :give_back], [Samagotchi::ArchiveStore, :unarchive],
+       [manager, :delete_session], [manager, :wake_for_report]].each do |owner, name|
+        allow(owner).to receive(name).and_wrap_original do |original, *args, **opts, &block|
+          record.call(name)
+          original.call(*args, **opts, &block)
+        end
+      end
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+
+      expect(steps.map(&:first)).to include(:return_rings, :give_back, :delete_session, :unarchive, :wake_for_report)
+      expect(steps.reject { |_, prev, link| prev && link }).to eq([])
+      expect(folders).to contain_exactly(previous.id, child.id)
+      expect(load(child.id).parent_id).to eq(previous.id)
+    end
+
+    it "leaves the new link's worker boot unrefused: its adoption on another thread takes no transition hold" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      calls = []
+      allow(transition).to receive(:exclusive).and_wrap_original do |original, *args, **opts, &block|
+        calls << [:exclusive, Thread.current]
+        original.call(*args, **opts, &block)
+      end
+      allow(transition).to receive(:try_exclusive).and_wrap_original do |original, *args, **opts, &block|
+        calls << [:try_exclusive, Thread.current]
+        original.call(*args, **opts, &block)
+      end
+      # The top's pin kept, with this example's record.
+      allow(transition).to receive(:shared).and_wrap_original do |original, id, **opts, &block|
+        calls << [:shared, Thread.current]
+        under_lock << [:shared, id] if transition.holding?(id, state_dir: opts[:state_dir])
+        original.call(id, **opts, &block)
+      end
+      booted = nil
+      allow(Process).to receive(:spawn) do
+        link = Samagotchi::SessionChain.next_of(previous.id, state_dir: tmpdir)
+        # A note an older writer left in the archived link after the move.
+        Samagotchi::SessionInbox.write_note(previous.id, text: "late", source: "slack", state_dir: tmpdir)
+        thread = Thread.new do
+          # What the new link's worker does as it starts (Worker#start,
+          # WorkerInbound), in its own process: here another thread.
+          adopted = Samagotchi::ChildMove.adopt(link, state_dir: tmpdir)
+          notes = Samagotchi::NoteMove.adoption(load(link), state_dir: tmpdir)&.call
+          Samagotchi::SessionInbox.write_note(link, text: "objectives", source: "objectives", state_dir: tmpdir)
+          [Thread.current, adopted, notes]
+        end
+        thread.report_on_exception = false
+        booted = thread.value
+        12_345
+      end
+
+      link = continue(previous.id)
+
+      worker, adopted, notes = booted
+      expect(calls.select { |_, thread| thread == worker }).to eq([])
+      # The continue moved them itself: nothing left to adopt, no error.
+      expect(adopted).to eq([])
+      expect(notes.size).to eq(1)
+      expect(load(child.id).parent_id).to eq(link.id)
+      expect(notes_of(link.id).map { |note| note[:text] }).to include("late", "objectives")
+    end
+
+    describe "a continue that ends before the new link is saved" do
+      it "leaves no folder for it when the archive refuses" do
+        previous = make
+        allow(described_class).to receive(:recap_before_archive) do
+          Samagotchi::SessionInbox.write_input(dir_of(previous.id), prompt: "queued during the recap")
+        end
+
+        expect { continue(previous.id) }.to raise_error(manager::ArchiveRefused)
+        expect(folders).to eq([previous.id])
+      end
+
+      it "leaves no folder for it when its spawn fails before the save" do
+        previous = make
+        allow(manager).to receive(:spawn_session).and_raise(Samagotchi::ModelProfile::MissingModel, "no model")
+
+        expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::MissingModel)
+        expect(folders).to eq([previous.id])
+      end
+
+      it "re-checks under the lock: one continued during the recap is refused, naming that one, with no folder left" do
+        previous = make
+        other = nil
+        allow(described_class).to receive(:recap_before_archive) do
+          other = make(prompt: "elsewhere")
+          other.continues = previous.id
+          other.save(state_dir: tmpdir)
+        end
+
+        expect { continue(previous.id) }.to raise_error(described_class::Refused) do |error|
+          expect([error.reason, error.ids]).to eq([:continued, [other.id]])
+        end
+        expect(folders).to eq([previous.id])
+      end
+
+      it "re-checks under the lock: one deleted during the recap is refused, its folder not brought back" do
+        previous = make
+        allow(described_class).to receive(:recap_before_archive) do
+          FileUtils.rm_f(Samagotchi::Session.session_file(previous.id, state_dir: tmpdir))
+          FileUtils.rm_rf(dir_of(previous.id))
+        end
+
+        expect { continue(previous.id) }.to raise_error(Samagotchi::Session::NotFound)
+        expect(folders).to eq([])
+      end
+
+      it "gives back a note sent to it in flight, then drops its folder" do
+        previous = make
+        allow(manager).to receive(:spawn_session) do |**opts|
+          Samagotchi::SessionInbox.write_note(opts[:session_id], text: "to the head", source: "slack", state_dir: tmpdir)
+          raise IOError, "failed before the save"
+        end
+
+        expect { continue(previous.id) }.to raise_error(IOError)
+        expect(folders).to eq([previous.id])
+        expect(note_of(previous.id)[:text]).to eq("to the head")
+      end
+
+      it "drops the folder a crashed continue reserved for it, giving its notes back, when the intent is repaired" do
+        previous = make
+        successor = SecureRandom.uuid
+        FileUtils.mkdir_p(dir_of(previous.id))
+        File.write(File.join(dir_of(previous.id), described_class::CONTINUE_INTENT),
+                   JSON.generate(successor_id: successor, previously_archived: []))
+        Samagotchi::ArchiveStore.archive(previous.id, state_dir: tmpdir)
+        transition.exclusive([successor], kind: :continue, state_dir: tmpdir) do
+          Samagotchi::SessionInbox.write_note(successor, text: "in flight", source: "slack", state_dir: tmpdir)
+        end
+
+        described_class.repair_interrupted(state_dir: tmpdir)
+
+        expect(folders).to eq([previous.id])
+        expect(archived?(previous.id)).to be(false)
+        expect(note_of(previous.id)[:text]).to eq("in flight")
+      end
+    end
+  end
+
   it "locks per session: a continue of another chain doesn't wait for one still waiting on its recap" do
     slow = make
     other = make
@@ -1485,7 +1756,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     waiting = Thread.new { continue(slow.id) }
     started.pop
 
-    # The slow chain's continue still holds its lock: this one doesn't wait for it.
+    # The slow chain's continue waits on its recap (no lock held yet): this one doesn't wait for it.
     link = continue(other.id)
     expect(load(link.id).continues).to eq(other.id)
     expect(waiting).to be_alive

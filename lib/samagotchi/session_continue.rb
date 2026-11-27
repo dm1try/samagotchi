@@ -35,8 +35,10 @@ module Samagotchi
     # (another session continues it already, or a schedule's pruned
     # anchor: +ids+ names the successor, or the schedule's head), :open_children
     # (open children it can't move to the new link: on an older chi's
-    # worker or open in a one-turn chi run; +ids+ names them) or :folder_gone (its
-    # folder isn't there).
+    # worker or open in a one-turn chi run; +ids+ names them), :folder_gone (its
+    # folder isn't there) or :transition_busy (its transition lock not
+    # free within LOCK_WAIT: another continue or change of it runs; its
+    # words are SessionTransition::Busy's).
     class Refused < StandardError
       attr_reader :session_id, :reason, :ids
 
@@ -56,6 +58,7 @@ module Samagotchi
         when :open_children
           "#{short} has delegates still open that can't move to the next link: #{detail}; " \
           "then continue (or wait for them, stop them or archive them)"
+        when :transition_busy then SessionTransition::Busy.new(@session_id).message
         else "#{short}'s folder #{detail} is gone"
         end
       end
@@ -68,8 +71,14 @@ module Samagotchi
     # (a send in flight reads it: ContinueIntent.in_flight).
     CONTINUE_INTENT = ContinueIntent::FILE
     # How often a last:<id> continue looks again when another continue
-    # moved the chain's end while it waited for the lock.
+    # moved the chain's end while it waited for the lock, or held it past
+    # its wait.
     TRIES = 3
+    # How long each try of #run waits for the transition locks of the
+    # previous link and the new one, after the recap: past it the continue
+    # is refused :transition_busy (a last:<id> one with tries left looks
+    # again, and waits again: the other continue's new link may be its end).
+    LOCK_WAIT = 10.0
 
     # One thing a continue carries from the previous link to the new one.
     # +carry+ names the method run in spawn_session's before_spawn (once the
@@ -185,9 +194,12 @@ module Samagotchi
     # does its movable attached context (ContextMove).
     # Before that its live worker is asked for a recap and given up to
     # +recap_wait+ seconds to write it.
-    # One continue of a session at a time (a lock in its folder): a double
-    # click finds the first one's link and is refused; a last:<id> one
-    # follows the chain to its new end instead.
+    # One continue of a session at a time (its transition lock,
+    # SessionTransition, taken after the recap with the new link's, up to
+    # +lock_wait+ seconds, then everything checked again): a double click
+    # finds the first one's link and is refused (busy, when the first holds
+    # the lock past the wait); a last:<id> one follows the chain to its new
+    # end instead.
     # @param id_or_ref [String] an id, a prefix, or last:<id> (SessionChain.resolve)
     # @param prompt [String, nil] its first message (nil: it starts idle)
     # @param preview [String, nil] what the lists show before the first turn;
@@ -201,45 +213,95 @@ module Samagotchi
     #   SessionChain.opener_for the previous link)
     # @raise [ArgumentError] no such session (Session::AmbiguousId for a prefix of several)
     # @raise [Refused] continued already, delegates open that can't
-    #   move, or its folder is gone
+    #   move, its folder is gone, or its transition lock stayed held
+    #   (:transition_busy)
     # @raise [ArchiveRefused, OwnedByTUI] as archive_session
     def self.run(id_or_ref, prompt: nil, preview: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5,
-                 client_id: nil)
+                 client_id: nil, lock_wait: LOCK_WAIT)
       sd = state_dir || Session.default_state_dir
       repair_interrupted(state_dir: sd)
+      last = id_or_ref.to_s.strip.start_with?(SessionChain::LAST_PREFIX)
       TRIES.times do |try|
         id = SessionChain.resolve(id_or_ref, state_dir: sd)
-        result = with_lock(id, sd) do
-          follow = id_or_ref.to_s.strip.start_with?(SessionChain::LAST_PREFIX) && try < TRIES - 1
-          next :moved if follow && SessionChain.next_of(id, state_dir: sd)
-
-          run_locked(id, prompt: prompt, preview: preview, model: model, state_dir: sd, recap_wait: recap_wait,
-                         archive_wait: archive_wait, client_id: client_id)
-        end
+        result = continue_once(id, follow: last && try < TRIES - 1, lock_wait: lock_wait, prompt: prompt, preview: preview,
+                                   model: model, state_dir: sd, recap_wait: recap_wait, archive_wait: archive_wait,
+                                   client_id: client_id)
         return result unless result == :moved
       end
     end
 
-    # The block under the previous link's transition lock, waited for
-    # (no deadline).
-    private_class_method def self.with_lock(id, state_dir, &)
-      SessionTransition.exclusive([id], kind: :continue, state_dir: state_dir, &)
+    # One try of #run on the resolved +id+: the refusals known before
+    # anything changes and the recap, unlocked (a send during the wait goes
+    # in, a delete may take the link); then, under the transition locks of
+    # +id+ and the new link's reserved id (one SessionTransition.exclusive,
+    # sorted, tried for +lock_wait+ seconds), everything checked again and the
+    # transition (#run_locked): each delivery and undo inside it runs on
+    # this thread, under the token. :moved when +follow+ (a last:<id> try
+    # with tries left) finds a link after +id+, or the locks held past the
+    # wait. Whatever way it ends, a reserved folder left with no session
+    # file goes (#drop_unsaved).
+    private_class_method def self.continue_once(id, follow:, lock_wait:, prompt:, preview:, model:, state_dir:, recap_wait:,
+                                                archive_wait:, client_id:)
+      return :moved if follow && SessionChain.next_of(id, state_dir: state_dir)
+
+      previous = Session.load(id, state_dir: state_dir)
+      checked = check!(previous, state_dir, model: model)
+      # archive_session's refusals that can be known now, before the wait.
+      SessionManager.archivable!(id, state_dir, except: checked.plan.move)
+      recap_before_archive(id, state_dir, wait: recap_wait)
+      successor_id = SecureRandom.uuid
+      begin
+        with_lock([id, successor_id], state_dir, deadline: lock_wait) do
+          next :moved if follow && SessionChain.next_of(id, state_dir: state_dir)
+
+          run_locked(id, successor_id, prompt: prompt, preview: preview, model: model, state_dir: state_dir,
+                                       archive_wait: archive_wait, client_id: client_id)
+        end
+      rescue SessionTransition::Busy
+        return :moved if follow
+
+        raise Refused.new(id, :transition_busy)
+      ensure
+        drop_unsaved(id, successor_id, state_dir)
+      end
     end
 
-    private_class_method def self.run_locked(id, prompt:, preview:, model:, state_dir:, recap_wait:, archive_wait:, client_id:)
+    # The block under the transition locks of +ids+ (sorted), tried until
+    # +deadline+ seconds from now.
+    # @raise [SessionTransition::Busy]
+    private_class_method def self.with_lock(ids, state_dir, deadline:, &)
+      SessionTransition.exclusive(ids, kind: :continue, state_dir: state_dir, deadline: deadline, &)
+    end
+
+    # A continue's folders that #with_lock made or kept and no session file
+    # is in: the new link's reserved one, never saved (a refusal or failure
+    # before its save; a crash's, from #repair_intent), with any note a
+    # writer left there given back to +id+ first (as #give_back_strays);
+    # +id+'s own, when it was deleted while the continue waited, holding only
+    # the lock (SessionTransition.forget). A saved session is left alone.
+    private_class_method def self.drop_unsaved(id, successor_id, state_dir)
+      dir = Session.session_dir(successor_id, state_dir: state_dir)
+      if Dir.exist?(dir) && !Session.exist?(successor_id, state_dir: state_dir)
+        NoteMove.give_back(from: successor_id, to: id, moved: [], state_dir: state_dir) if Session.exist?(id, state_dir: state_dir)
+        FileUtils.rm_rf(dir)
+      end
+      SessionTransition.forget(id, state_dir: state_dir)
+    rescue StandardError => e
+      Log.warn(:worker, "continue_cleanup_failed", sid: id, error: e.class.name, msg: e.message)
+    end
+
+    # The transition: +previous+ checked again (it may have changed, been
+    # continued or deleted during the recap; a turn sent to it during the
+    # wait may have delegated, they move too, or a delegate finished),
+    # the intent, the archive, the new link and its carry, or the undo.
+    private_class_method def self.run_locked(id, successor_id, prompt:, preview:, model:, state_dir:, archive_wait:,
+                                             client_id:)
       previous = Session.load(id, state_dir: state_dir)
       checked = check!(previous, state_dir, model: model)
       plan = checked.plan
-      # archive_session's refusals that can be known now, before the wait.
-      SessionManager.archivable!(id, state_dir, except: plan.move)
-      recap_before_archive(id, state_dir, wait: recap_wait)
-      # Again: a turn sent to it during the wait may have delegated (they
-      # move too), or a delegate finished.
-      plan = move_plan!(id, state_dir)
       already = [id, *SessionManager.descendant_ids(id, state_dir, except: plan.move)].select do |sid|
         ArchiveStore.archived?(Session.session_dir(sid, state_dir: state_dir))
       end
-      successor_id = SecureRandom.uuid
       intent_path = continue_intent_path(id, state_dir)
       ContinueIntent.write(intent_path, successor_id: successor_id, previously_archived: already)
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
@@ -283,6 +345,9 @@ module Samagotchi
         unless successor.is_a?(Hash) && successor["continues"] == session.id
           archived = intent.archived_ids || (archived_descendants(session.id, sessions, state_dir) - intent.previously_archived)
           undo_failed_continue(session.id, state_dir, moved: [], archived: archived)
+          # The folder the crashed continue reserved for it (its lock), when
+          # it was never saved.
+          drop_unsaved(session.id, intent.successor_id, state_dir) if intent.successor_id
         end
         FileUtils.rm_f(path)
       end

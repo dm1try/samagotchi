@@ -173,7 +173,9 @@ are the refusals that mean "not this moment": `ArchiveRefused` with `busy`, `que
 or `offer`, or `busy_child`/`queued_child`/`offer_child` (a chain's own running
 delegate refuses the archive, since `archivable!` walks the whole descendant tree),
 `SessionContinue::Refused(:continued)` (a human continued it while we were
-resolving) and `:open_children`. So is an archived target that a continue is still
+resolving), `:open_children` and `:transition_busy` (another continue of the
+chain's end held its transition lock past the continue's 10 s on each of its tries).
+So is an archived target that a continue is still
 making the next link of (`being continued as 7b2d41aa; retry at the next tick`): a
 person's `chi send --new --continues` or web `continue →` archives the link before
 its successor is saved, and a tick in that moment sees an archived end
@@ -277,8 +279,10 @@ is refused with exit 2, naming the matches.
 The tick's lock covers the file only, never the action: the clock advances before
 the work starts — for `every` and `weekday` to the next occurrence, for a `date`
 one-off to none — so a tick killed mid-continue cannot fire the same entry twice.
-If a later tick finds a firing older than 40 seconds without an accepted turn, it
-counts an `interrupted` failure. This 40-second limit covers only the firing
+If a later tick finds a firing older than 70 seconds without an accepted turn, it
+counts an `interrupted` failure (a chain firing's continue can wait 30 s for the
+recap, 10 s for the transition lock on each of its three tries, 5 s for the
+archive). This 70-second limit covers only the firing
 step, not an accepted turn or its pending question. The action may already have
 taken effect before the process died, so that occurrence is not replayed; a
 `date` one-off stays disabled with the failure visible, and recurring schedules

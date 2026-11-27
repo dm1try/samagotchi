@@ -7,8 +7,9 @@ require_relative "session_transition"
 
 module Samagotchi
   # The files a continue (SessionContinue.run) keeps in the previous link's
-  # folder while it runs: LOCK, held for the whole continue (SessionTransition,
-  # the one code that flocks it), and FILE, its
+  # folder while it runs: LOCK, held for its transition, from after the
+  # recap to the end (SessionTransition, the one code that flocks it; the
+  # new link's own is held with it), and FILE, its
   # intent (the successor's id), written before the link is archived and
   # removed once the successor is saved or the continue is undone. A send
   # (SessionInbox::Head) and a schedule tick (Schedules#continuing_reason)
