@@ -252,6 +252,14 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect(calls.map(&:first)).to eq([:get])
     end
 
+    it "reads a delete's 409 transition_held as DeleteRefused in chi web's words, not a continue's refusal" do
+      access, = scripted([409, { error: "transition_held", reason: "transition_held", session_id: "s",
+                                 message: "session s is being deleted; try again in a moment" }])
+      expect { access.delete("s", force: true) }.to raise_error(Samagotchi::SessionManager::DeleteRefused) { |e|
+        expect([e.reason, e.message]).to eq([:transition_held, "session s is being deleted; try again in a moment"])
+      }
+    end
+
     it "gives each new refusal its own reason and message, not a worker running" do
       access, = scripted([409, { error: "continuing", reason: "continuing", session_id: "s",
                                  message: "a continue of s is under way; try again in a moment" }],

@@ -30,7 +30,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
   # "Locks and crash repair"): nothing a continue runs under its transition
   # lock takes a shared hold of an id this thread holds (the token says true
   # there, where the lock file said false before SessionTransition), nor
-  # reaches follow_guard, SessionChain::Delete.link or hold_all.
+  # reaches follow_guard, SessionChain::Delete.link or .chain.
   let(:under_lock) { [] }
 
   before do
@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       under_lock << [:shared, id] if Samagotchi::SessionTransition.holding?(id, state_dir: opts[:state_dir])
       original.call(id, **opts, &block)
     end
-    %i[link hold_all].each do |name|
+    %i[link chain].each do |name|
       allow(Samagotchi::SessionChain::Delete).to receive(name).and_wrap_original do |original, *args, **opts, &block|
         under_lock << [name, args.first] if holding_any?
         original.call(*args, **opts, &block)

@@ -841,7 +841,7 @@ module Samagotchi
 
           raise SessionManager::OwnedByTUI, sid
         when "worker_running", "still_stopping", "scheduled", "continuing", "delegate_unmovable", "chain_scheduled",
-             "protection_unreadable"
+             "protection_unreadable", "transition_held"
           raise SessionManager::DeleteRefused.new(sid, reason || error.to_sym, message: message, ids: ids_of(json["ids"]),
                                                                                schedule_id: json["schedule_id"])
         when "tasks_running" then raise tasks_refusal(json, sid)

@@ -90,10 +90,10 @@ module Samagotchi
             refusal: refusal(state_dir) { chain_checks(plan, state_dir) } }
         end
 
-        # The link delete's refusals in its order: a continue of it (or of
+        # The link delete's refusals in its order: a transition of it (or of
         # the previous link it undoes), a one-turn run, then check_link!.
         def link_checks(plan, state_dir)
-          [plan.id, plan.previous].compact.each { |sid| refuse_continuing!(sid, state_dir) }
+          [plan.id, plan.previous].compact.each { |sid| refuse_held!(sid, state_dir) }
           tui!(plan.id, state_dir)
           Delete.check_link!(plan, state_dir)
         end
@@ -102,11 +102,15 @@ module Samagotchi
         # refusal here.
         def chain_checks(plan, state_dir)
           Delete.check_chain!(plan, state_dir, stop: true)
-          plan.links.each { |sid| refuse_continuing!(sid, state_dir) }
+          plan.links.each { |sid| refuse_held!(sid, state_dir) }
         end
 
-        def refuse_continuing!(id, state_dir)
-          raise SessionManager::DeleteRefused.new(id, :continuing) if SessionTransition.held?(id, state_dir: state_dir)
+        # A transition holding +id+'s lock now (a continue: :continuing,
+        # another delete: :transition_held; DeleteRefused.held).
+        def refuse_held!(id, state_dir)
+          return unless SessionTransition.held?(id, state_dir: state_dir)
+
+          raise SessionManager::DeleteRefused.held(SessionTransition::Busy.held(id, state_dir: state_dir))
         end
 
         def tui!(id, state_dir)
