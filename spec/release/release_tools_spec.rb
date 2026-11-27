@@ -146,7 +146,7 @@ RSpec.describe ReleaseTools do
         _, changes = described_class.refresh_manifest(File.read(File.join(dir, "manifest.yml")).gsub(/sha256:\h+/, "sha256:0"), dir)
         [File.basename(dir), changes.map(&:first)]
       end
-      expect(files).to include("btw" => ["plugin.rb"], "mcp" => ["plugin.rb", "client.rb", "http_client.rb", "oauth.rb", "tools.rb", "content.rb"], "guardrails" => ["guardrails.md"],
+      expect(files).to include("btw" => ["plugin.rb"], "mcp" => ["plugin.rb", "client.rb", "http_client.rb", "oauth.rb", "sign_in.rb", "tools.rb", "content.rb"], "guardrails" => ["guardrails.md"],
                                "known-names" => ["known_names.md", "plugin.rb"],
                                "source-links" => ["source_links.md", "plugin.rb"])
       expect(files["system"]).to include("identity.md", "delegated.md")

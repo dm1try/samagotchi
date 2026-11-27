@@ -7,12 +7,13 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:e970bf7ca9cb15eb77ca6442497fffa19f1ab66bf812e64a259da12b1dce58a9
+  sha256: sha256:57751994e5a6d27065ff5cd08fa9a734cba93e9cf649942cec28cbee9e724350
   # Loaded in this order, before plugin.rb (HttpClient's errors subclass Client's, OAuth's HttpClient's).
   parts:
     client.rb: sha256:19fcca8ded80d45bdfb75715a8c14ac16fb6edae9aa49a5bb99619a021378fdf
     http_client.rb: sha256:7d3f7b47f20f020ed68846a41f79a2b5f51f7d959ee23432eba244f5d79dfb70
     oauth.rb: sha256:c779e8e7971715c15494b8e755f4a1cff1b4358b96a3ef8db6b330f066c0f152
+    sign_in.rb: sha256:2236fb595cc95dc21bb814bf9a36c20e656cdf399cd3e7d43fdec14550a00bfe
     tools.rb: sha256:607743a06f191dc24b6aa032e67ed6c95a75cb27310361f6572ca15d5dc50635
     content.rb: sha256:28461822ea1181c3abe790d3f01391babe6b1d974d4606117c42ba1da209b132
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).

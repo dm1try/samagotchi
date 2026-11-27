@@ -41,7 +41,7 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 server](mcp-server.md).)
 
 `chi bundle install mcp` (or the `dev` profile) installs the bundle shipped with chi. It is written
-only against this API (`lib/samagotchi/bundles/mcp/`: `plugin.rb` and its parts `client.rb`, `http_client.rb`, `oauth.rb`, `tools.rb`, `content.rb`), and gives
+only against this API (`lib/samagotchi/bundles/mcp/`: `plugin.rb` and its parts `client.rb`, `http_client.rb`, `oauth.rb`, `sign_in.rb`, `tools.rb`, `content.rb`), and gives
 the model the tools of [MCP](https://modelcontextprotocol.io) servers. It
 has no memory file, and the servers' tools aren't declared to the model one
 by one: the bundle publishes them into chi's tool index

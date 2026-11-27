@@ -520,6 +520,7 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/bundles/github-pr/plugin.rb
     - lib/samagotchi/bundles/known-names/plugin.rb
     - lib/samagotchi/bundles/mcp/plugin.rb
+    - lib/samagotchi/bundles/mcp/sign_in.rb
     - lib/samagotchi/bundles/slow-commands/plugin.rb
     - lib/samagotchi/cancellation_controller.rb
     - lib/samagotchi/client.rb
