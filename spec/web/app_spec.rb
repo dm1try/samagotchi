@@ -4228,6 +4228,29 @@ RSpec.describe Samagotchi::Web::App do
         expect(runtime.load_record(record.id)).to have_attributes(status: "stopped", stop_reason: "stopped_by_user")
       end
 
+      it "answers an archive 409 busy, reason transition_held, in the holder's words while another change holds it" do
+        stub_const("Samagotchi::SessionManager::ARCHIVE_LOCK_WAIT", 0.1)
+        FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+        taken = Queue.new
+        release = Queue.new
+        holder = Thread.new do
+          Samagotchi::SessionTransition.exclusive([session.id], kind: :delete, state_dir: state_dir) do
+            taken << true
+            release.pop
+          end
+        end
+        taken.pop
+
+        status, json = call("/api/sessions/#{session.id}/archive", method: "POST")
+        expect(status).to eq(409)
+        expect(json).to include("error" => "busy", "reason" => "transition_held", "session_id" => session.id,
+                                "message" => "session #{session.id[0, 8]} is being deleted; try again in a moment")
+        expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))).to be(false)
+      ensure
+        release&.push(true)
+        holder&.join
+      end
+
       it "answers an archive 409 tasks_running (not busy), and {stop_tasks: true} in the body stops them and archives" do
         record = start_task("sleep 30.52")
 

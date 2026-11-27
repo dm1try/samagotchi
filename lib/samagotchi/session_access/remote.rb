@@ -847,7 +847,7 @@ module Samagotchi
         when "tasks_running" then raise tasks_refusal(json, sid)
         when "context_busy" then raise ContextSources::Held, message.to_s
         when "busy", "scratch"
-          raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason
+          raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"], message: (message if reason == :transition_held)) if reason
         when "continued", "open_children", "folder_gone", "transition_busy"
           raise SessionContinue::Refused.new(sid, reason, ids: Array(json["ids"]), detail: (message if reason == :transition_busy))
         when "held", "not_running", "unsupported", "failed"
