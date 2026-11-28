@@ -22,6 +22,7 @@ and commands may change between minor versions. How releases are made:
 - Stopping a session that is being continued, deleted or archived is refused right away and says what to do
   ("session ab12cd34 is being continued as 7b2d41aa-…: stop that one") instead of waiting 10 seconds, and a refused
   stop no longer ends the running turn.
+- The web's Stop toast for a session being continued offers Open on the new link.
 
 ### Changed
 
