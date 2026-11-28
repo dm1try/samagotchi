@@ -25,6 +25,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
   const toasts = [];
   const alerts = [];
   const opened = [];
+  // The drafts' moves and drops (drafts.js), in order with the log's clearSelection.
+  const drafts = [];
   // Each confirm's text; +confirms+ is the answer, or one per confirm in turn.
   const asked = [];
   const wrap = (name, fallback) => async (...args) => {
@@ -53,7 +55,9 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     eventsLive: () => eventsLive,
     refresh: () => log.push("refresh"),
     select: async (id) => { log.push(`select ${id}`); world.selected = id; },
-    clearSelection: () => { log.push("clearSelection"); world.selected = null; },
+    clearSelection: () => { log.push("clearSelection"); drafts.push("clearSelection"); world.selected = null; },
+    moveDraft: (from, to) => drafts.push(["move", from, to]),
+    dropDraft: (id) => drafts.push(["drop", id]),
     showNotice: (text) => log.push(`notice ${text}`),
     toast: (text, action = null, options = {}) => toasts.push({ text, action, options }),
     addCreatedSession: (created) => log.push(`created ${created.id}`),
@@ -67,7 +71,7 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     deleteSheet,
     doc,
   });
-  return { actions, world, log, calls, toasts, alerts, opened, asked };
+  return { actions, world, log, calls, toasts, alerts, opened, asked, drafts };
 }
 
 // The 409 a delete or an archive answers while background tasks it would
@@ -484,3 +488,50 @@ test("toggleArchiveSelected: archives the open session, or unarchives an archive
   assert.deepEqual(none.calls, []);
 });
 
+
+// ── The drafts of gone and deleted sessions (C3) ───────────────────────────
+
+test("leaveGoneSession: the open session's draft goes to the start page's before it opens; another's is left to the sweep", () => {
+  const h = harness();
+  h.actions.leaveGoneSession("other", "deleted");
+  assert.deepEqual(h.drafts, []);
+  h.actions.leaveGoneSession("s1aaaaaaaa", "not_found");
+  assert.deepEqual(h.drafts, [["move", "s1aaaaaaaa", ""], "clearSelection"]);
+});
+
+test("a delete from the sheet drops the deleted sessions' drafts after the start page opens; a session_gone meanwhile moves nothing", async () => {
+  const sheet = fakeSheet();
+  let gone;
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }], deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => plan(), deleteSession: async () => {
+                        // The hub's session_gone can come before the delete's answer.
+                        gone = h.actions.leaveGoneSession("s1aaaaaaaa", "deleted");
+                        return { deleted: ["s1aaaaaaaa"] };
+                      } } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  sheet.hosts[0].flow.act("this");
+  await tick();
+  assert.equal(gone, undefined);
+  assert.deepEqual(h.drafts, ["clearSelection", ["drop", "s1aaaaaaaa"]]);
+  // Once over, a gone session is moved again.
+  h.world.selected = "s2bbbbbbbb";
+  h.actions.leaveGoneSession("s2bbbbbbbb", "deleted");
+  assert.deepEqual(h.drafts.at(-2), ["move", "s2bbbbbbbb", ""]);
+});
+
+test("a chain delete counts the open link as deliberate too", async () => {
+  const sheet = fakeSheet();
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb", continues: "s1aaaaaaaa" }], open: "s2bbbbbbbb", deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => ({ chained: true, position: 1, size: 2, link: { digest: "d0" }, chain: { links: 2, digest: "c0" } }),
+                             deleteChain: async () => {
+                               h.actions.leaveGoneSession("s2bbbbbbbb", "deleted");
+                               return { deleted: ["s1aaaaaaaa", "s2bbbbbbbb"] };
+                             } } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  sheet.hosts[0].flow.act("chain");
+  await tick();
+  assert.ok(!h.drafts.some((d) => d[0] === "move"), JSON.stringify(h.drafts));
+  assert.deepEqual(h.drafts.filter((d) => d[0] === "drop"), [["drop", "s1aaaaaaaa"], ["drop", "s2bbbbbbbb"]]);
+});

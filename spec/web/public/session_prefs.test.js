@@ -23,8 +23,8 @@ function clean(t) {
   t.after(wipe);
 }
 
-test("the keys: the four view settings, each as <key>:<session>", () => {
-  assert.deepEqual(PREF_KEYS, ["chi_stage_collapsed", "chi_composer_floor", "chi_composer_collapsed", "chi_working_set_collapsed", "chi_ws_sections_folded"]);
+test("the keys: the view settings and the composer's draft, each as <key>:<session>", () => {
+  assert.deepEqual(PREF_KEYS, ["chi_stage_collapsed", "chi_composer_floor", "chi_composer_collapsed", "chi_working_set_collapsed", "chi_ws_sections_folded", "chi_composer_draft"]);
   assert.equal(prefKey(STAGE_FOLD, "s1"), "chi_stage_collapsed:s1");
   assert.ok(prefKey(STAGE_FOLD, null) === null);
 });
@@ -96,4 +96,16 @@ test("sweepSessionPrefs: an unscoped list drops the keys of sessions gone; a sco
     assert.ok(localStorage.getItem(`${key}:gone`) === null, `${key}: gone`);
   }
   assert.equal(localStorage.getItem("chi_answer_fold:gone"), "{}", "not its key");
+});
+
+test("sweepSessionPrefs: a gone session's draft goes with its view settings; the start page's draft stays", (t) => {
+  clean(t);
+  localStorage.setItem("chi_composer_draft:gone", "half a thought");
+  localStorage.setItem("chi_composer_draft:kept", "mine");
+  localStorage.setItem("chi_start_draft", "start text");
+  t.after(() => localStorage.removeItem("chi_start_draft"));
+  sweepSessionPrefs([{ id: "kept" }]);
+  assert.ok(localStorage.getItem("chi_composer_draft:gone") === null);
+  assert.equal(localStorage.getItem("chi_composer_draft:kept"), "mine");
+  assert.equal(localStorage.getItem("chi_start_draft"), "start text");
 });

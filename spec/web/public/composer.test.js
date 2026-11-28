@@ -214,12 +214,30 @@ test("send: a switch mid-send clears the composer but follows no worker", async 
   ]);
 });
 
-// The composer is shared across sessions: a draft typed in the session
-// opened meanwhile stays when the command answers.
-test("send: a switch mid-send keeps the draft typed since in the session opened", async () => {
-  const { calls, commands } = harness({ switchTo: "s2", draft: "a draft in s2" });
+// Each session has its own draft (drafts.js): the one the command went
+// from is cleared when it answers, a draft of the session opened meanwhile
+// is never read or touched; text typed into the sent draft since keeps it.
+test("send: a switch mid-send clears the draft it went from by its id; the draft typed in the session opened stays", async () => {
+  const drafts = new Map([["s1", "/model x"], ["s2", ""]]);
+  let open = "s1";
+  const calls = [];
+  const commands = createComposerCommands({
+    session: () => open, clientId: "c1",
+    sendCommand: async () => { open = "s2"; drafts.set("s2", "a draft in s2"); },
+    followWokenWorker: () => calls.push("follow"), refreshHistory: () => {}, failed: () => {}, failedElsewhere: () => {}, ownedByTui: () => {},
+    composer: { busy: () => {}, done: () => {}, text: (id) => drafts.get(id), clear: (id) => { calls.push(["clear", id]); drafts.set(id, ""); } },
+  });
   await commands.send("/model x");
-  assert.deepEqual(calls, [["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["refresh"], ["done"]]);
+  assert.deepEqual(calls, [["clear", "s1"]]);
+  assert.equal(drafts.get("s2"), "a draft in s2");
+  drafts.set("s1", "/model x");
+  const typed = createComposerCommands({
+    session: () => "s1", clientId: "c1", sendCommand: async () => { drafts.set("s1", "/model x and more"); },
+    followWokenWorker: () => {}, refreshHistory: () => {}, failed: () => {}, failedElsewhere: () => {}, ownedByTui: () => {},
+    composer: { busy: () => {}, done: () => {}, text: (id) => drafts.get(id), clear: (id) => { calls.push(["clear", id]); drafts.set(id, ""); } },
+  });
+  await typed.send("/model x");
+  assert.equal(drafts.get("s1"), "/model x and more", "text typed since keeps the draft");
 });
 
 test("send: after a switch, a refusal or a terminal's hold is said elsewhere, not marked on the open session", async () => {

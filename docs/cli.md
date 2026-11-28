@@ -1190,9 +1190,12 @@ The prompt stays open while a turn runs in an attached terminal:
   running turn's card with the commands queued for its end, until its turn
   starts; its **×** (`Remove from queue`, once the worker acked it) takes it
   back before it runs, in every tab (a toast says why when it can't: it
-  already started, it is gone, no live worker), and puts its text back into an
-  empty composer to change and send again (a draft stays: the text is then in
-  the toast; images don't come back); `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
+  already started, it is gone, no live worker), and puts its text back into
+  the session's draft when that is empty, to change and send again (a draft
+  stays: the text is then in the toast; after a switch to another session
+  meanwhile it goes into the left session's empty draft, a toast says
+  `Removed: back in <id>'s draft`, else a sticky toast with Copy; images don't
+  come back); `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
   thinking away). Cut is enabled only while the step has streamed nothing but
   thinking and cutting is on for the model (the line says `cuts at about 0:25
   if you choose cut in now` until the thinking passes `steer_cut_after`, and

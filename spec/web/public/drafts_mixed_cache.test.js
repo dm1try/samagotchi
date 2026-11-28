@@ -43,6 +43,7 @@ function page({ open = "s1", text = "hello" } = {}) {
   const world = { selected: open };
   const shownDraft = () => world.selected ?? "";
   const drafts = createDrafts({ promptEl, view: mount, shownKey: shownDraft });
+  drafts.show(shownDraft());
   drafts.setText(shownDraft(), text);
   const calls = [];
   const store = createSessionStore({ initial: { owner: "worker", commands: [], firstPreview: "first" } });
@@ -76,7 +77,13 @@ function page({ open = "s1", text = "hello" } = {}) {
     bubbleById: () => null,
     addCommandBubble: () => {},
     addCreatedSession: () => {},
-    select: async (id) => { world.selected = id; },
+    // app.js's: the start page's draft goes with the session made from it
+    // (an older send_turn.js doesn't move it), then select's forgetSession swaps.
+    select: async (id) => {
+      if (!world.selected) drafts.move("", id);
+      world.selected = id;
+      drafts.show(id);
+    },
     showNotice: () => {},
     followWokenWorker: () => {},
     refreshHistory: () => {},
@@ -103,4 +110,6 @@ test("0.191.0's send_turn.js beside this app.js: the start page's line makes the
   assert.deepEqual(p.calls.map((c) => c.slice(0, 3)), [["turn", "new1", "start here"]]);
   assert.equal(p.world.selected, "new1");
   assert.equal(p.promptEl.value, "");
+  assert.equal(p.drafts.text(""), "", "the start page's draft went with the session, not left to be sent again");
+  assert.ok(localStorage.getItem("chi_start_draft") === null);
 });

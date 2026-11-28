@@ -10,6 +10,9 @@ import { createSendTurn } from "../../../lib/samagotchi/web/public/send_turn.js"
 import { routeComposerLine } from "../../../lib/samagotchi/web/public/composer.js";
 import { createSessionStore } from "../../../lib/samagotchi/web/public/session_store.js";
 import { sendTurn as sendTurnRequest } from "../../../lib/samagotchi/web/public/data.js";
+import { createDrafts } from "../../../lib/samagotchi/web/public/drafts.js";
+
+if (!("localStorage" in globalThis)) globalThis.localStorage = window.localStorage;
 
 function failure(code, message = "boom", body = null) {
   return Object.assign(new Error(message), { status: 409, code, body });
@@ -25,8 +28,26 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   // world.state reads the page's session store; setting it is a session
   // switch (forgetSession's replaceCurrent).
   const store = createSessionStore({ initial: { owner: "worker", commands: [], firstPreview: "first", ...state } });
+  // The page's drafts (drafts.js) over a textarea and a stand-in mount: the
+  // box and +world.chips+ are the draft on view; a switch (world.selected =)
+  // swaps them as forgetSession does. The old bag has no drafts: one box.
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key === "chi_start_draft" || key?.startsWith("chi_composer_draft:")) localStorage.removeItem(key);
+  }
+  const promptEl = document.createElement("textarea");
+  let mountChips = [];
+  const mount = { chips: () => mountChips, setChips: (list) => { mountChips = list; } };
+  let selected = open;
+  const realDrafts = bag === "old" ? null : createDrafts({ promptEl, view: mount, shownKey: () => selected ?? "" });
+  realDrafts?.show(open ?? "");
+  promptEl.value = text;
+  mountChips = chips;
   const world = {
-    selected: open, chips,
+    get selected() { return selected; },
+    set selected(id) { selected = id; realDrafts?.show(id ?? ""); },
+    get chips() { return mountChips; },
+    set chips(list) { mountChips = list; },
     get state() { return store.current; },
     set state(fields) { store.replaceCurrent(fields); },
   };
@@ -35,7 +56,6 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   const toasts = [];
   const bubbles = [];
   const historyEl = document.createElement("div");
-  const promptEl = { value: text };
   const button = { disabled: false };
   const sentIds = new Set();
   const earlyRestores = new Map();
@@ -55,18 +75,20 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     focus: () => log.push("focus"),
     noteDraft: (id) => log.push(`noteDraft ${id}`),
   };
-  // One box, as drafts.js keeps it in Phase R: the key is logged, not read.
-  const draftsBag = {
+  // The real drafts by key, each call logged.
+  const draftsBag = realDrafts && {
     ...oldBag,
     el: undefined,
     setChips: undefined,
-    text: (key) => { drafts.push(["text", key]); return promptEl.value; },
-    chips: (key) => { drafts.push(["chips", key]); return world.chips; },
-    setText: (key, value) => { drafts.push(["setText", key, value]); promptEl.value = value; },
-    putChips: (key, list) => { drafts.push(["putChips", key, list.map((c) => c.name)]); world.chips = list; },
-    clear: (key) => { drafts.push(["clear", key]); cleared += 1; promptEl.value = ""; },
-    move: (from, to) => drafts.push(["move", from, to]),
-    sending: (key, line) => drafts.push(["sending", key, line]),
+    noteDraft: undefined,
+    text: (key) => { drafts.push(["text", key]); return realDrafts.text(key); },
+    chips: (key) => { drafts.push(["chips", key]); return realDrafts.chips(key); },
+    setText: (key, value) => { drafts.push(["setText", key, value]); realDrafts.setText(key, value); },
+    putChips: (key, list) => { drafts.push(["putChips", key, list.map((c) => c.name)]); realDrafts.putChips(key, list); },
+    clear: (key) => { drafts.push(["clear", key]); cleared += 1; realDrafts.clear(key); },
+    move: (from, to) => { drafts.push(["move", from, to]); realDrafts.move(from, to); },
+    sending: (key, line) => { drafts.push(["sending", key, line]); realDrafts.sending(key, line); },
+    settle: (key, line) => { drafts.push(["settle", key, line]); realDrafts.settle(key, line); },
   };
   const sendTurnApi = createSendTurn({
     session: () => world.selected,
@@ -119,9 +141,9 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     alert: (text) => log.push(["alert", text]),
   });
   // The keys the drafts were written by (setText, putChips, clear, move).
-  const writes = () => drafts.filter(([op]) => op !== "text" && op !== "chips" && op !== "sending");
+  const writes = () => drafts.filter(([op]) => !["text", "chips", "sending", "settle"].includes(op));
   return { send: sendTurnApi.send, world, log, calls, toasts, bubbles, promptEl, button, sentIds, earlyRestores,
-           cleared: () => cleared, verify: () => verify, revise: () => revise, drafts, writes };
+           cleared: () => cleared, verify: () => verify, revise: () => revise, drafts, writes, realDrafts };
 }
 
 test("a line in a session: the echo, POST /turn with the tab's id, the composer emptied at the ack, the stream followed", async () => {
@@ -294,17 +316,83 @@ test("a switch while the send is in flight: the ack's follow and restore stay wi
   await h.send();
   assert.ok(!h.log.includes("follow"));
   assert.ok(!h.log.includes("openForVisit"));
-  // The restored line still comes back into the (shared) composer.
-  assert.equal(h.promptEl.value, "hello");
+  // The restored line comes back into the draft of the session it went to, not the one on view.
+  assert.equal(h.realDrafts.text("s1"), "hello");
+  assert.equal(h.promptEl.value, "");
 });
 
-test("a restored line put back after a switch is a draft of the session it went to (continue's draft origin)", async () => {
+test("a switch while the send is in flight: the ack empties the draft it went from; the draft typed in the session opened stays", async () => {
   let h;
-  h = harness({ sendTurn: async () => { h.world.selected = "s2"; h.promptEl.value = ""; return { enqueued_id: "e1" }; } });
-  h.earlyRestores.set("e1", { origin: { client_id: "web:t1", enqueued_id: "e1" }, prompt: "hello" });
+  h = harness({ chips: [{ name: "a", file: {} }], sendTurn: async () => {
+    h.world.selected = "s2";
+    h.promptEl.value = "typed in s2";
+    h.realDrafts.syncFromView();
+    return { enqueued_id: "e1" };
+  } });
   await h.send();
-  assert.equal(h.promptEl.value, "hello");
-  assert.ok(h.log.includes("noteDraft s1"));
+  assert.equal(h.promptEl.value, "typed in s2");
+  assert.equal(h.realDrafts.text("s1"), "");
+  assert.deepEqual(h.realDrafts.chips("s1"), []);
+  assert.deepEqual(h.writes(), [["setText", "s1", ""], ["putChips", "s1", []]]);
+  h.world.selected = "s1";
+  assert.equal(h.promptEl.value, "");
+});
+
+test("a switch during the image upload: what follows is the draft it went from too", async () => {
+  let h;
+  h = harness({ chips: [{ name: "a", file: {} }] });
+  const upload = h.calls;
+  h.world.selected = "s1";
+  const sending = h.send();
+  h.world.selected = "s2";
+  await sending;
+  assert.deepEqual(upload[0], ["upload", "s1", "a"]);
+  assert.equal(h.calls.find((c) => c[0] === "turn")[1], "s1");
+  assert.equal(h.realDrafts.text("s1"), "");
+});
+
+test("an ack naming a command after a switch clears the draft it went from, not the one on view", async () => {
+  let h;
+  h = harness({ sendTurn: async () => { h.world.selected = "s2"; h.promptEl.value = "mine"; return { command_id: "c1" }; } });
+  await h.send();
+  assert.equal(h.realDrafts.text("s1"), "");
+  assert.equal(h.promptEl.value, "mine");
+});
+
+test("the start page: a made session takes the start page's draft, chips too, before the page opens it", async () => {
+  const chip = { name: "a", file: {} };
+  const h = harness({ open: null, chips: [chip] });
+  await h.send();
+  const order = h.drafts.filter(([op]) => op === "move").concat(h.log.filter((e) => e === "select new1"));
+  assert.deepEqual(h.writes()[0], ["move", "", "new1"]);
+  assert.ok(order.length === 2);
+  assert.deepEqual(h.calls.map((c) => c.slice(0, 3)), [["create", h.calls[0][1]], ["upload", "new1", "a"], ["turn", "new1", "hello"]].map((c) => c.slice(0, 3)));
+  assert.equal(h.realDrafts.text(""), "");
+  assert.equal(h.realDrafts.text("new1"), "");
+  assert.deepEqual(h.realDrafts.chips("new1"), []);
+});
+
+test("the start page: a failed create keeps its draft on the start page", async () => {
+  const h = harness({ open: null, createIdleSession: async () => { throw new Error("no room"); } });
+  await h.send();
+  assert.equal(h.realDrafts.text(""), "hello");
+  assert.ok(!h.drafts.some(([op]) => op === "move"));
+});
+
+test("the line in flight: the saved copy leaves it out until the ack; a failure settles it back", async () => {
+  let h;
+  let savedMidSend;
+  h = harness({ sendTurn: async () => { savedMidSend = localStorage.getItem("chi_composer_draft:s1"); return { enqueued_id: "e1" }; } });
+  h.realDrafts.syncFromView();
+  assert.equal(localStorage.getItem("chi_composer_draft:s1"), "hello");
+  await h.send();
+  assert.ok(savedMidSend === null, "a reload right after Send brings back no line already sent");
+  assert.ok(localStorage.getItem("chi_composer_draft:s1") === null);
+  const failing = harness({ sendTurn: async () => { throw new Error("down"); } });
+  failing.realDrafts.syncFromView();
+  await failing.send();
+  assert.equal(localStorage.getItem("chi_composer_draft:s1"), "hello", "the line not sent is the saved draft again");
+  assert.deepEqual(failing.drafts.filter(([op]) => op === "sending" || op === "settle").map((c) => c[0]).slice(0, 2), ["sending", "settle"]);
 });
 
 test("a turn restored before its ack: its line back in the composer, which opens", async () => {

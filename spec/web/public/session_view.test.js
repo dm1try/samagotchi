@@ -91,7 +91,8 @@ function fakePage({ read = async () => ({}) } = {}) {
     },
     later: {
       handlers: () => ({ turn_started: rec("handlers.turn_started") }),
-      composer: () => ({ newVisit: rec("composer.newVisit") }),
+      composer: () => ({ newVisit: rec("composer.newVisit"), applyPrefs: rec("composer.applyPrefs") }),
+      drafts: () => ({ show: rec("drafts.show") }),
       ownerVerify: () => ({ clear: rec("ownerVerify.clear"), renderSaved: rec("ownerVerify.renderSaved") }),
       commandList: () => ({ close: rec("commandList.close") }),
       initTasks: () => new Map(),
@@ -243,4 +244,17 @@ test("reloadRender draws a read as a reload draws it: the same shape the page re
   holder.append(view.reloadRender(data));
   assert.deepEqual(historyShape(holder), historyShape(historyEl));
   assert.ok(historyShape(historyEl).length > 0);
+});
+
+test("forgetSession swaps the composer's draft to the session now open (\"\" the start page), before its visit and prefs", () => {
+  const { page, store, view } = fakePage();
+  store.update({ selected: "s2" });
+  view.forgetSession();
+  const names = page.names();
+  assert.deepEqual(page.calls.filter((c) => c[0] === "drafts.show"), [["drafts.show", "s2"]]);
+  assert.ok(names.indexOf("drafts.show") < names.indexOf("composer.newVisit"));
+  assert.ok(names.indexOf("drafts.show") < names.indexOf("composer.applyPrefs"));
+  store.update({ selected: null });
+  view.forgetSession();
+  assert.deepEqual(page.calls.filter((c) => c[0] === "drafts.show").at(-1), ["drafts.show", ""]);
 });
