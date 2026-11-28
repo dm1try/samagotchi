@@ -38,13 +38,15 @@ function setup({ entries = ["first", "second"], floor = null, hooks = {}, fold =
     innerHeight: 800,
     addEventListener: (type, fn) => { listeners[type] = fn; },
   };
-  const calls = { sent: [], toasts: [], writes: 0, revoked: [], loads: 0 };
+  const calls = { sent: [], toasts: [], writes: 0, revoked: [], loads: 0, setTexts: [] };
   let n = 0;
   const composer = mountComposer({
     els: { composer: composerEl, prompt, button, chips: chipsEl, attachBtn, attachInput, grip },
     minPx: () => 26,
     toast: (text) => calls.toasts.push(text),
     onWrite: () => { calls.writes += 1; },
+    // The page's drafts write a recalled entry (drafts.js), not the mount.
+    setText: (text) => { calls.setTexts.push(text); prompt.value = text; },
     loadHistory: () => {
       calls.loads += 1;
       return Promise.resolve(entries);
@@ -138,6 +140,19 @@ test("× takes a chip out and frees its preview; setChips frees only the chips i
   assert.equal(composer.hasDraft(), false);
 });
 
+// A swap of drafts (drafts.js show) parks a draft's chips elsewhere: their previews stay alive.
+test("setChips with revoke: false frees no preview", () => {
+  const { composer, calls, chipNames } = setup();
+  composer.addImageFiles([image("a.png"), image("b.png")]);
+  const parked = composer.chips().slice();
+  composer.setChips([], { revoke: false });
+  assert.deepEqual(chipNames(), []);
+  assert.deepEqual(calls.revoked, []);
+  composer.setChips(parked, { revoke: false });
+  assert.deepEqual(chipNames(), ["a.png", "b.png"]);
+  assert.deepEqual(calls.revoked, []);
+});
+
 test("Enter sends, Alt+Enter sends queued; Shift+Enter and an IME's Enter don't; the button sends", () => {
   const { key, button, calls } = setup();
   assert.equal(key("Enter").defaultPrevented, true);
@@ -160,20 +175,49 @@ test("the page's keys come first; Esc is the page's when it lets go of something
   assert.equal(key("Escape").defaultPrevented, true);
 });
 
-test("↑/↓ walk the history loaded on focus; a recall is the composer's own write", async () => {
+test("↑/↓ walk the history loaded on focus; a recall goes through the page's setText, the caret placed after it", async () => {
   const { prompt, key, calls } = setup();
   prompt.dispatchEvent(new window.Event("focus"));
   await tick();
   assert.equal(calls.loads, 1);
   assert.equal(key("ArrowUp").defaultPrevented, true);
   assert.equal(prompt.value, "second");
+  assert.equal(prompt.selectionStart, 0);
   key("ArrowUp");
   assert.equal(prompt.value, "first");
   key("ArrowDown");
   assert.equal(prompt.value, "second");
-  assert.equal(calls.writes, 3);
+  assert.equal(prompt.selectionStart, "second".length);
+  assert.deepEqual(calls.setTexts, ["second", "first", "second"]);
+  assert.equal(calls.writes, 0, "setText is the write: no onWrite after it");
   // With a modifier the key is the browser's.
   assert.equal(key("ArrowUp", { shiftKey: true }).defaultPrevented, false);
+});
+
+// An older cached app.js passes no setText: ↑/↓ stay the browser's until a reload.
+test("no setText hook: ↑ recalls nothing and is the browser's", async () => {
+  const { prompt, key, calls } = setup({ hooks: { setText: undefined } });
+  prompt.value = "typed";
+  prompt.dispatchEvent(new window.Event("focus"));
+  await tick();
+  assert.equal(key("ArrowUp").defaultPrevented, false);
+  assert.equal(prompt.value, "typed");
+  assert.equal(calls.writes, 0);
+});
+
+test("resetHistory ends browsing: ↓ after it is the browser's, ↑ starts over from the newest", async () => {
+  const { composer, prompt, key } = setup();
+  prompt.dispatchEvent(new window.Event("focus"));
+  await tick();
+  key("ArrowUp");
+  key("ArrowUp");
+  assert.equal(prompt.value, "first");
+  composer.resetHistory();
+  prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+  assert.equal(key("ArrowDown").defaultPrevented, false);
+  prompt.value = "";
+  key("ArrowUp");
+  assert.equal(prompt.value, "second");
 });
 
 test("no history hook: ↑ is the browser's", () => {

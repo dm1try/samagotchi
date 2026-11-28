@@ -16,9 +16,12 @@ function failure(code, message = "boom", body = null) {
 }
 
 // +sendTurn+ / +createIdleSession+: the data.js stand-ins (each call logged).
+// +bag+ "drafts": the composer as app.js passes it (drafts.js' calls, by the
+// draft's key; each logged in +drafts+); "old": an older cached app.js's
+// (el, chips(), setChips(list), clear(), noteDraft: the one box).
 function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null,
                    verify = null, revise = null, toolkitPicked = false, sendTurn = async () => ({ enqueued_id: "e1" }),
-                   createIdleSession = async () => ({ id: "new1" }), commands = true } = {}) {
+                   createIdleSession = async () => ({ id: "new1" }), commands = true, bag = "drafts" } = {}) {
   // world.state reads the page's session store; setting it is a session
   // switch (forgetSession's replaceCurrent).
   const store = createSessionStore({ initial: { owner: "worker", commands: [], firstPreview: "first", ...state } });
@@ -40,6 +43,31 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   store.on("composer", () => log.push("composerMode"));
   store.on("infoBar", () => log.push("infoBar"));
   let cleared = 0;
+  const drafts = [];
+  const oldBag = {
+    el: promptEl,
+    button,
+    chips: () => world.chips,
+    setChips: (list) => { world.chips = list; },
+    fit: () => {},
+    clear: () => { cleared += 1; promptEl.value = ""; },
+    openForVisit: () => log.push("openForVisit"),
+    focus: () => log.push("focus"),
+    noteDraft: (id) => log.push(`noteDraft ${id}`),
+  };
+  // One box, as drafts.js keeps it in Phase R: the key is logged, not read.
+  const draftsBag = {
+    ...oldBag,
+    el: undefined,
+    setChips: undefined,
+    text: (key) => { drafts.push(["text", key]); return promptEl.value; },
+    chips: (key) => { drafts.push(["chips", key]); return world.chips; },
+    setText: (key, value) => { drafts.push(["setText", key, value]); promptEl.value = value; },
+    putChips: (key, list) => { drafts.push(["putChips", key, list.map((c) => c.name)]); world.chips = list; },
+    clear: (key) => { drafts.push(["clear", key]); cleared += 1; promptEl.value = ""; },
+    move: (from, to) => drafts.push(["move", from, to]),
+    sending: (key, line) => drafts.push(["sending", key, line]),
+  };
   const sendTurnApi = createSendTurn({
     session: () => world.selected,
     store,
@@ -67,17 +95,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
       toolkitRefused: (message) => { log.push(["toolkitRefused", message]); return toolkitPicked; },
     },
     takeDelivery: () => null,
-    composer: {
-      el: promptEl,
-      button,
-      chips: () => world.chips,
-      setChips: (list) => { world.chips = list; },
-      fit: () => {},
-      clear: () => { cleared += 1; promptEl.value = ""; },
-      openForVisit: () => log.push("openForVisit"),
-      focus: () => log.push("focus"),
-      noteDraft: (id) => log.push(`noteDraft ${id}`),
-    },
+    composer: bag === "old" ? oldBag : draftsBag,
     historyEl,
     turnDom: { handOff: () => {}, holds: () => false },
     makeUserBubble: (prompt, opts) => {
@@ -100,8 +118,10 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     toast: (text, action, options) => toasts.push({ text, options }),
     alert: (text) => log.push(["alert", text]),
   });
+  // The keys the drafts were written by (setText, putChips, clear, move).
+  const writes = () => drafts.filter(([op]) => op !== "text" && op !== "chips" && op !== "sending");
   return { send: sendTurnApi.send, world, log, calls, toasts, bubbles, promptEl, button, sentIds, earlyRestores,
-           cleared: () => cleared, verify: () => verify, revise: () => revise };
+           cleared: () => cleared, verify: () => verify, revise: () => revise, drafts, writes };
 }
 
 test("a line in a session: the echo, POST /turn with the tab's id, the composer emptied at the ack, the stream followed", async () => {
@@ -404,4 +424,57 @@ test("a viewer without session commands: a /command or ! line goes as a turn, th
     assert.deepEqual(h.calls, [["turn", "s1", text, { clientId: "web:t1", images: [], history: true, delivery: null }]], text);
     assert.equal(h.log.some((entry) => entry[0] === "command"), false, text);
   }
+});
+
+// ── The drafts: every read and write by the key the send started in ───────
+
+test("drafts: the line and chips are read from the open session's draft; the ack writes that draft", async () => {
+  const h = harness({ chips: [{ name: "a", file: {} }] });
+  await h.send();
+  assert.ok(h.drafts.some(([op, key]) => op === "text" && key === "s1"));
+  assert.ok(h.drafts.filter(([op]) => op === "text" || op === "chips").every(([, key]) => key === "s1"));
+  assert.deepEqual(h.writes(), [["setText", "s1", ""], ["putChips", "s1", []]]);
+});
+
+test("drafts: a switch during the send leaves the ack's writes with the session it went to", async () => {
+  let h;
+  h = harness({ sendTurn: async () => { h.world.selected = "s2"; return { enqueued_id: "e1" }; } });
+  await h.send();
+  assert.deepEqual(h.writes(), [["setText", "s1", ""], ["putChips", "s1", []]]);
+});
+
+test("drafts: an ack naming a command clears the draft it was sent from", async () => {
+  let h;
+  h = harness({ sendTurn: async () => { h.world.selected = "s2"; return { command_id: "c1" }; } });
+  await h.send();
+  assert.deepEqual(h.writes(), [["clear", "s1"]]);
+});
+
+test("drafts: the start page's reply clears the start page's draft", async () => {
+  const h = harness({ open: null, text: "/help" });
+  await h.send();
+  assert.deepEqual(h.writes(), [["clear", ""]]);
+});
+
+// ── A mixed cache: an older cached app.js beside this send_turn.js ────────
+// (drafts_mixed_cache.test.js: the other way round.)
+
+test("an older cached app.js's composer (the one box, no drafts): the line goes, the ack empties the box, the sent chips go", async () => {
+  const sent = { name: "a", file: {} };
+  const h = harness({ bag: "old", chips: [sent] });
+  await h.send();
+  assert.equal(h.calls.at(-1)[0], "turn");
+  assert.equal(h.calls.at(-1)[2], "hello");
+  assert.equal(h.promptEl.value, "");
+  assert.deepEqual(h.world.chips, []);
+  assert.deepEqual(h.drafts, []);
+});
+
+test("an older cached app.js's composer: an ack naming a command clears the box; a reply clears it too", async () => {
+  const command = harness({ bag: "old", sendTurn: async () => ({ command_id: "c1" }) });
+  await command.send();
+  assert.equal(command.cleared(), 1);
+  const reply = harness({ bag: "old", open: null, text: "/help" });
+  await reply.send();
+  assert.equal(reply.cleared(), 1);
 });

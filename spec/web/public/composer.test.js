@@ -139,6 +139,7 @@ test("routeSessionLine routes the created session's line by its commands", () =>
 // +draft+: the composer then holds that text (typed in the session opened).
 function harness({ session = "s1", fail = null, switchTo = undefined, draft = undefined } = {}) {
   const calls = [];
+  const read = [];
   let open = session;
   let text = "/model x";
   const deps = {
@@ -157,19 +158,20 @@ function harness({ session = "s1", fail = null, switchTo = undefined, draft = un
     ownedByTui: () => calls.push(["tui"]),
     composer: {
       busy: () => calls.push(["busy"]),
-      text: () => text,
-      clear: () => calls.push(["clear"]),
+      // The draft by the key the command went from (drafts.js): logged.
+      text: (id) => { read.push(id); return text; },
+      clear: (id) => calls.push(["clear", id]),
       done: () => calls.push(["done"]),
     },
   };
-  return { calls, commands: createComposerCommands(deps) };
+  return { calls, read, commands: createComposerCommands(deps) };
 }
 
 test("send: a typed command goes out, the composer clears, the page follows the worker", async () => {
   const { calls, commands } = harness();
   await commands.send("/model x");
   assert.deepEqual(calls, [
-    ["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["clear"], ["refresh"], ["follow"], ["done"],
+    ["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["clear", "s1"], ["refresh"], ["follow"], ["done"],
   ]);
 });
 
@@ -204,10 +206,11 @@ test("run: a failure is a failed bubble; no session, nothing sent", async () => 
 // A switch while the command was in flight: what follows is about the
 // session it went to, not the one open now.
 test("send: a switch mid-send clears the composer but follows no worker", async () => {
-  const { calls, commands } = harness({ switchTo: "s2" });
+  const { calls, read, commands } = harness({ switchTo: "s2" });
   await commands.send("/model x");
+  assert.deepEqual(read, ["s1", "s1"], "the draft it was sent from, before and after the answer");
   assert.deepEqual(calls, [
-    ["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["clear"], ["refresh"], ["done"],
+    ["busy"], ["send", "s1", "/model x", { clientId: "c1" }], ["clear", "s1"], ["refresh"], ["done"],
   ]);
 });
 
