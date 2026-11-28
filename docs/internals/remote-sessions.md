@@ -102,6 +102,9 @@ command, on an idle session with its offer standing and a live worker, is bound 
 instead, the offer's turn id from `ReplyWait.own_turn`, as chi answer follows it; the worker's ack is not read): chi web's `POST …/ask`
 builds one per request over a `Local` that delivers through chi web's own manager and Bridge (`Web::AskRoutes::
 AskAccess`), and `McpServer::Tools` reuses `SessionAccess::Ask` / `Exchange` through the MCP server without chi web.
+chi web's create that answers its first turn (`Web::AskCreate`) spawns the session idle, its prompt as the preview,
+then runs the same `SessionAccess::Ask` through `AskRoutes#run_ask`; a `request_id` names the session itself
+(`SessionInbox.enqueued_id_for("create:" + key)`), so a retry finds it and the Ask rebinds to the first turn.
 The ask chain carries a turn's anchors (`Ask#call` → `Exchange#attempt` → `Local#deliver_turn` → the manager's
 `deliver_turn`, `anchors:` passed only when given): chi web's `/ask` puts a message's `reply_for` there
 (`TurnAnchors`). `SessionAccess::Remote#deliver_turn` refuses a non-empty one (local only, exit 2), and neither

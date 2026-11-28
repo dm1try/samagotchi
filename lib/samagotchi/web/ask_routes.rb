@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "delegate"
+require "json"
 require_relative "../bridge_client"
 require_relative "../agent_caller"
 require_relative "../client_id"
@@ -15,6 +16,7 @@ require_relative "../session_access/exchange"
 require_relative "../session_access/exchange/token"
 require_relative "../reply_for"
 require_relative "../turn_anchors"
+require_relative "last_ask"
 require_relative "request_body"
 
 module Samagotchi
@@ -49,6 +51,8 @@ module Samagotchi
       # GET /api/info's feature: this chi web has the ask route, wait
       # tokens, the answer's wait and the create's token.
       ASK_FEATURE = "ask"
+      # GET /api/info's feature: POST /api/sessions/last/ask (LastAsk).
+      ASK_LAST_FEATURE = "ask_last"
       # A line a worker may run as a session command (#ask_request_id): a
       # / name (Registry::UNKNOWN_COMMAND_WORD's shape, which every
       # built-in a worker runs and a bundle's COMMAND_NAME fits) followed by
@@ -105,30 +109,73 @@ module Samagotchi
         # waits, the Bridge wait and the slice all draw on it.
         deadline = ask_clock + ASK_MAX_SECONDS
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
-        prompt, client_id, options, error = ask_request(id, body)
-        return error if error
+        # `last` (LastAsk): the session the owner last asked, resolved here
+        # (the route's gates saw the address: a participant's is a 404).
+        if id == LastAsk::ADDRESS
+          id = LastAsk.target(state_dir: default_state_dir) or return error_response(404, "not_found", LastAsk::NOT_FOUND)
+        end
 
-        reply_for, error = ask_reply_for(body)
+        prompt, client_id, options, reply_for, error = ask_fields(body, id: id)
         return error if error
-
-        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !runs_as_command?(prompt, client_id)
 
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
 
+        outcome = run_ask(id, prompt: prompt, client_id: client_id, options: options, deadline: deadline, body: body)
+        record_last(outcome, client_id)
+        ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_tui(e)
+      end
+
+      # An ask's body read whole (#ask_request, #ask_reply_for, the turn's
+      # anchor): [prompt, client_id, options, reply_for, nil] or [nil, nil,
+      # nil, nil, a 400 response]. +id+: the session asked, which a
+      # UI-only command's refusal names (nil: none yet, "ID").
+      def ask_fields(body, id:)
+        prompt, client_id, options, error = ask_request(id, body)
+        return [nil, nil, nil, nil, error] if error
+
+        reply_for, error = ask_reply_for(body)
+        return [nil, nil, nil, nil, error] if error
+
+        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !runs_as_command?(prompt, client_id)
+        [prompt, client_id, options, reply_for, nil]
+      end
+
+      # The ask itself (SessionAccess::Ask through chi web's manager and
+      # Bridge, all within +deadline+), its history line recorded unless it
+      # was refused or rebound to a turn already known.
+      # @return [SessionAccess::Ask::Reply, Ran, Refused] the outcome
+      def run_ask(id, prompt:, client_id:, options:, deadline:, body:)
         bridge = ->(sid) { ask_bridge(sid, deadline) }
         access = AskAccess.new(session_access, manager: @manager, bridge: bridge, poll_interval: @wait_poll_interval)
         stopping = -> { !@server_running.call }
         exchange = SessionAccess::Exchange.new(access, continuing_wait: [SessionAccess::Exchange::CONTINUING_WAIT,
                                                                          ASK_MAX_SECONDS].min, cancelled: stopping)
         outcome = SessionAccess::Ask.new(access, exchange: exchange)
-                                    .call(id, prompt: prompt, client_id: client_id, cap: deadline - ask_clock,
+                                    .call(id, prompt: prompt, client_id: client_id, cap: (deadline - ask_clock).clamp(0.0..),
                                               cancelled: stopping, **options)
         rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
-        ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
-      rescue SessionManager::OwnedByTUI => e
-        owned_by_tui(e)
+        outcome
+      end
+
+      # The session an answered ask ran in as the owner's `last`
+      # (LastAsk.record): not a refused ask's, nor a line a parent agent
+      # or chi send sent (ClientId.parent_line?).
+      def record_last(outcome, client_id)
+        return if outcome.is_a?(SessionAccess::Ask::Refused) || ClientId.parent_line?(client_id)
+
+        LastAsk.record(outcome.session_id, state_dir: default_state_dir)
+      end
+
+      # A json_response triple re-rendered with +extra+ keys added (its own
+      # keys win: an ask's session_id is where it ran) and +status+ in place
+      # of its own when given.
+      def with_fields(response, status: nil, **extra)
+        code, _headers, chunks = response
+        json_response(status || code, JSON.parse(chunks.join).merge(extra.transform_keys(&:to_s)) { |_key, own, _new| own })
       end
 
       # The ask's body read: [prompt, client_id, {queue:, timeout:,

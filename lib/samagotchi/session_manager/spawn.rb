@@ -69,9 +69,8 @@ module Samagotchi
                         setup: SessionSetup.new, continues: nil, note: nil, note_source: "chi", before_spawn: nil,
                         review: nil, verify_fresh: nil, scratch: false, session_id: nil, driver: :creator)
         sd = state_dir || Session.default_state_dir
-        if session_id && (!Session.valid_id?(session_id) || Session.exist?(session_id, state_dir: sd))
-          raise ArgumentError, "invalid or existing session id #{session_id.inspect}"
-        end
+        raise ArgumentError, "invalid session id #{session_id.inspect}" if session_id && !Session.valid_id?(session_id)
+        raise IdTaken, "existing session id #{session_id.inspect}" if session_id && Session.exist?(session_id, state_dir: sd)
 
         # The resolved ref is stored (a resumed session keeps its model when an
         # alias is retargeted), with the name as typed beside it. A wrong host

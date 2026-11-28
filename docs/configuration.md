@@ -163,6 +163,7 @@ or `chi web` restart.
 | `memories` | Worker start | The running engine holds its preload list. The config list is not saved in the session file, so a respawn reads the current list. |
 | `append_system_prompt` | Worker start for the file list | The config list is not saved in the session file. File text is read when the prompt is built; `/model` rebuilds it, while an already-built prompt is cached. CLI `--append-system-prompt` files are saved in the session. |
 | `toolkit.default`, `toolkit.child` | Session creation | The chosen toolkit is saved; changing the defaults does not move existing sessions. |
+| `web.ask_dir` | Session creation | Read at each thin-client create that names no folder; existing sessions keep their folder. |
 | `toolkit.kits`, `execute.description`, `llm_context.policy` | Worker start | These are held by the engine's toolkit or tool registry. |
 | `toolkit.suggest.mode`, `toolkit.suggest.threshold`, `toolkit.suggest.defer_turns`, `toolkit.suggest.defer_tokens` | Worker start | Suggestion settings are config-only and are resolved when the worker runs its audit or on-mode ask. |
 | `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
@@ -175,7 +176,7 @@ or `chi web` restart.
 | `session.idle_exit_minutes`, `session.project_env`, `session.carry_last_answer`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer and project env; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
 | `schedule.*` | Next CLI run | `chi schedule add` and `chi schedule tick` read them for that run; with `schedule.auto_tick` on, `chi web`'s hub ticks on `schedule.tick_interval_minutes`. |
-| `web.*` except `web.participants.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
+| `web.*` except `web.participants.*` and except `web.ask_dir` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
 | `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |
 | `broadcast.*` | Next `chi broadcast` | Each broadcast invocation reads its targeting and triage settings. |
@@ -2063,6 +2064,9 @@ name doesn't load. By hand, on the Mac that runs chi web (or steps 1–2, then
    AirDrop or type it). The code works once, within 10 minutes (`chi web` again prints a new one); the phone then
    keeps the `__Host-chi_token` cookie.
 
+A phone Shortcut talks to the same address with the token ([thin clients](thin-clients.md)); set `web.ask_dir` so its
+new sessions need no folder ([A new session in one call](thin-clients.md#a-new-session-in-one-call)).
+
 #### `chi web --tunnel tailscale`
 
 Steps 3–5 in one command, after steps 1–2 (Tailscale signed in, HTTPS certificates on):
@@ -2430,6 +2434,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `web.editor` | `vscode` | yes | What a file ref in `chi web` (a file tool row's title, a diff line) opens, for a viewer on this machine: a preset (`vscode`, `vscode-insiders`, `cursor`, `zed`) or a URL template with `{path}` and an optional `{line}`; `none` turns refs off. See [Opening files from chi web](#opening-files-from-chi-web). |
 | `web.start_dir` | the folder `chi web` runs in | | The folder `chi web` starts in (`chi web --start-dir DIR` for one run): its page (the printed link, a bare `/`, the LAN link and QR code, the Home Screen app) opens on that folder's project, outside a project (no repository or marked folder) on every session, and a new session from the all view starts there; the header's project picker switches projects. `~` and a relative path (resolved from your home folder) work; one that isn't a folder stops `chi web` from starting. `chi web` never changes its own folder. See [CLI](cli.md). |
+| `web.ask_dir` | the `web.start_dir` folder | | The folder a thin client's one-call create (`POST /api/sessions` with `reply_for`, `timeout` or `request_id`, such as a phone Shortcut's) starts in when it names no `dir`, so the Shortcut can leave the folder out. `~` and a relative path (resolved from your home folder) work; one that isn't a folder refuses that create (400 `invalid_dir`), nothing started. Read at each create; a plain create without those fields never uses it. Only the owner's token creates sessions. See [A new session in one call](thin-clients.md#a-new-session-in-one-call). |
 | `web.participants.expires` | `7d` | | How long a participant's link lasts unless `chi share --expires` says otherwise: `Nh` or `Nd`, 1h to 30d. See [participants](internals/participants.md). |
 | `web.participants.cap` | `2.0` | | What a participant's turns, and the side calls they cause, may cost you in dollars unless `chi share --cap` says otherwise ($0 to $1000); at the cap their next comment is refused (429 `cap_reached`) and you get a notice. `chi share cap ID P DOLLARS` changes one grant's. |
 | `web.participants.queue` | `3` | | How many of a participant's turns may wait behind their running one (0 to 20); one more is refused (429 `too_many_turns`). |

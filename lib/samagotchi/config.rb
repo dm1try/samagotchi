@@ -411,6 +411,9 @@ module Samagotchi
       # The folder chi web starts in (Web::StartDir): its bare page shows that folder's project, and a new session
       # without a folder (the all view's) starts there. Unset: the folder chi web runs in. chi web --start-dir wins.
       Entry.new(key: "web.start_dir",            yaml_path: %w[web start_dir],            type: :string, default: nil,             expose: %i[env config], lifecycle: :web_start),
+      # The folder a thin client's one-call create (POST /api/sessions with reply_for, timeout or request_id) starts
+      # in when it names no dir (Web::AskCreate; ~ and home-relative work). Unset: web.start_dir's. Read per create.
+      Entry.new(key: "web.ask_dir",              yaml_path: %w[web ask_dir],              type: :string, default: nil,             expose: %i[env config], lifecycle: :session_creation),
       # Participants (chi share): a new grant's lifetime (Nh or Nd, 1h to 30d), and what a grant without its own
       # takes: its spending cap in dollars ($0 to $1000) and how many of its turns may wait (0 to 20). Read when used.
       Entry.new(key: "web.participants.expires", yaml_path: %w[web participants expires], type: :string, default: "7d", expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),

@@ -39,7 +39,7 @@ module Samagotchi
       # @param include_archived [Boolean] archived sessions too
       # @return [Array<SessionRow>] see SessionRow for the fields
       def session_rows(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
-                       project_root: nil, include_archived: false, sort: nil, order: nil)
+                       project_root: nil, include_archived: false, sort: nil, order: nil, exclude_delegates: false)
         sd = state_dir || Session.default_state_dir
         SessionContinue.repair_interrupted(state_dir: sd)
         root = cwd && folder_path(cwd)
@@ -51,6 +51,7 @@ module Samagotchi
         rows = Session.list(state_dir: sd, sort: sort || "updated_at", order: order || "desc", project_root: project_root,
                             include_archived: include_archived).lazy
                       .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
+                      .reject { |s| exclude_delegates && (s.delegate? || s.scratch) }
                       .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                       .filter_map do |s|
           dir = Session.session_dir(s.id, state_dir: sd)
