@@ -14,7 +14,7 @@ SessionManager boundaries are in [Architecture](../architecture.md) and [Engine 
 
 | Fact | Writer and removal | Cross-process readers and how they see change |
 |---|---|---|
-| `<id>.json` `status` | `Session#save` writes the session snapshot; the owner is the normal writer. `Session#load` overlays `stopped` as `stopped` without rewriting the file. | `SessionRow` and `SessionAccess::Local` read saved turn status; stop cancellation, restart fallback, and archive refusal also use it as a busy hint. Readers reload the file; the hub refreshes rows on its tick. It is turn state, not proof of liveness. |
+| `<id>.json` `status` | `Session#save` writes the session snapshot; the owner is the normal writer. `Session#load` (and `summary_from_file`) overlays `stopped` as `stopped` without rewriting the file; the file's status is kept in `Session#loaded_status` (not saved, nil for a session built in memory). | `SessionRow` and `SessionAccess::Local` read saved turn status; stop cancellation, restart fallback, and archive refusal also use it as a busy hint. Readers reload the file; the hub refreshes rows on its tick. It is turn state, not proof of liveness. The session hub shows `stopped` only in a stopped state (`STOPPED_STATES`): `Web::SessionSummary.shown` derives the state from the facts, and a restored file whose own status says `stopped` stays stopped everywhere. |
 | `starting` (`{pid, at}`) | `SpawnPart#spawn_session` marks before the first session file; `#spawn_worker_for_session` marks around `Process.spawn`; `#claim_start` claims with `StartingMarker.claim`. Failures clear it; `Worker#start` clears it after acquiring `owner.lock`. A stale/dead marker is taken over after 60 seconds or when its pid is gone. | `WorkerPresence`, resume, archive, delete, and retention read it directly; `WorkerPresence` checks age and pid. The session hub also refreshes presence. The atomic hard-link claim arbitrates competing starters; there is no event notification. |
 | `owner.lock` and `leaving_at` | `OwnerLock.acquire` creates the file, takes its exclusive flock, and writes `{pid, kind, started_at}`; `OwnerLock#mark_leaving` adds `leaving_at` and `leave_wait`; `#release` unlocks and closes but leaves the file. Deletion removes it with the session directory. | `OwnerLock.owner` probes the kernel flock, then reads the record. The kernel releases the lock on process death; the record alone does not establish ownership. Presence and `WorkerLink` decisions probe it; hub presence refreshes poll it. `leaving_at` marks a worker that closed its Bridge but still holds the lock for leave work. |
 | `bridge.json` | `Bridge#write_sidecar` publishes the worker endpoint; `Bridge#remove_sidecar` removes its own sidecar when stopping. A crash can leave it behind. | `WorkerLink.resolve` combines the sidecar with `owner.lock` and pid; a sidecar alone is stale. Readers waiting for a worker poll `WorkerLink.resolve`; a stale unlink rechecks the owner and removes only the unchanged file. Live clients see worker events over Bridge SSE. |
@@ -146,15 +146,15 @@ operation (one driver each, every private reach in that one file) and projects i
 code can't make (a one-turn run's lock with a stop) is marked `reachable: false` with its note and still asserted.
 
 Every answer must equal `ALLOWED[op][state]` (for the session hub, `SHOWN[state]`: `Web::SessionSummary.build`'s
-status and bridge_up, its `SessionRow`'s live), or be named by exactly one `KNOWN_DIFFERENCES` entry (op, a `when`
+status and bridge_up, the live its summary gates the open question on (`SessionSummary.shown`)), or be named by exactly one `KNOWN_DIFFERENCES` entry (op, a `when`
 over the row, a plain reason); an entry that names no mismatch fails as stale. The entries are the findings for the
 owner, not fixed: stop-first schedule checks under a one-turn run's or an unknown owner's lock (`#busy_cell`'s stop override), and attach's under a
 one-turn run's, a deleter's or an unknown owner's; chain mode's starting check before any one-turn-run check (`#busy_cell`'s F1b override); a start
 marked after the stop holding a resume off;
-`wake_for_report` reporting a worker's `:live` as `:owned`; the hub's bridge_up, live and status overlay. (Restart
-never reading the stop, the restart and schedule reading a deleter as starting, the schedule's Skew words, and
-`busy_reason`'s live branch falling through to the starting check were fixed: their entries went stale and were
-removed.) The delivery columns are
+`wake_for_report` reporting a worker's `:live` as `:owned`. (Restart
+never reading the stop, the restart and schedule reading a deleter as starting, the schedule's Skew words,
+`busy_reason`'s live branch falling through to the starting check, and the hub's bridge_up, live and status overlay (F3/(c))
+were fixed: their entries went stale and were removed.) The delivery columns are
 generated from `WakePolicy::ROWS`, so for deliveries the matrix proves the states are drawn right (decide is a function
 of the state), not what WakePolicy does; the literal columns and `SHOWN` are goldens.
 

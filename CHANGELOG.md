@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   continue of the same chain no longer fails with "was continued as …"; it follows to the new link.
 - A block fixed in an answer that a hook's display replaced is redrawn right away, not on the next reload; a live answer's bubble shows its time on hover like a reloaded one.
 - A failed block whose fix couldn't be shown no longer stays at "asking for a fix…": it offers Ask in chat.
+- chi web no longer shows a session as stopped while a one-turn `chi -p` run or a delete holds it, and a worker being
+  stopped no longer shows as connected (its worker badge, open card and question go as the stop lands).
 
 ### Changed
 
