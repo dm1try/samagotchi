@@ -28,7 +28,9 @@ module SpecLockHolder
                         timeout: 10, **spawn)
     script = <<~RUBY
       #{'trap("TERM") {}' if ignore_term}
-      Samagotchi::OwnerLock.acquire(ARGV[0], kind: "worker") or abort("owner lock unavailable")
+      # Kept in a global: an OwnerLock nothing references is garbage, and a GC
+      # closes its File, letting go of the flock while the spec still expects it.
+      $owner_lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: "worker") or abort("owner lock unavailable")
       #{holding}
       puts "locked"
       $stdout.flush
