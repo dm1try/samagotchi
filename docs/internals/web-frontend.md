@@ -14,7 +14,7 @@ by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec of its own; `viewer_bo
 **Every module has a size cap, `app.js` its own**: `npm run lint` fails past `max-lines` in `eslint.config.js`
 (counted as `wc -l` counts, comments and blank lines too). Every `public/*.js` module: 1200 (`samagotchi/module-size`,
 about 10% over the largest, `turn_block.js`), so a module near it splits rather than becoming the next `app.js`.
-`app.js` (`samagotchi/app-size`): 1577, its size once the views by hash went into `views.js` and the pages' wiring landed; down from 1637, its size once the diagrams' wiring went into `diagram_wiring.js`, itself down from 1638,
+`app.js` (`samagotchi/app-size`): 1547, its size once the composer's writes went into `drafts.js` and continue →'s draft guess went; down from 1577, its size once the views by hash went into `views.js` and the pages' wiring landed; itself down from 1637, its size once the diagrams' wiring went into `diagram_wiring.js`, itself down from 1638,
 its size once the lightbox went into `picture_viewer.js`, itself down from 1649, its
 size plus 50 once the session-open flow went into `session_sync.js` and `session_view.js`, itself ratcheted down from 2000, itself down from 2250 when the versions, the owner's claim links and
 Verify, the composer's mode and the strip's hide went into modules of their own. A new feature goes into a module of
@@ -954,7 +954,8 @@ block fix's or a widget's fill, a failed turn's line back, the send's ack, the o
 the mount's `setText` hook, a `/` pick through `command_list.js`'s `afterPick(text)`), `putBack(key, text)` (into an
 empty draft only: unqueue's), `clear(key)` (the text only: the chips stay), `putChips(key, list)`, `move(from, to)`
 (into an empty draft as it is, else the text under the other's and the chips after; `from` emptied, its saved copy
-gone), `drop(key)` (a deleted session's: forgotten, its previews freed); reads `text(key)`, `chips(key)`, `has(key)`
+gone), `handOver(from, to, opener)` (continue →: below), `drop(key)` (a deleted session's: forgotten, its previews
+freed); reads `text(key)`, `chips(key)`, `has(key)`
 (text or a chip).
 
 **The box is a view.** `#prompt` and the mount's chip list are the truth for the painted draft; the others are kept in
@@ -989,6 +990,15 @@ this tab is taking it (the `deleting` set, filled when the sheet's request start
 whole too); `afterDelete` drops the deleted ids' drafts after its `clearSelection`. A gone session that isn't open
 keeps its draft until the sweep.
 
+**Continue →** (`session_actions.js continueSelected`): right after the 201 (`addCreatedSession`), before it looks at
+which session is open, `handOverDraft(id, next, created)` = `drafts.handOver(A, A', openerText(created))`: a draft
+with text or chips moves whole to the new link (A's saved copy gone), an empty one leaves the link the opener. On
+another session at the answer: the toast's Open, that session's draft untouched; still on A (or back on it): `await
+select(next)`, then `revealDraft()` (the composer opens, the box takes the focus, the caret at the end). There is no
+Restore draft and no guess of where a draft came from (the old `draftFrom`/`noteDraft` and `chains.js openerFill`'s
+rule). A 409 `continued` hands the draft to the link that continues it only into an empty draft of its own, no opener.
+Chips moved from A go up again to A' at its send (`images.js uploadChips`, by `chip.session`).
+
 **Swept** with the view settings (`COMPOSER_DRAFT` is in `PREF_KEYS`): only an unscoped list, ids missing from it.
 Not kept or swapped: the Verify claim and the armed Revise (cleared on a switch, as before), ↑/↓ history (shared; its
 place resets on a swap), the delivery line's armed choice (a switch disarms it: `resetTurnView`'s
@@ -1005,7 +1015,10 @@ wires them to `syncFromView`. Beside an older app.js, this mount gets no `setTex
 this command list's `afterPick` writes nothing (a Tab pick does nothing), and `unqueue.js` gets no `putBackTo` (today's
 toasts). An older cached `composer_mount.js` ignores `{revoke: false}`: a swap frees the chips' previews (broken
 thumbnails until a reload; the upload still works). An older `session_prefs.js` doesn't sweep the drafts until a
-reload.
+reload. app.js still passes `fillOpener` (a shim: the hand-over and the reveal, returning no displaced draft) and a
+no-op `restoreDraft` for an older cached `session_actions.js`, which calls `fillOpener` after its select (without it
+its continue would toast "Can't continue" though it succeeded); `chains.js openerFill` and `restoredComposer` stay
+exported, unused, until after the next release.
 
 ## Stale answers
 

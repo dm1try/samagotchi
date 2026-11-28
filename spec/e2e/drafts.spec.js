@@ -31,7 +31,7 @@ async function newSession(page, prompt) {
 async function open(page, id) {
   await page.locator(`#topStrip .card[data-id="${id}"]`).click();
   await expect(page).toHaveURL(new RegExp(`#/s/${id}$`));
-  await expect(page.locator("#history .bubble.user").first()).toBeVisible();
+  await expect(page.locator("#history .hint", { hasText: "Loading" })).toHaveCount(0);
 }
 
 test("drafts are per session window: each its own text and images, + new its own, the text kept over a reload", async ({ page, script }) => {
@@ -117,4 +117,66 @@ test("an answer after a switch writes the draft it was sent from: A empties at i
   await open(page, a);
   await expect(page.locator(`${H} .bubble.user`).filter({ hasText: "held line" })).toHaveCount(1);
   await expect(prompt).toHaveValue("");
+});
+
+// Holds continue →'s POST /api/sessions (a create is a POST there too: only the continue's).
+async function holdContinue(page) {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let posted;
+  const reached = new Promise((resolve) => { posted = resolve; });
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() !== "POST" || !route.request().postDataJSON()?.continues) return route.fallback();
+    posted();
+    await held;
+    return route.fallback();
+  });
+  return { reached, release: async () => { release(); await page.waitForResponse((res) => res.request().method() === "POST" && /\/api\/sessions$/.test(res.url())); } };
+}
+
+test("continue hands the session's draft to its next link, wherever the page is when it lands; no Restore draft", async ({ page, script }) => {
+  script("plain");
+  const a = await newSession(page, "Say pong");
+  const b = await newSession(page, "Say pong again");
+  const prompt = page.locator("#prompt");
+  const toast = page.locator("#toast");
+
+  // (b) On B when the continue lands: B keeps its own, the new link has A's draft.
+  await open(page, a);
+  await prompt.fill("plan X");
+  let hold = await holdContinue(page);
+  await page.locator("#infoContinueBtn").click();
+  await hold.reached;
+  await open(page, b);
+  await prompt.fill("b stuff");
+  await hold.release();
+  await page.unroute("**/api/sessions");
+  await expect(toast).toContainText(`Continued ${a.slice(0, 8)} in`);
+  await expect(toast.getByRole("button", { name: "Restore draft" })).toHaveCount(0);
+  await expect(prompt).toHaveValue("b stuff");
+  await toast.getByRole("button", { name: "Open" }).click();
+  await expect(page).not.toHaveURL(new RegExp(`#/s/(${a}|${b})$`));
+  const a2 = openId(page);
+  await expect(prompt).toHaveValue("plan X");
+
+  // (c) Back on the link before it lands, text typed meanwhile: the next link opens with all of it.
+  await prompt.fill("more");
+  hold = await holdContinue(page);
+  await page.locator("#infoContinueBtn").click();
+  await hold.reached;
+  await open(page, b);
+  await expect(prompt).toHaveValue("b stuff");
+  await open(page, a2);
+  await expect(prompt).toHaveValue("more");
+  await prompt.press("End");
+  await prompt.pressSequentially(" plus");
+  await hold.release();
+  await page.unroute("**/api/sessions");
+  await expect(page).not.toHaveURL(new RegExp(`#/s/${a2}$`));
+  await expect(prompt).toHaveValue("more plus");
+  await expect(prompt).toBeFocused();
+  await expect(toast).toContainText(`Continued ${a2.slice(0, 8)} in`);
+  await expect(toast.getByRole("button", { name: "Restore draft" })).toHaveCount(0);
+  await open(page, b);
+  await expect(prompt).toHaveValue("b stuff");
 });

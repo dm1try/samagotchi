@@ -266,3 +266,42 @@ test("putBack: into an empty draft only: on view it opens and takes the focus, e
   assert.equal(drafts.text("A"), "into A");
   assert.equal(promptEl.value, "mine");
 });
+
+// ── Continue → hands the draft to the next link (Phase B) ────────────────
+
+test("handOver: a draft with text moves to the next link (the previous one's saved copy gone), the link's saved", () => {
+  const { drafts, switchTo, type, attach } = setup({ shown: "A" });
+  type("plan X");
+  attach("x.png");
+  switchTo("B");
+  drafts.handOver("A", "A2", "Continue where we left off.");
+  assert.equal(drafts.text("A2"), "plan X");
+  assert.deepEqual(drafts.chips("A2").map((c) => c.name), ["x.png"]);
+  assert.equal(drafts.text("A"), "");
+  assert.ok(localStorage.getItem(KEY("A")) === null);
+  assert.equal(localStorage.getItem(KEY("A2")), "plan X");
+});
+
+test("handOver: an empty draft leaves the next link the opener; a chips-only draft moves, no opener", () => {
+  const { drafts, switchTo, attach } = setup({ shown: "A" });
+  drafts.handOver("A", "A2", "Continue where we left off.");
+  assert.equal(drafts.text("A2"), "Continue where we left off.");
+  switchTo("C");
+  attach("c.png");
+  drafts.handOver("C", "C2", "Continue where we left off.");
+  assert.equal(drafts.text("C2"), "");
+  assert.deepEqual(drafts.chips("C2").map((c) => c.name), ["c.png"]);
+});
+
+test("handOver: a link with a draft of its own keeps it (continued already); no opener over it", () => {
+  const { drafts, switchTo, type } = setup({ shown: "N" });
+  type("the next link's own");
+  switchTo("A");
+  type("A's");
+  drafts.handOver("A", "N", null);
+  assert.equal(drafts.text("N"), "the next link's own");
+  assert.equal(drafts.text("A"), "A's");
+  drafts.clear("N");
+  drafts.handOver("A", "N", null);
+  assert.equal(drafts.text("N"), "A's");
+});
