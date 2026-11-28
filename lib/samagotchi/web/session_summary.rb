@@ -14,6 +14,8 @@ require_relative "../worker_link"
 require_relative "../compat"
 require_relative "../session_row"
 require_relative "../bridge/pending_card"
+require_relative "../session_lifecycle"
+require_relative "../worker_presence"
 
 module Samagotchi
   module Web
@@ -30,7 +32,26 @@ module Samagotchi
                     archived project_root bridge_up worker_version worker_features worker_compat pending_question pending_card
                     last_turn verdicts verify_fresh last_verdict].freeze
 
+      # The hub's answer for a session: its lifecycle state and whether its
+      # Bridge is up for it (the state, not the link alone).
+      Shown = Data.define(:state, :up)
+
       module_function
+
+      # What the hub should show for +session+ (its state and up), from the
+      # lifecycle facts WorkerPresence reads (its link passed in, or looked
+      # up here).
+      # @param session [Session]
+      # @param owner [OwnerLock::Owner, nil]
+      # @param session_dir [String] the session's folder
+      # @param link [WorkerLink outcome, nil] already resolved; nil: resolved here
+      # @return [Shown]
+      def shown(session, owner:, session_dir:, link: nil)
+        link ||= WorkerLink.resolve(session_dir, unlink: false, owner: owner)
+        presence = WorkerPresence.read(session.id, state_dir: File.dirname(session_dir), owner: owner, link: link)
+        state = SessionLifecycle::Reading.derive(presence).state
+        Shown.new(state: state, up: state == :live)
+      end
 
       # @param session [Session] a saved session (messages may be empty)
       # @param owner [OwnerLock::Owner, nil] SessionManager.session_owner's; its
@@ -51,7 +72,8 @@ module Samagotchi
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil,
                 registry: nil, compat_version: VERSION)
         link = WorkerLink.resolve(session_dir, unlink: false, owner: owner)
-        up = link.live?
+        shown = shown(session, owner: owner, session_dir: session_dir, link: link)
+        up = shown.up
         sidecar = up ? link.sidecar : nil
         saved = SessionMetrics.saved_summary(session_dir, budget_tokens: budget_resolver(session, registry))
         # The facts every list shares (SessionRow), from this one link,
@@ -60,7 +82,7 @@ module Samagotchi
                                         saved: saved, card: RecapStore.card(session_dir))
         values = {
           id: row.id,
-          status: status,
+          status: unstopped(status, session, shown.state, owner),
           mode: session.mode,
           model_name: session.model_name,
           working_directory: row.cwd,
@@ -107,9 +129,9 @@ module Samagotchi
           # Hidden from the strip and the list unless the all view's "archived" toggle is on.
           archived: row.archived,
           project_root: row.project,
-          # A worker is reachable: WorkerLink answers Live (the lock held by
-          # a worker whose sidecar names its pid). A sidecar a dead worker
-          # left is not up.
+          # A worker's Bridge answers and no stop is marked (the lifecycle
+          # state is live: a stopping worker, a worker on its way or with a
+          # newer protocol is not up).
           bridge_up: up,
           # The chi the live worker runs and what it can do (its sidecar;
           # nil and [] without one): the page's stale-worker badge.
@@ -119,8 +141,8 @@ module Samagotchi
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open, nor a
-          # one-turn chi run's (only a worker shares it): the row's live.
-          pending_question: session.waiting_question(live: row.live),
+          # one-turn chi run's (only a worker shares it): the shown live.
+          pending_question: session.waiting_question(live: up),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn&.to_file,
           # Its Verify verdicts, the fresh ones its worker hasn't taken yet
@@ -165,6 +187,22 @@ module Samagotchi
 
         session.displayed_status(owner: owner)
       end
+
+      # The status the page shows: a "stopped" overlay (or a pre-marker file
+      # that says stopped) is only true in a stopped state; everywhere else
+      # the session's own status is shown, as displayed_status would (a
+      # "running" with no owner is idle). A statuses== stopped file that
+      # predates the marker stays stopped.
+      def unstopped(status, session, state, owner)
+        return status unless status == Session::STATUS_STOPPED
+        return status if SessionLifecycle::STOPPED_STATES.include?(state)
+
+        loaded = session.loaded_status
+        return status if loaded.nil? || loaded == Session::STATUS_STOPPED
+
+        loaded == Session::STATUS_RUNNING && owner.nil? ? Session::STATUS_IDLE : loaded
+      end
+      private_class_method :unstopped
 
       def shown_status(session, state, turn_snapshot, owner:)
         status = displayed_status(session, state, owner: owner)

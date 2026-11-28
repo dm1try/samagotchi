@@ -65,7 +65,12 @@ RSpec.describe "SessionRow parity" do
             when :archived, :scratch then make_session(prompt: "work", parent_id: parent.id, scratch: state == :scratch)
             end
     case state
-    when :live_idle, :live_running, :question_live, :relayed then lock(child, "worker")
+    when :live_idle, :live_running, :question_live, :relayed
+      lock(child, "worker")
+      # A worker on its way (no sidecar, the hub's live state) hides any
+      # question; the states named "live" stand on a Bridge.
+      dir = dir_of(child)
+      File.write(File.join(dir, "bridge.json"), JSON.generate("port" => 4321, "pid" => Process.pid))
     when :tui then lock(child, "tui")
     when :kindless then lock(child, nil)
     when :archived then Samagotchi::ArchiveStore.archive(child.id, state_dir: tmpdir)

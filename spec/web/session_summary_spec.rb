@@ -107,6 +107,9 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       verdicts = [{ anchor: { turn_id: "source", quote: "claim" }, verdict: "confirmed", reason: "supported",
                     by: nil, check_turn_id: "check", at: "now" }]
       s.verdicts = verdicts
+      s.save(state_dir: state_dir)
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234, "pid" => 1))
 
       owner = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
 
@@ -176,6 +179,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
     it "carries the open card with actions (pending_card.json) only while the worker is up" do
       s = session(status: "running")
+      s.save(state_dir: state_dir)
       dir = session_dir(s)
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "pending_card.json"), '{"id":"check-in-1","bundle":"check-in"}')
@@ -305,6 +309,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
     it "is bridge_up only with a sidecar and a live owner (a sidecar a dead worker left is not up)" do
       s = session
+      s.save(state_dir: state_dir)
       FileUtils.mkdir_p(session_dir(s))
       File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234))
 
@@ -314,6 +319,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
     it "is bridge_up only when the sidecar names the lock holder's pid, under the owner the caller read" do
       s = session
+      s.save(state_dir: state_dir)
       FileUtils.mkdir_p(session_dir(s))
       File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234, "pid" => 4242))
       expect(Samagotchi::OwnerLock).not_to receive(:owner)
@@ -339,6 +345,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
     it "names the live worker's chi version and features from its sidecar, and none without a live worker" do
       s = session
+      s.save(state_dir: state_dir)
       FileUtils.mkdir_p(session_dir(s))
       File.write(File.join(session_dir(s), "bridge.json"),
                  JSON.generate("port" => 1234, "version" => "0.18.1", "features" => ["restart"]))
@@ -389,6 +396,67 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
       expect(json[:project_root]).to eq(s.project_root)
       expect(cache).not_to be_empty
+    end
+  end
+
+  describe "the stop marker (F3)" do
+    it "shows a worker being stopped as not up, with none of its sidecar's facts" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "bridge.json"),
+                 JSON.generate("port" => 1234, "pid" => 4242, "version" => "0.18.1", "features" => ["restart"]))
+      File.write(File.join(session_dir(s), "pending_card.json"), '{"id":"check-in-1","bundle":"check-in"}')
+      s.save(state_dir: state_dir)
+      owner = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 4242)
+
+      expect(described_class.build(s, owner: owner, session_dir: session_dir(s)))
+        .to include(bridge_up: true, worker_version: "0.18.1", worker_features: ["restart"])
+
+      Samagotchi::Session.mark_stopped(s.id, state_dir: state_dir)
+      expect(described_class.build(s, owner: owner, session_dir: session_dir(s)))
+        .to include(bridge_up: false, worker_version: nil, worker_features: [], pending_card: nil)
+    end
+
+    it "shows a one-turn run's or a deleter's session its saved status once the stop marker lands" do
+      s = session(status: "idle")
+      s.save(state_dir: state_dir)
+      Samagotchi::Session.mark_stopped(s.id, state_dir: state_dir)
+      loaded = Samagotchi::Session.load(s.id, state_dir: state_dir)
+      dir = session_dir(s)
+
+      tui = Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1)
+      expect(described_class.build(loaded, owner: tui, session_dir: dir)[:status]).to eq("idle")
+      deleting = Samagotchi::OwnerLock::Owner.new(kind: Samagotchi::OwnerLock::DELETING, pid: 1)
+      expect(described_class.build(loaded, owner: deleting, session_dir: dir)[:status]).to eq("idle")
+      expect(described_class.build(loaded, owner: nil, session_dir: dir)[:status]).to eq("stopped")
+    end
+
+    it "keeps a pre-marker file that itself says stopped, even under a one-turn run's lock" do
+      s = session(status: "stopped")
+      s.save(state_dir: state_dir)
+      loaded = Samagotchi::Session.load(s.id, state_dir: state_dir)
+      tui = Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1)
+
+      expect(described_class.build(loaded, owner: tui, session_dir: session_dir(s))[:status]).to eq("stopped")
+    end
+
+    it "shows no question while the worker is still booting (no sidecar)" do
+      s = session(status: "running")
+      s.pending_question = { id: "q1", question: "Which?", header: "Pick" }
+      s.save(state_dir: state_dir)
+      worker = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
+
+      expect(described_class.build(s, owner: worker, session_dir: session_dir(s))[:pending_question]).to be_nil
+    end
+
+    it "treats an older worker's pid-less sidecar as live under a worker owner" do
+      s = session
+      s.save(state_dir: state_dir)
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234))
+      worker = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
+
+      expect(described_class.build(s, owner: worker, session_dir: session_dir(s))[:bridge_up]).to be(true)
     end
   end
 
