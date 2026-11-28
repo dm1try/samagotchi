@@ -19,6 +19,9 @@ and commands may change between minor versions. How releases are made:
 - `chi schedule cancel` (and the `cancel_schedule` tool) now says when the schedule it removes was what kept a pruned
   chain reachable from its first session, and names the chain's newest link to send to from then on; before, later
   sends to the first session landed there silently.
+- Stopping a session that is being continued, deleted or archived is refused right away and says what to do
+  ("session ab12cd34 is being continued as 7b2d41aa-…: stop that one") instead of waiting 10 seconds, and a refused
+  stop no longer ends the running turn.
 
 ### Changed
 

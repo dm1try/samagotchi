@@ -859,7 +859,7 @@ module Samagotchi
           raise Refused.new(message.to_s, code: error)
         # No model configured there, or --model's host unknown there: what spawn_session raises here (chi send: could not start a session).
         when "invalid_model" then raise ModelProfile::MissingModel, message.to_s
-        when "stop_held" then raise SessionTransition::Busy.new(sid, kind: json["kind"]&.to_sym, successor_id: json["successor_id"])
+        when "stop_held" then raise SessionTransition::Busy.new(sid, kind: json["kind"]&.to_sym, successor_id: json["successor_id"], taker: :stop)
         # A toolkit whose config kit's groups: is invalid there: the same.
         when "toolkit_refused" then raise Toolkit::Refused, message.to_s
         # The grants store doesn't read there: chi share says what it says here.

@@ -128,23 +128,49 @@ RSpec.describe Samagotchi::SessionManager do
         expect(holder).to be_nil
       end
 
-      it "refuses with Busy's words when another transition holds it past the wait: nothing marked, nobody signaled" do
+      # A delete, an archive or a continue that names its new link won't let
+      # go soon: the stop is refused at once in words that say what to do.
+      {
+        delete: [{ kind: :delete }, "is being deleted"],
+        archive: [{ kind: :archive }, "is being archived"],
+        continue: [{ successor: "7b2d41aa-0000-4000-8000-000000000009" },
+                   "is being continued as 7b2d41aa-0000-4000-8000-000000000009: stop that one"]
+      }.each do |kind, (hold, words)|
+        it "refuses at once while the #{kind} holds it, in the stop's words: nothing marked, nobody signaled" do
+          spawn_owner
+          allow(Process).to receive(:kill).and_call_original
+
+          holding_transition(session.id, state_dir: tmpdir, **hold) do
+            started = SpecWaiting.mono
+            expect { described_class.stop_session(session.id, state_dir: tmpdir, wait: 1, lock_wait: 5) }
+              .to raise_error(Samagotchi::SessionTransition::Busy) { |busy|
+                expect(busy).to have_attributes(session_id: session.id, kind: kind)
+                expect(busy.message).to eq("session #{session.id[0, 8]} #{words}")
+              }
+            expect(SpecWaiting.mono - started).to be < time_bound(1, below: 5)
+          end
+
+          expect(stopped?).to be(false)
+          expect(Process).not_to have_received(:kill).with("TERM", @owner_pid)
+          expect(described_class.session_owner(session.id, state_dir: tmpdir)&.pid).to eq(@owner_pid)
+        end
+      end
+
+      it "waits out a hold that names no transition (an older chi's), then refuses in the retry words" do
         spawn_owner
         allow(Process).to receive(:kill).and_call_original
 
-        holding_transition(session.id, state_dir: tmpdir, kind: :delete) do
+        holding_transition(session.id, state_dir: tmpdir) do
           started = SpecWaiting.mono
-          expect { described_class.stop_session(session.id, state_dir: tmpdir, wait: 1, lock_wait: 0.2) }
+          expect { described_class.stop_session(session.id, state_dir: tmpdir, wait: 1, lock_wait: 0.3) }
             .to raise_error(Samagotchi::SessionTransition::Busy) { |busy|
-              expect(busy).to have_attributes(session_id: session.id, kind: :delete)
-              expect(busy.message).to eq("session #{session.id[0, 8]} is being deleted; try again in a moment")
+              expect(busy.message).to eq("session #{session.id[0, 8]} is busy with another change; try again in a moment")
             }
-          expect(SpecWaiting.mono - started).to be >= 0.2
+          expect(SpecWaiting.mono - started).to be >= 0.3
         end
 
         expect(stopped?).to be(false)
         expect(Process).not_to have_received(:kill).with("TERM", @owner_pid)
-        expect(described_class.session_owner(session.id, state_dir: tmpdir)&.pid).to eq(@owner_pid)
       end
 
       it "waits out a send's short shared hold, then stops" do
@@ -216,6 +242,31 @@ RSpec.describe Samagotchi::SessionManager do
 
         expect(calls).to eq([[:cancel, "session_stopped", Samagotchi::Session::STATUS_RUNNING]])
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
+      end
+
+      it "cancels nothing when it is refused: the turn runs on" do
+        allow(bridge).to receive(:cancel)
+
+        holding_transition(session.id, state_dir: tmpdir, kind: :delete) do
+          expect { described_class.stop_session(session.id, state_dir: tmpdir, lock_wait: 5) }
+            .to raise_error(Samagotchi::SessionTransition::Busy)
+        end
+
+        expect(bridge).not_to have_received(:cancel)
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_RUNNING)
+      end
+
+      it "cancels under the stop's hold, its Bridge wait bounded by STOP_CANCEL_WAIT" do
+        allow(bridge).to receive(:cancel) do
+          calls << Samagotchi::SessionTransition.holder(session.id, state_dir: tmpdir)
+          Samagotchi::BridgeClient::Response.new(status: 409, body: nil)
+        end
+
+        described_class.stop_session(session.id, state_dir: tmpdir)
+
+        expect(calls).to eq([:stop])
+        expect(Samagotchi::WorkerLink).to have_received(:client)
+          .with(session.id, hash_including(read_timeout: described_class::STOP_CANCEL_WAIT))
       end
 
       it "stops at once when there is no turn to cancel" do

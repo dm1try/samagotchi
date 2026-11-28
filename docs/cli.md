@@ -768,10 +768,11 @@ note or image) is deleted as its worker exits, and `/exit` says so; set
 [Sessions](sessions.md).
 
 `chi sessions stop ID...` stops each session's worker and waits for it to exit, so
-a `chi --resume ID` after it starts a fresh one. While another change holds the
-session (a continue, a delete, an archive) for longer than 10 s, the stop is
-refused in its words ("session ab12cd34 is being deleted; try again in a
-moment") and that id exits 1. A worker still running an
+a `chi --resume ID` after it starts a fresh one. A session being continued,
+deleted or archived refuses the stop at once, saying so ("session ab12cd34 is
+being deleted", "session ab12cd34 is being continued as 7b2d41aa-…: stop that
+one"); a short hold (a send) is waited for up to 10 s, then refused ("…; try
+again in a moment"). Either way the running turn goes on and that id exits 1. A worker still running an
 older chi (from before an upgrade) takes turns, but not commands, or not the
 ones newer than it (`/llm-context`, `--llm-context` on `--attach`); the attached
 terminal and the Web UI say so, with that restart line.

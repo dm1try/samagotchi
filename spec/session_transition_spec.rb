@@ -4,6 +4,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/session_transition"
 require "samagotchi/continue_intent"
+require_relative "support/transition_holder"
 
 # SessionTransition: a session's transition lock (continue.lock), the token
 # a holding thread passes through, and the kernel probe.
@@ -243,6 +244,106 @@ RSpec.describe Samagotchi::SessionTransition do
         end
         on_hold(kind: :continue, ids: [low, high]) do
           expect(Samagotchi::ContinueIntent.in_flight(low, state_dir: state_dir)).to eq(high)
+        end
+      end
+    end
+
+    # A stop's take (refuse_transitions: true): a continue that names its
+    # new link, a delete or an archive won't let go soon, so it is refused
+    # at once; a short or unnamed hold is waited out to the deadline.
+    describe "refuse_transitions:" do
+      include TransitionHolder
+
+      def stop_take(deadline:)
+        described_class.exclusive([low], kind: :stop, state_dir: state_dir, deadline: deadline, refuse_transitions: true) { :taken }
+      end
+
+      it "refuses at once while a delete, an archive or a continue naming its new link holds it" do
+        [{ kind: :delete }, { kind: :archive }, { successor: high }].each do |holder|
+          holding_transition(low, state_dir: state_dir, **holder) do
+            started = SpecWaiting.mono
+            expect { stop_take(deadline: 5) }.to raise_error(described_class::Busy) { |busy|
+              expect(busy.transition?).to be(true)
+              expect(busy.taker).to eq(:stop)
+            }
+            expect(SpecWaiting.mono - started).to be < time_bound(1, below: 5)
+          end
+          FileUtils.rm_f(File.join(dir_of(low), Samagotchi::ContinueIntent::FILE))
+        end
+      end
+
+      it "waits to the deadline for a holder that names no transition (an older chi's, a continue with no new link yet)" do
+        [{}, { kind: :continue }].each do |holder|
+          holding_transition(low, state_dir: state_dir, **holder) do
+            started = SpecWaiting.mono
+            expect { stop_take(deadline: 0.3) }.to raise_error(described_class::Busy) { |busy|
+              expect(busy.transition?).to be(false)
+            }
+            expect(SpecWaiting.mono - started).to be >= 0.3
+          end
+        end
+      end
+
+      it "takes it once a shared holder lets go" do
+        free = Queue.new
+        sender = Thread.new do
+          shared(low) do
+            free << true
+            sleep 0.2 # sleep-ok: a send's check and write, held a moment
+          end
+        end
+        free.pop
+
+        expect(stop_take(deadline: 5)).to eq(:taken)
+        join!(sender, "the send's shared hold")
+      end
+
+      it "passes through a hold this thread already has" do
+        described_class.exclusive([low], kind: :delete, state_dir: state_dir) do
+          expect(stop_take(deadline: 0)).to eq(:taken)
+        end
+      end
+
+      it "refuses a blocking take (no deadline)" do
+        expect { described_class.exclusive([low], kind: :stop, state_dir: state_dir, refuse_transitions: true) { :never } }
+          .to raise_error(ArgumentError, /deadline/)
+      end
+    end
+
+    describe "Busy's words for a stop" do
+      include TransitionHolder
+
+      it "tells a stop what holds it and what to do, and keeps the retry words for every other taker" do
+        busy = ->(**opts) { described_class::Busy.new(low, taker: :stop, **opts) }
+        short = low[0, 8]
+        expect(busy.call(kind: :delete).message).to eq("session #{short} is being deleted")
+        expect(busy.call(kind: :archive).message).to eq("session #{short} is being archived")
+        expect(busy.call(kind: :continue, successor_id: high).message)
+          .to eq("session #{short} is being continued as #{high}: stop that one")
+        expect(busy.call(kind: nil).message).to eq("session #{short} is busy with another change; try again in a moment")
+        expect(busy.call(kind: :continue).message).to eq("session #{short} is being continued; try again in a moment")
+        expect(busy.call(kind: :stop).message).to eq("session #{short} is being stopped; try again in a moment")
+
+        expect(busy.call(kind: :delete).retry_message).to eq("session #{short} is being deleted; try again in a moment")
+        expect(described_class::Busy.new(low, kind: :delete).message).to eq("session #{short} is being deleted; try again in a moment")
+        expect(described_class::Busy.new(low, kind: :continue, successor_id: high).message)
+          .to eq("session #{short} is being continued as #{high}; try again in a moment")
+      end
+
+      it "tells a transition apart: a delete, an archive, a continue with its new link" do
+        expect(described_class::Busy.new(low, kind: :delete).transition?).to be(true)
+        expect(described_class::Busy.new(low, kind: :archive).transition?).to be(true)
+        expect(described_class::Busy.new(low, kind: :continue, successor_id: high).transition?).to be(true)
+        expect(described_class::Busy.new(low, kind: :continue).transition?).to be(false)
+        expect(described_class::Busy.new(low, kind: :stop).transition?).to be(false)
+        expect(described_class::Busy.new(low).transition?).to be(false)
+      end
+
+      it "is built by .held with the taker" do
+        holding_transition(low, state_dir: state_dir, kind: :delete) do
+          busy = described_class::Busy.held(low, state_dir: state_dir, taker: :stop)
+          expect(busy).to have_attributes(kind: :delete, taker: :stop)
+          expect(busy.message).to eq("session #{low[0, 8]} is being deleted")
         end
       end
     end

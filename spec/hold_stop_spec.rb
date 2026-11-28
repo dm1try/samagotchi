@@ -90,7 +90,7 @@ RSpec.describe Samagotchi::HoldStop do
     expect(SpecWaiting.mono - started).to be < time_bound(1, below: 10)
     expect(Samagotchi::Log).to have_received(:warn)
       .with(:worker, "exit_stop_delegate_failed", child: session.id[0, 8], error: "Samagotchi::SessionTransition::Busy",
-                                                  msg: "session #{session.id[0, 8]} is being deleted; try again in a moment")
+                                                  msg: "session #{session.id[0, 8]} is being deleted")
     expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: state_dir)).to be(false)
   ensure
     release&.push(true)
