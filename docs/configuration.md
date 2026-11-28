@@ -2064,6 +2064,9 @@ name doesn't load. By hand, on the Mac that runs chi web (or steps 1–2, then
    AirDrop or type it). The code works once, within 10 minutes (`chi web` again prints a new one); the phone then
    keeps the `__Host-chi_token` cookie.
 
+A phone Shortcut talks to the same address with the token ([thin clients](thin-clients.md)); set `web.ask_dir` so its
+new sessions need no folder ([A new session in one call](thin-clients.md#a-new-session-in-one-call)).
+
 #### `chi web --tunnel tailscale`
 
 Steps 3–5 in one command, after steps 1–2 (Tailscale signed in, HTTPS certificates on):

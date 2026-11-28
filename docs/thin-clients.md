@@ -16,7 +16,8 @@ safe.
 
 Check that chi web has these routes first: `GET /api/info` lists `"ask"` in
 its `features`. An older chi web lacks it (and answers 404 for `/ask`): update
-chi there (`chi update`).
+chi there (`chi update`). A new session answered in one call needs
+`"ask_create"`, and your last session `"ask_last"` (both below).
 
 ## Ask
 
@@ -216,20 +217,105 @@ convention for an honest agent, not a barrier, so tell your agent to send it.
 session. Its 201 carries a `token`: `POST /api/sessions/<id>/wait {"token": …}`
 answers the first turn.
 
+## A new session in one call
+
+Send any of `reply_for`, `timeout` or `request_id` with the create and its 201
+is the first message's answer, as an ask gives it:
+
+```sh
+curl -s -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -X POST http://192.168.1.29:4567/api/sessions \
+  -d '{"prompt": "plan my day", "reply_for": "voice", "request_id": "20261128093012345"}'
+# {"status": "done", "session_id": "…", "text": "…", "created": true, "request_id": "…", …}
+```
+
+- The body takes the ask's fields (`prompt`, `timeout`, `client_id`,
+  `request_id`, `reply_for`) and the create's (`dir`, `model`, `toolkit`, …).
+  `idle` and `continues` don't go with them (400 `invalid_ask`).
+- `dir` is optional: without it the session starts in
+  [`web.ask_dir`](configuration.md#all-settings) when that is set, else in the
+  folder chi web starts in. A `web.ask_dir` that isn't a folder is 400
+  `invalid_dir`, nothing started.
+- The answer is the ask's (`status`, `text`, a `token` while it runs, …) with
+  `session_id`, `created` (`true`: this call started it), `model_warning` and
+  `parent_answers_warning`. A refusal after the session started (504
+  `worker_timeout`, 503 `server_stopping`) keeps its code and also carries
+  `session_id` and `created`.
+- With a `request_id` a retry lands on the same session: the session's id
+  comes from the key, so the same create again starts nothing (`created:
+  false`) and answers the first one's turn. Use a new key for each message.
+- A create without those fields answers as it always did (the session's
+  summary, `first_turn_id` and a `token`).
+- An older chi web ignores the fields: its 201 is the summary, with no `text`
+  (its `status` is the session's, `idle` or `running`). Check that `features`
+  lists `"ask_create"`.
+
+## Your last session
+
+`POST /api/sessions/last/ask` (the ask's body) continues the session you last
+asked from a thin client:
+
+- What counts: your own asks (`client_id` left out, or yours) that were
+  answered, and your one-call creates. An agent's asks (`agent:NAME`), `chi
+  send`'s and a refused ask don't move it; the MCP server's don't either.
+- A continued session's message goes to the newest link, as any ask does.
+- When that session is gone, or archived with nothing continuing it, `last`
+  is your most recently updated session that isn't archived, a delegate, a
+  `chi scratch` one, one an agent drives (`driver`) or a test run. None: 404
+  `not_found`.
+- Wait on a `token` with the answer's `session_id`, not `last`
+  (`…/last/wait` is 404): `last` may move meanwhile.
+- A participant's token can't use it (404).
+
+## Pick from recent
+
+`GET /api/sessions/summaries?limit=30&tests=0&delegates=0` lists your recent
+sessions, newest first, as `chi sessions list` has them: each row's `desc` (its
+folder's name · its title, or its first message), `short_id`, `id` and
+`updated_at`.
+`delegates=0` leaves out delegates and `chi scratch` sessions; `tests=0` test
+runs. Ask one with `POST /api/sessions/<id or short_id>/ask`.
+
 ## iOS Shortcut recipe
 
-1. **Dictate Text** (or **Ask for Input**).
-2. **Get Contents of URL**: `https://<your chi web>/api/sessions/<id>/ask`,
-   method POST, header `Authorization: Bearer <token>`, JSON body `prompt` =
-   the dictated text and `reply_for` = `voice`. To survive a dropped connection, first **Set Variable**
-   `key` to **Current Date** formatted with seconds, send `request_id` = `key`,
-   and if the step fails (no `status` in the answer) run it again with the same
-   `key`: the retry answers the first one's turn instead of sending it twice.
-3. **Repeat** while the answer's `status` is `timeout`: **Get Contents of URL**
-   for `…/api/sessions/<session_id>/wait` with the JSON body `token` = the
-   answer's `token`.
-4. **Get Dictionary Value** `text`, then **Speak Text**. With `needs` =
+One Shortcut with a menu: a new session, your last one, or one picked from
+your recent ones. `<chi>` is your chi web's address (`https://…` through
+[Tailscale Serve](configuration.md#tailscale-serve-your-tailnet)), and every
+**Get Contents of URL** has method POST (GET for the list), the header
+`Authorization: Bearer <token>` and a JSON body. Set
+[`web.ask_dir`](configuration.md#all-settings) so New needs no folder (or add
+`dir` to its body).
+
+1. **Choose from Menu** with New, Last and Pick.
+2. In each: **Dictate Text**, then **Format Date** (Current Date, custom
+   format `yyyyMMddHHmmssSSS`) and **Set Variable** `key` to it.
+   - New: **Get Contents of URL** `<chi>/api/sessions` with `prompt` = the
+     dictated text, `reply_for` = `voice`, `request_id` = `key`.
+   - Last: the same body to `<chi>/api/sessions/last/ask`.
+   - Pick: **Get Contents of URL** (GET)
+     `<chi>/api/sessions/summaries?limit=30&tests=0&delegates=0`, then
+     **Repeat with Each** row: **Text** `desc · short_id` (the row's values);
+     **Choose from List** over the texts; **Split Text** the choice by ` · `
+     and **Get Item from List** (Last Item: `desc` has a ` · ` of its own):
+     that is the session's short id.
+     Then the same body to `<chi>/api/sessions/<short id>/ask`.
+   **Set Variable** `answer` to the result.
+3. After the menu: **If** `answer`'s `error` is `worker_timeout` or
+   `server_stopping`, send the same request once more with the same `key` (it
+   answers the first one's turn, nothing sent twice) and set `answer` again.
+   Any other `error`: **Speak Text** its `detail` and stop.
+4. **Repeat** 10 times: **If** `answer`'s `status` is `timeout`, **Get Contents
+   of URL** `<chi>/api/sessions/<answer's session_id>/wait` with `token` = the
+   answer's `token`, and set `answer` to it.
+5. **Get Dictionary Value** `text`, then **Speak Text**. With `needs` =
    `detail` the text says to open chi on a full screen: an approval waits.
+
+Judge success by `text` (and `created` for New), not by `status`: an older chi
+web's create answers a `status` of its own. Shortcuts can't catch a **Get
+Contents of URL** that fails outright (no connection): the shortcut stops
+there, so the `request_id` retry covers only an answer with an `error`; run
+the shortcut again with a new message. This recipe has not been checked on a
+device step by step.
 
 For running chi from another agent instead (`chi send --wait`, `chi answer`),
 see [chi as a sub-agent](sub-agent.md). The routes in full are in

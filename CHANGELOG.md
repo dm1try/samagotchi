@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `POST /api/sessions` can answer a new session's first message in the same call, like `/ask` (send `reply_for`,
+  `timeout` or `request_id`); with `web.ask_dir` set, a phone Shortcut can leave out the folder.
+- `POST /api/sessions/last/ask` continues the session you last asked from a thin client (or your most recent one),
+  following continues to the newest link.
+- `GET /api/sessions/summaries?delegates=0` leaves out delegates and scratch sessions.
+- docs/thin-clients.md: an iOS Shortcut recipe with a menu: new session, last session, or pick from your recent ones.
+
 ### Fixed
 
 - `chi send --new --continues last:<id>` (or a chain schedule's firing) racing another
