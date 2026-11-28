@@ -1141,6 +1141,18 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(session_files.size).to eq(1)
     end
 
+    it "answers a one-turn chi run holding the new session 409 owned_by_tui, and a session gone meanwhile 404, with session_id and created" do
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) { |id, **| raise Samagotchi::SessionManager::OwnedByTUI, id }
+      status, body = create({ prompt: "hi", dir: folder, reply_for: "voice" })
+      expect(status).to eq(409)
+      expect(body).to include("error" => "owned_by_tui", "created" => true, "session_id" => be_a(String))
+
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(ArgumentError, "no such session")
+      status, body = create({ prompt: "hi", dir: folder, reply_for: "voice" })
+      expect(status).to eq(404)
+      expect(body).to include("error" => "not_found", "created" => true, "session_id" => be_a(String))
+    end
+
     it "makes the new session the owner's last; an agent's create doesn't" do
       worker(accepted("t1"), reply: "ok")
       id = create({ prompt: "hi", dir: folder, reply_for: "voice" }).last.fetch("session_id")

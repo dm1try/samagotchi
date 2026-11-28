@@ -264,7 +264,7 @@ asked from a thin client:
   `chi scratch` one, one an agent drives (`driver`) or a test run. None: 404
   `not_found`.
 - Wait on a `token` with the answer's `session_id`, not `last`
-  (`…/last/wait` is 404): `last` may move meanwhile.
+  (`…/last/wait` names no session: refused): `last` may move meanwhile.
 - A participant's token can't use it (404).
 
 ## Pick from recent
