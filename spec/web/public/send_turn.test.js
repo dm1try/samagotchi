@@ -64,6 +64,8 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   store.on("infoBar", () => log.push("infoBar"));
   let cleared = 0;
   const drafts = [];
+  // The drafts' moves and the selects, in the order they happened.
+  const seq = [];
   const oldBag = {
     el: promptEl,
     button,
@@ -86,7 +88,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     setText: (key, value) => { drafts.push(["setText", key, value]); realDrafts.setText(key, value); },
     putChips: (key, list) => { drafts.push(["putChips", key, list.map((c) => c.name)]); realDrafts.putChips(key, list); },
     clear: (key) => { drafts.push(["clear", key]); cleared += 1; realDrafts.clear(key); },
-    move: (from, to) => { drafts.push(["move", from, to]); realDrafts.move(from, to); },
+    move: (from, to) => { drafts.push(["move", from, to]); seq.push(`move ${from} → ${to}`); realDrafts.move(from, to); },
     sending: (key, line) => { drafts.push(["sending", key, line]); realDrafts.sending(key, line); },
     settle: (key, line) => { drafts.push(["settle", key, line]); realDrafts.settle(key, line); },
   };
@@ -130,7 +132,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     bubbleById: () => null,
     addCommandBubble: (view) => log.push(["commandBubble", view]),
     addCreatedSession: (created) => log.push(`created ${created.id}`),
-    select: async (id) => { log.push(`select ${id}`); world.selected = id; world.state = { owner: null, commands: [] }; },
+    select: async (id) => { log.push(`select ${id}`); seq.push(`select ${id}`); world.selected = id; world.state = { owner: null, commands: [] }; },
     showNotice: (text) => log.push(["notice", text]),
     followWokenWorker: () => log.push("follow"),
     refreshHistory: () => log.push("refreshHistory"),
@@ -143,7 +145,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   // The keys the drafts were written by (setText, putChips, clear, move).
   const writes = () => drafts.filter(([op]) => !["text", "chips", "sending", "settle"].includes(op));
   return { send: sendTurnApi.send, world, log, calls, toasts, bubbles, promptEl, button, sentIds, earlyRestores,
-           cleared: () => cleared, verify: () => verify, revise: () => revise, drafts, writes, realDrafts };
+           cleared: () => cleared, verify: () => verify, revise: () => revise, drafts, writes, realDrafts, seq };
 }
 
 test("a line in a session: the echo, POST /turn with the tab's id, the composer emptied at the ack, the stream followed", async () => {
@@ -363,9 +365,8 @@ test("the start page: a made session takes the start page's draft, chips too, be
   const chip = { name: "a", file: {} };
   const h = harness({ open: null, chips: [chip] });
   await h.send();
-  const order = h.drafts.filter(([op]) => op === "move").concat(h.log.filter((e) => e === "select new1"));
   assert.deepEqual(h.writes()[0], ["move", "", "new1"]);
-  assert.ok(order.length === 2);
+  assert.deepEqual(h.seq, ["move  → new1", "select new1"], "the draft moves before the page opens the session");
   assert.deepEqual(h.calls.map((c) => c.slice(0, 3)), [["create", h.calls[0][1]], ["upload", "new1", "a"], ["turn", "new1", "hello"]].map((c) => c.slice(0, 3)));
   assert.equal(h.realDrafts.text(""), "");
   assert.equal(h.realDrafts.text("new1"), "");
@@ -565,4 +566,24 @@ test("an older cached app.js's composer: an ack naming a command clears the box;
   const reply = harness({ bag: "old", open: null, text: "/help" });
   await reply.send();
   assert.equal(reply.cleared(), 1);
+});
+
+// r2 B4: the draft is the one open when Send was pressed, not the one open
+// once a fresh link's pick (its /model) is taken.
+test("a switch while the fresh link's pick is in flight: the line and chips are read from and cleared in the draft Send was pressed in", async () => {
+  let release;
+  const pick = new Promise((resolve) => { release = resolve; });
+  const chip = { name: "a", file: {} };
+  const h = harness({ pendingPick: pick, chips: [chip], text: "from s1" });
+  const sending = h.send();
+  h.world.selected = "s2";
+  h.promptEl.value = "typed in s2";
+  h.realDrafts.syncFromView();
+  release(true);
+  await sending;
+  assert.deepEqual(h.calls.map((c) => c.slice(0, 3)), [["upload", "s1", "a"], ["turn", "s1", "from s1"]]);
+  assert.equal(h.realDrafts.text("s1"), "");
+  assert.deepEqual(h.realDrafts.chips("s1"), []);
+  assert.equal(h.promptEl.value, "typed in s2");
+  assert.ok(h.drafts.filter(([op]) => op === "text" || op === "chips").every(([, key]) => key === "s1"));
 });

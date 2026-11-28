@@ -305,3 +305,32 @@ test("handOver: a link with a draft of its own keeps it (continued already); no 
   drafts.handOver("A", "N", null);
   assert.equal(drafts.text("N"), "A's");
 });
+
+// ── Two tabs on one browser's storage: a switch writes nothing it didn't change ─
+
+test("two tabs: a tab that only switches away from the start page leaves the other tab's start draft saved", () => {
+  const one = setup({ shown: "" });
+  const two = setup({ shown: "", keep: true });
+  two.type("idea");
+  assert.equal(localStorage.getItem(START), "idea");
+  one.switchTo("A");
+  assert.equal(localStorage.getItem(START), "idea", "a pure switch writes no storage");
+  const reloaded = setup({ shown: "", keep: true });
+  assert.equal(reloaded.promptEl.value, "idea");
+});
+
+test("two tabs: a tab that only switches away from A doesn't put back A's older text", () => {
+  wipe();
+  localStorage.setItem(KEY("A"), "old");
+  const one = setup({ shown: "A", keep: true });
+  const two = setup({ shown: "A", keep: true });
+  assert.equal(one.promptEl.value, "old");
+  two.type("old and more");
+  one.switchTo("B");
+  assert.equal(localStorage.getItem(KEY("A")), "old and more");
+  // What this tab did type is still saved at the switch.
+  one.switchTo("A");
+  one.promptEl.value = "typed without an input event";
+  one.switchTo("B");
+  assert.equal(localStorage.getItem(KEY("A")), "typed without an input event");
+});

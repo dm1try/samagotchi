@@ -1006,7 +1006,13 @@ Not kept or swapped: the Verify claim and the armed Revise (cleared on a switch,
 place resets on a swap), the delivery line's armed choice (a switch disarms it: `resetTurnView`'s
 `setTurnRunning(false)` redraws the composer with no running turn, and the line leaves `running`).
 
-Two tabs on one session: the last writer wins, no cross-tab refresh.
+Two tabs on one session: the last writer wins, no cross-tab refresh. A tab reads a key's saved text once and
+saves on a switch only what it changed since it last read, painted or saved that key (`base`): a tab that only
+switches away never writes back an older copy over another tab's newer text.
+
+The sweep now deletes draft **text**, not only view settings: another chi web on the same origin (the same host and
+port with another state dir, a smoke run on 4567) lists other sessions, and its page's first load sweeps this
+browser's drafts of the sessions it doesn't know.
 
 **A mixed cache**: `send_turn.js` and `composer.js` take an older app.js's bag (`el`, `chips()`, `setChips(list)`,
 `clear()`: the one box) as well as this one's, and app.js still passes those members for an older cached
