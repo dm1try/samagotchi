@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 - A failed block whose fix couldn't be shown no longer stays at "asking for a fix…": it offers Ask in chat.
 - chi web no longer shows a session as stopped while a one-turn `chi -p` run or a delete holds it, and a worker being
   stopped no longer shows as connected (its worker badge, open card and question go as the stop lands).
+- `chi schedule cancel` (and the `cancel_schedule` tool) now says when the schedule it removes was what kept a pruned
+  chain reachable from its first session, and names the chain's newest link to send to from then on; before, later
+  sends to the first session landed there silently.
 
 ### Changed
 

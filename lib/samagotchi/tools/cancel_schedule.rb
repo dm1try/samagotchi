@@ -31,9 +31,8 @@ module Samagotchi
 
         # nil: gone since the lookup (another cancel in between).
         if want_all || peers&.session_id.nil?
-          return "No schedule named #{name}." unless schedules.cancel(name)
-
-          return "Cancelled #{entry.id} (#{entry.title || entry.recurrence_words})."
+          cancelled = schedules.cancel(name)
+          return cancelled ? cancelled_answer(entry, cancelled) : "No schedule named #{name}."
         end
 
         unless schedules.chain_of(peers.session_id).any? { |id| id == entry.anchor || id == entry.head }
@@ -41,11 +40,16 @@ module Samagotchi
                  "chi schedule cancel #{entry.id} cancels it, or say all: true if you meant it."
         end
 
-        return "No schedule named #{name}." unless schedules.cancel(name)
-
-        "Cancelled #{entry.id} (#{entry.title || entry.recurrence_words})."
+        cancelled = schedules.cancel(name)
+        cancelled ? cancelled_answer(entry, cancelled) : "No schedule named #{name}."
       rescue StandardError => e
         "Error: #{e.message}"
+      end
+
+      # The answer for a cancelled +entry+, with the Schedules::Cancelled line
+      # naming the chain's newest link when the cancel ended a pruned anchor's bridge.
+      def self.cancelled_answer(entry, cancelled)
+        ["Cancelled #{entry.id} (#{entry.title || entry.recurrence_words}).", cancelled.warning].compact.join("\n")
       end
 
       # @return [String] the answer for +name+ when no readable entry has it

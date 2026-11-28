@@ -1552,6 +1552,119 @@ RSpec.describe Samagotchi::Schedules do
         .to eq(id: head, asked: anchor, via: :head)
       expect(Samagotchi::SessionChain.next_of(anchor, state_dir: dir)).to be_nil
       expect(Samagotchi::SessionChain::Links.new(state_dir: dir).chain(anchor)).to eq([anchor])
+
+      # Cancelling the schedule ends the bridge: cancel says so, naming the
+      # newest link, and last:<anchor> dead-ends at the anchor again.
+      cancelled = schedules.cancel(entry.id)
+      expect(cancelled.id).to eq(entry.id)
+      expect(cancelled.newest).to eq(head)
+      expect(cancelled.warning)
+        .to eq("#{anchor[0, 8]}'s chain was pruned; its newest link is #{head[0, 8]} — send there from now on.")
+      expect(Samagotchi::SessionChain.resolve("last:#{anchor}", state_dir: dir)).to eq(anchor)
+    end
+  end
+
+  # Schedules::Cancelled#warning: the cancel that takes away the last bridge
+  # over a pruned anchor's gap (docs/scheduling.md, "Keeping the chain short").
+  describe "cancel on a pruned anchor" do
+    # A, B continues A, C continues B; A and B archived, B's file and folder
+    # gone (a prune's work). Each entry is added on A, then its head planted.
+    def pruned_chain(dir, archive_anchor: true, delete_middle: true)
+      a = session(dir).id
+      b = session(dir, continues: a).id
+      c = session(dir, continues: b).id
+      Samagotchi::ArchiveStore.archive(a, state_dir: dir) if archive_anchor
+      Samagotchi::ArchiveStore.archive(b, state_dir: dir)
+      if delete_middle
+        FileUtils.rm_rf(Samagotchi::Session.session_dir(b, state_dir: dir))
+        FileUtils.rm_f(Samagotchi::Session.session_file(b, state_dir: dir))
+      end
+      [a, c]
+    end
+
+    def add_with_head(schedules, anchor, head, prompt: "Audit")
+      entry = schedules.add(target: anchor, prompt: prompt, recurrence: every("1h"))
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].find { |record| record["id"] == entry.id }["head"] = head
+      File.write(schedules.path, JSON.generate(data))
+      entry
+    end
+
+    def warning(anchor, newest)
+      "#{anchor[0, 8]}'s chain was pruned; its newest link is #{newest[0, 8]} — send there from now on."
+    end
+
+    def forward(dir, anchor) = Samagotchi::SessionChain::Links.new(state_dir: dir).anchor_forward(anchor)
+
+    it "warns, naming the newest link, when the cancelled entry was the last bridge, disabled too" do
+      Dir.mktmpdir("schedules-cancel-pruned") do |root|
+        dir = File.join(root, "sessions")
+        a, c = pruned_chain(dir)
+        schedules = store(dir)
+        entry = add_with_head(schedules, a, c)
+        schedules.disable(entry.id)
+        expect(forward(dir, a)).to eq(c)
+
+        cancelled = schedules.cancel(entry.id)
+        expect(cancelled).to have_attributes(id: entry.id, newest: c, warning: warning(a, c))
+        expect(schedules.entries(include_disabled: true)).to be_empty
+        expect(forward(dir, a)).to be_nil
+      end
+    end
+
+    it "warns only at the last of two bridging entries, and over a never-fired sibling" do
+      Dir.mktmpdir("schedules-cancel-pruned") do |root|
+        dir = File.join(root, "sessions")
+        a, c = pruned_chain(dir)
+        schedules = store(dir)
+        first = add_with_head(schedules, a, c)
+        second = add_with_head(schedules, a, c, prompt: "Weekly")
+
+        expect(schedules.cancel(first.id).warning).to be_nil
+        expect(schedules.cancel(second.id).warning).to eq(warning(a, c))
+
+        never = schedules.add(target: a, prompt: "Never fired", recurrence: every("1h"))
+        bridge = add_with_head(schedules, a, c, prompt: "Bridge")
+        expect(schedules.cancel(bridge.id).warning).to eq(warning(a, c))
+        expect(schedules.cancel(never.id).warning).to be_nil
+      end
+    end
+
+    it "says nothing when the anchor is not archived or its successor still exists" do
+      Dir.mktmpdir("schedules-cancel-pruned") do |root|
+        dir = File.join(root, "sessions")
+        a, c = pruned_chain(dir, archive_anchor: false)
+        schedules = store(dir)
+        expect(schedules.cancel(add_with_head(schedules, a, c).id).warning).to be_nil
+
+        a, c = pruned_chain(dir, delete_middle: false)
+        cancelled = schedules.cancel(add_with_head(schedules, a, c).id)
+        expect(cancelled).to have_attributes(newest: nil, warning: nil)
+      end
+    end
+
+    it "says nothing when the cancelled entry's head is gone or it never fired" do
+      Dir.mktmpdir("schedules-cancel-pruned") do |root|
+        dir = File.join(root, "sessions")
+        a, = pruned_chain(dir)
+        schedules = store(dir)
+        expect(schedules.cancel(add_with_head(schedules, a, SecureRandom.uuid).id).warning).to be_nil
+        expect(schedules.cancel(schedules.add(target: a, prompt: "Audit", recurrence: every("1h")).id).warning).to be_nil
+      end
+    end
+
+    it "says nothing for a record that doesn't read, removed by its id" do
+      Dir.mktmpdir("schedules-cancel-pruned") do |root|
+        dir = File.join(root, "sessions")
+        a, c = pruned_chain(dir)
+        schedules = store(dir)
+        FileUtils.mkdir_p(File.dirname(schedules.path))
+        File.write(schedules.path, JSON.generate("version" => 1, "schedules" => [{ "id" => "bad1", "anchor" => a, "head" => c }]))
+
+        cancelled = schedules.cancel("bad1")
+        expect(cancelled).to be_truthy
+        expect(cancelled).to have_attributes(id: "bad1", warning: nil)
+      end
     end
   end
 

@@ -416,7 +416,13 @@ the coordinator remember, and `last:<anchor>` must keep resolving. Once the
 anchor's successor is gone, nothing continues the anchor; the chain walks for
 `last:`, `chi send` and notes cross that gap to the entry's `head`
 (`SessionChain::Links#anchor_forward`, [sessions.md](sessions.md), *Session chains*
-→ Which link), so the anchor stays the chain's address. A link a previous prune
+→ Which link), so the anchor stays the chain's address. Cancelling the schedule
+that bridges that gap ends the bridge: `last:`, sends and notes land in the anchor
+again, so `chi schedule cancel` says so in one more line naming the chain's newest
+link ("3f9a1c2e's chain was pruned; its newest link is 7d2b4e10 — send there from
+now on.", `Schedules::Cancelled`), and the `cancel_schedule` tool's answer adds the
+same line. Another schedule still bridging the gap means no line (cancelling that
+one says it); disabling keeps the bridge. A link a previous prune
 already deleted is skipped, so each later firing prunes the next link behind the
 window.
 

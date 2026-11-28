@@ -378,6 +378,39 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
     end
   end
 
+  # The cancel that ends a pruned anchor's bridge (Schedules::Cancelled#warning):
+  # the answer adds its line, in the machine-wide branch and the chain's own.
+  it "adds the newest link's line when the cancel ends a pruned anchor's bridge" do
+    Dir.mktmpdir("schedule-cancel") do |root|
+      dir = File.join(root, "sessions")
+      a = session_here(dir).id
+      b = Samagotchi::Session.load(session_here(dir).id, state_dir: dir).tap { |saved| saved.continues = a }
+                             .tap { |saved| saved.save(state_dir: dir) }.id
+      c = Samagotchi::Session.load(session_here(dir).id, state_dir: dir).tap { |saved| saved.continues = b }
+                             .tap { |saved| saved.save(state_dir: dir) }.id
+      [a, b].each { |id| Samagotchi::ArchiveStore.archive(id, state_dir: dir) }
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(b, state_dir: dir))
+      FileUtils.rm_f(Samagotchi::Session.session_file(b, state_dir: dir))
+      schedules = Samagotchi::Schedules.new(state_dir: dir)
+      bridged = lambda do |prompt, title|
+        entry = schedules.add(target: a, prompt: prompt, title: title, recurrence: Samagotchi::Schedules.recurrence(every: "1h"))
+        data = JSON.parse(File.read(schedules.path))
+        data["schedules"].find { |record| record["id"] == entry.id }["head"] = c
+        File.write(schedules.path, JSON.generate(data))
+        entry
+      end
+      line = "#{a[0, 8]}'s chain was pruned; its newest link is #{c[0, 8]} — send there from now on."
+
+      entry = bridged.call("Audit", "Audit")
+      expect(described_class.call(entry.id, peers: peers(dir))).to eq("Cancelled #{entry.id} (Audit).\n#{line}")
+
+      entry = bridged.call("Weekly", nil)
+      here = Struct.new(:session_id, :state_dir).new(c, dir)
+      expect(described_class.call(entry.id, peers: here)).to eq("Cancelled #{entry.id} (every 1h).\n#{line}")
+      expect(schedules.entries).to be_empty
+    end
+  end
+
   it "says no schedule named when the entry is gone by the time the lock is held" do
     Dir.mktmpdir("schedule-cancel") do |root|
       dir = File.join(root, "sessions")
