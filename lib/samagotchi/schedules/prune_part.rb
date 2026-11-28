@@ -9,6 +9,21 @@ require_relative "../session_transition"
 
 module Samagotchi
   class Schedules
+    # What #cancel removed: +entry+ (an Entry, or the raw Hash of one that
+    # doesn't read) and +newest+, the chain's newest link, set only
+    # when this cancel took away the last bridge over a pruned anchor's gap
+    # (PrunePart#cancel_strands). It owns the line that says so; callers only
+    # add context.
+    Cancelled = Data.define(:entry, :newest) do
+      def initialize(entry:, newest: nil) = super
+
+      def id = entry.is_a?(Hash) ? entry["id"] : entry.id
+
+      def warning
+        newest && "#{entry.anchor[0, 8]}'s chain was pruned; its newest link is #{newest[0, 8]} — send there from now on."
+      end
+    end
+
     # The chain prune after a firing (docs/scheduling.md, "Keeping the chain
     # short"): the links behind a chain entry's keep_links window go, oldest
     # first, each under the transition locks of it and the link after it.
@@ -167,6 +182,23 @@ module Samagotchi
           file.entries[position] = stored.with(extra: extra)
         end
         Log.warn(:worker, "prune_waiting", sid: link, id: entry.id, msg: reason) if logged
+      end
+
+      # The chain's newest link when removing +removed+ from +entries+ (the
+      # file's list, under its lock) takes away the last bridge over its
+      # anchor's gap (SessionChain::Links#anchor_forward), else nil. A disabled
+      # entry still bridges, so only a cancel ends one. The heads are given,
+      # not read: the file still holds the entry.
+      # @return [String, nil]
+      def cancel_strands(entries, removed)
+        return nil if removed.head == removed.anchor
+
+        before = SessionChain::Links.new(state_dir: @state_dir, anchor_heads: heads_by_anchor(entries))
+        return nil unless before.anchor_forward(removed.anchor)
+
+        rest = entries.reject { |entry| entry.equal?(removed) }
+        after = SessionChain::Links.new(state_dir: @state_dir, anchor_heads: heads_by_anchor(rest))
+        after.anchor_forward(removed.anchor) ? nil : before.latest(removed.anchor)
       end
 
       # Neither a session file nor a folder: nothing left to delete.

@@ -470,6 +470,10 @@ chi schedule add --session 3f9a1c2e --every 5m -m "Check in" --if "$HOME/.local/
 chi schedule edit 4b7e9a --no-if     # fire at every occurrence again
 ```
 
+When the schedule a cancel removes was what kept a pruned chain reachable from its first
+session, `cancel` prints one more line on stdout naming the chain's newest link to send to
+from then on, and still exits 0 ([scheduling.md](scheduling.md#keeping-the-chain-short)).
+
 Every `list` row names its schedule: the `--title` it was given, or, when it has
 none, the first 30 characters of its prompt in quotes with `…` where it is cut
 (newlines and runs of spaces become one space). The name column is padded to the

@@ -268,11 +268,7 @@ module Samagotchi
     # anchor's gap: a paused schedule's chain is still one chain). Lenient and
     # quiet: a file that doesn't read forwards nothing.
     # @return [Hash{String => Array<String>}]
-    def anchor_heads
-      read(quiet: true).entries.grep(Entry).each_with_object({}) do |entry, heads|
-        (heads[entry.anchor] ||= []) << entry.head
-      end
-    end
+    def anchor_heads = heads_by_anchor(read(quiet: true).entries)
 
     # One match is the answer; several are a usage error naming them, the way
     # Session::AmbiguousId does for session prefixes.
@@ -336,8 +332,11 @@ module Samagotchi
       entry
     end
 
-    # @return [Entry, nil] nil when no schedule matches
-    def cancel(id_or_name) = change(id_or_name, delete: true) || cancel_unreadable(id_or_name)
+    # @return [Cancelled, nil] nil when no schedule matches
+    def cancel(id_or_name)
+      change(id_or_name, delete: true) || cancel_unreadable(id_or_name)&.then { |record| Cancelled.new(entry: record.raw) }
+    end
+
     def enable(id_or_name) = change(id_or_name, enabled: true)
     def disable(id_or_name) = change(id_or_name, enabled: false)
 
@@ -574,6 +573,11 @@ module Samagotchi
     # one-firing-per-chain guard and the firing see the same chain.
     def links_now = SessionChain::Links.new(state_dir: @state_dir)
 
+    # #anchor_heads of +entries+ (the readable ones), for PrunePart#cancel_strands too.
+    def heads_by_anchor(entries)
+      entries.grep(Entry).each_with_object({}) { |entry, heads| (heads[entry.anchor] ||= []) << entry.head }
+    end
+
     # @param strict [Boolean] a file that is not readable JSON raises rather
     #   than reading as empty: a write starting from an empty list would rewrite
     #   the file and lose every schedule on it. #entries stays lenient.
@@ -625,7 +629,7 @@ module Samagotchi
     # an ambiguous one raises Usage rather than taking the first match. nil
     # too when the entry is gone by the time the lock is held (another cancel
     # landed in between): the caller says "no schedule", not "ok".
-    # @return [Entry, nil] the entry as changed (as removed, for a delete)
+    # @return [Entry, Cancelled, nil] the entry as changed (Cancelled, for a delete)
     def change(id_or_name, enabled: nil, delete: false)
       entry = lookup(id_or_name)
       return nil if entry.nil?
@@ -636,7 +640,8 @@ module Samagotchi
         next if position.nil?
 
         if delete
-          result = file.entries[position]
+          removed = file.entries[position]
+          result = Cancelled.new(entry: removed, newest: cancel_strands(file.entries, removed))
           file.entries[position] = nil
           file.entries.compact!
         else

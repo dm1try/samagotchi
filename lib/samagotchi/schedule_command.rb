@@ -319,6 +319,7 @@ module Samagotchi
       end
 
       @stdout.puts("#{id} #{@argv[0]}: ok")
+      @stdout.puts(result.warning) if result.is_a?(Schedules::Cancelled) && result.warning
       CLI::Exit::OK
     rescue Schedules::Usage => e
       usage_error(e.message)

@@ -841,6 +841,25 @@ RSpec.describe Samagotchi::ScheduleCommand do
       expect(schedules.entries).to be_empty
     end
 
+    it "adds a line naming the newest link when the cancel ends a pruned anchor's bridge, exit 0" do
+      # A, B continues A, C continues B; A and B archived, B gone (a prune).
+      a = session
+      b = Samagotchi::Session.load(session, state_dir: @dir).tap { |saved| saved.continues = a }.tap { |saved| saved.save(state_dir: @dir) }.id
+      c = Samagotchi::Session.load(session, state_dir: @dir).tap { |saved| saved.continues = b }.tap { |saved| saved.save(state_dir: @dir) }.id
+      [a, b].each { |id| Samagotchi::ArchiveStore.archive(id, state_dir: @dir) }
+      FileUtils.rm_rf(Samagotchi::Session.session_dir(b, state_dir: @dir))
+      FileUtils.rm_f(Samagotchi::Session.session_file(b, state_dir: @dir))
+      entry = schedules.add(target: a, prompt: "Audit", recurrence: hourly)
+      data = JSON.parse(File.read(schedules.path))
+      data["schedules"].first["head"] = c
+      File.write(schedules.path, JSON.generate(data))
+
+      status, printed, error = run("cancel", entry.id)
+      expect([status, error]).to eq([0, ""])
+      expect(printed).to eq("#{entry.id} cancel: ok\n" \
+                            "#{a[0, 8]}'s chain was pruned; its newest link is #{c[0, 8]} — send there from now on.\n")
+    end
+
     it "says no schedule, exit 1, when the entry is gone by the time the lock is held" do
       id = session
       %w[cancel enable disable].each do |sub|
