@@ -61,6 +61,9 @@
     "pairAnswerRefs",
     "setAnswerRefs"
   ],
+  "answer_write.js": [
+    "writeAnswer"
+  ],
   "app.js": [],
   "auth_lost.js": [
     "AUTH_LOST_TEXT",
@@ -461,6 +464,13 @@
   ],
   "dock_reserve.js": [
     "createDockReserve"
+  ],
+  "draft_keys.js": [
+    "COMPOSER_DRAFT",
+    "START_DRAFT"
+  ],
+  "drafts.js": [
+    "createDrafts"
   ],
   "families_view.js": [
     "archivedBadge",

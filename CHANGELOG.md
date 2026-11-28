@@ -8,40 +8,43 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.192.0] - 2026-11-28
+
 ### Added
 
-- `POST /api/sessions` can answer a new session's first message in the same call, like `/ask` (send `reply_for`,
-  `timeout` or `request_id`); with `web.ask_dir` set, a phone Shortcut can leave out the folder.
-- `POST /api/sessions/last/ask` continues the session you last asked from a thin client (or your most recent one),
-  following continues to the newest link.
-- `GET /api/sessions/summaries?delegates=0` leaves out delegates and scratch sessions.
-- docs/thin-clients.md: an iOS Shortcut recipe with a menu: new session, last session, or pick from your recent ones.
-
-### Fixed
-
-- `chi send --new --continues last:<id>` (or a chain schedule's firing) racing another
-  continue of the same chain no longer fails with "was continued as …"; it follows to the new link.
-- A block fixed in an answer that a hook's display replaced is redrawn right away, not on the next reload; a live answer's bubble shows its time on hover like a reloaded one.
-- A failed block whose fix couldn't be shown no longer stays at "asking for a fix…": it offers Ask in chat.
-- chi web no longer shows a session as stopped while a one-turn `chi -p` run or a delete holds it, and a worker being
-  stopped no longer shows as connected (its worker badge, open card and question go as the stop lands).
-- `chi schedule cancel` (and the `cancel_schedule` tool) now says when the schedule it removes was what kept a pruned
-  chain reachable from its first session, and names the chain's newest link to send to from then on; before, later
-  sends to the first session landed there silently.
-- Stopping a session that is being continued, deleted or archived is refused right away and says what to do
-  ("session ab12cd34 is being continued as 7b2d41aa-…: stop that one") instead of waiting 10 seconds, and a refused
-  stop no longer ends the running turn.
-- The web's Stop toast for a session being continued offers Open on the new link.
+- Phone Shortcuts get three flows: a new session answered in one call (`POST /api/sessions` with `reply_for`,
+  `timeout` or `request_id`; set `web.ask_dir` and the Shortcut can leave out the folder), `POST
+  /api/sessions/last/ask` for the session you last asked from your phone (following continues), and a recent-sessions
+  list without delegates (`GET /api/sessions/summaries?delegates=0`). docs/thin-clients.md has an iOS Shortcut recipe
+  with a New / Last / Pick menu.
 
 ### Changed
 
 - Each session keeps its own draft in the web composer: text typed in one session no longer shows in another, a pick or
-  quote goes into the open session's draft, and + new starts from its own. The draft's text survives a reload in this
-  browser; attached images don't.
-- Continuing a session moves its draft to the new link (even if you are in another session when it finishes); the new
+  quote goes into the open session's draft, and + new has its own. The draft's text survives a reload in this browser;
+  attached images don't.
+- Continuing a session moves its draft to the new link, even if you are in another session when it finishes; the new
   link gets the opener only when there was no draft. The "Restore draft" button is gone.
+- Stopping a session that is being continued, deleted or archived is refused right away and says what to do
+  ("session ab12cd34 is being continued as 7b2d41aa-…: stop that one") instead of waiting 10 seconds; in the web the
+  toast offers Open on the new link. A refused stop no longer ends the running turn.
 - A participant's client id from chi 0.171 and before (`review:<id>`) is no longer read as a participant's; such turns in
   old sessions show as automatic.
+
+### Fixed
+
+- `chi send --new --continues last:<id>` (or a chain schedule's firing) racing another continue of the same chain no
+  longer fails with "was continued as …"; it follows to the new link.
+- chi web no longer shows a session as stopped while a one-turn `chi -p` run or a delete holds it, and a worker being
+  stopped no longer shows as connected (its worker badge, open card and question go as the stop lands).
+- `chi schedule cancel` (and the `cancel_schedule` tool) says when the schedule it removes was what kept a pruned chain
+  reachable from its first session, and names the newest link to send to; before, later sends to the first session
+  landed there silently.
+- A block fixed in an answer that a hook's display replaced is redrawn right away, not on the next reload; a live
+  answer's bubble shows its time on hover like a reloaded one.
+- A failed block whose fix couldn't be shown no longer stays at "asking for a fix…": it offers Ask in chat.
+
+Update with `chi update` (mcp 0.9.3).
 
 ## [0.191.0] - 2026-11-27
 
@@ -7021,7 +7024,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.191.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.192.0...HEAD
+[0.192.0]: https://github.com/dm1try/samagotchi/compare/v0.191.0...v0.192.0
 [0.191.0]: https://github.com/dm1try/samagotchi/compare/v0.190.1...v0.191.0
 [0.190.1]: https://github.com/dm1try/samagotchi/compare/v0.190.0...v0.190.1
 [0.190.0]: https://github.com/dm1try/samagotchi/compare/v0.189.0...v0.190.0
