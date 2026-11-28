@@ -109,3 +109,16 @@ test("sweepSessionPrefs: a gone session's draft goes with its view settings; the
   assert.equal(localStorage.getItem("chi_composer_draft:kept"), "mine");
   assert.equal(localStorage.getItem("chi_start_draft"), "start text");
 });
+
+// chi web's hub answers its first snapshot empty until its first scan (a page
+// reloaded right after chi web restarts): an empty list sweeps nothing, or every
+// saved draft and view setting would go.
+test("sweepSessionPrefs: an empty list sweeps nothing", (t) => {
+  clean(t);
+  localStorage.setItem("chi_composer_draft:s1", "kept");
+  write(STAGE_FOLD, "s1", "1");
+  sweepSessionPrefs([]);
+  sweepSessionPrefs(null);
+  assert.equal(localStorage.getItem("chi_composer_draft:s1"), "kept");
+  assert.equal(localStorage.getItem("chi_stage_collapsed:s1"), "1");
+});

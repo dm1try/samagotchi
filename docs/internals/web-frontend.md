@@ -999,7 +999,9 @@ Restore draft and no guess of where a draft came from (the old `draftFrom`/`note
 rule). A 409 `continued` hands the draft to the link that continues it only into an empty draft of its own, no opener.
 Chips moved from A go up again to A' at its send (`images.js uploadChips`, by `chip.session`).
 
-**Swept** with the view settings (`COMPOSER_DRAFT` is in `PREF_KEYS`): only an unscoped list, ids missing from it.
+**Swept** with the view settings (`COMPOSER_DRAFT` is in `PREF_KEYS`): only an unscoped list, ids missing from it,
+never an empty list (the hub answers its first snapshot empty until its first scan: a page reloaded as chi web
+restarts). A session the hub holds with no summary yet is left out of a snapshot: its draft can go then (accepted).
 Not kept or swapped: the Verify claim and the armed Revise (cleared on a switch, as before), ↑/↓ history (shared; its
 place resets on a swap), the delivery line's armed choice (a switch disarms it: `resetTurnView`'s
 `setTurnRunning(false)` redraws the composer with no running turn, and the line leaves `running`).
@@ -1091,7 +1093,7 @@ stays in memory until a reload. Each module reads its value again when a session
 applyPrefs`: at the end of `forgetSession`, so on a select once the new session is set, and at the start of each
 `renderSessionView`): `stage_view.js applyPrefs` (the stage's fold, `stage_asking.js reloadChoice`, and the rail's),
 `composer_mount.js applyPrefs` (the floor; the fold is read at each call). The list's section folds are read at each draw. One sweep for the six
-(`sweepSessionPrefs`, app.js `sweepFoldsOnce`, next to `sweepAnswerFolds`): only on an unscoped list, since these keys
+(`sweepSessionPrefs`, app.js `sweepFoldsOnce`, next to `sweepAnswerFolds`): only on an unscoped, non-empty list, since these keys
 hold no project root. The old page-wide keys (`chi_stage_collapsed`, `chi_composer_floor`, `chi_composer_collapsed`,
 `chi_working_set_collapsed`, no `:<session>`) are no longer read or written, and left in storage as they were.
 
