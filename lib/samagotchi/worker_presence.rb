@@ -38,9 +38,12 @@ module Samagotchi
     #   the caller already read it (SessionManager.session_owner, a stand-in
     #   manager's), or a reader of it called only for a valid id; :read reads
     #   it here (OwnerLock.owner)
-    # @param link [nil, :look, :unlink] also resolve the WorkerLink:
-    #   :look leaves a stale sidecar, :unlink removes it (WorkerLink.resolve,
-    #   given the owner read here or by the caller: one moment's snapshot)
+    # @param link [nil, :look, :unlink, WorkerLink outcome] also resolve the
+    #   WorkerLink: :look leaves a stale sidecar, :unlink removes it (a
+    #   WorkerLink.resolve, given the owner read here or by the caller: one
+    #   moment's snapshot); an already resolved outcome (anything responding
+    #   to #live?, e.g. a caller's own WorkerLink.resolve) is used as is.
+    #   nil reads no link
     # @return [WorkerPresence]
     def self.read(session_id, state_dir: nil, owner: :read, link: nil)
       return absent(session_id, link: link) unless Session.valid_id?(session_id)
@@ -55,15 +58,28 @@ module Samagotchi
           stop_marked: Session.stopped_marker?(session_id, state_dir: sd),
           starting_marked: StartingMarker.fresh?(session_id, state_dir: sd),
           archived: ArchiveStore.archived?(dir),
-          link: link && WorkerLink.resolve(dir, unlink: link == :unlink, owner: owner))
+          link: resolved_link(link, dir, owner))
     end
 
+    # The +link:+ argument as the outcome to carry: a resolved outcome
+    # (anything responding to #live?) is used as is; nil reads no link;
+    # :look or :unlink resolves the WorkerLink (WorkerLink.resolve).
+    # @return [WorkerLink outcome, nil]
+    def self.resolved_link(link, dir, owner)
+      return nil if link.nil?
+      return link if link.respond_to?(:live?)
+
+      WorkerLink.resolve(dir, unlink: link == :unlink, owner: owner)
+    end
+    private_class_method :resolved_link
+
     # An id that isn't one names no session: nothing on disk is read
-    # (Session.session_dir would raise), and a link asked for is None.
+    # (Session.session_dir would raise), and a link asked for resolves as
+    # None unless it was already resolved.
     # @return [WorkerPresence]
     def self.absent(session_id, link: nil)
       new(session_id: session_id, exists: false, owner: nil, stop_marked: false, starting_marked: false,
-          archived: false, link: link && WorkerLink::None.new)
+          archived: false, link: link.respond_to?(:live?) ? link : (link && WorkerLink::None.new))
     end
 
     def initialize(session_id:, exists:, owner:, stop_marked:, starting_marked:, archived:, link: nil) = super

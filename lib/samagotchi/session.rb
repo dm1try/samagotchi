@@ -465,6 +465,11 @@ module Samagotchi
     # not saved.
     attr_accessor :model_warning
 
+    # The status the session file held when loaded, before the stop marker's
+    # overlay (Session.load and .summary_from_file set it; nil for a session
+    # built in memory); not saved.
+    attr_accessor :loaded_status
+
     # The delegates a continue moved to this new link (ChildMove;
     # SessionContinue.run sets it); not saved.
     attr_accessor :moved_children
@@ -653,6 +658,7 @@ module Samagotchi
 
       session = from_h(JSON.parse(File.read(path)))
       session.persisted!
+      session.loaded_status = session.status
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: state_dir)
       session.parent_id = parent_override(session.id, state_dir: state_dir) || session.parent_id
       session
@@ -782,6 +788,7 @@ module Samagotchi
 
       session = from_h(data, messages: false)
       session.persisted!
+      session.loaded_status = session.status
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: File.dirname(path))
       session.parent_id = parent_override(session.id, state_dir: File.dirname(path)) || session.parent_id
       session

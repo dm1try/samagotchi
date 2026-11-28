@@ -22,6 +22,8 @@ module Samagotchi
   # The liveness rule: +live+ is WorkerLink's worker_owned? (a worker holds
   # the lock, its Bridge up or on its way); +busy+ and +waiting+ need it,
   # +status+ is Session#displayed_status (a dead worker's "running" is idle).
+  # The session hub shows neither this live nor its question: it reads
+  # SessionSummary.shown (the lifecycle state).
   SessionRow = Data.define(:id, :desc, :preview, :title, :cwd, :project, :updated_at, :status, :saved_status, :live,
                            :busy, :owner, :recap, :auto_title, :ctx_pct, :parent_id, :continues, :delegate, :archived,
                            :scratch, :test_run, :stopped_by, :waiting, :waiting_id, :relayed_to)

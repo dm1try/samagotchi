@@ -50,23 +50,13 @@ module LifecycleMatrixFindings
     # New: wake_for_report folds the ring's :live into :owned.
     KnownDifference.new(op: :ring, when: ->(row) { row.exists && %i[worker unknown].include?(row.owner) },
                         reason: "wake_for_report maps the ring's :live (a worker reads it) to :owned, the word of a " \
-                                "one-turn run's session: its caller can't tell the two apart"),
-    # F3: the hub's liveness keys.
-    KnownDifference.new(op: :hub_bridge_up, when: ->(row) { row.state == :stopping && row.link == :live },
-                        reason: "F3: bridge_up is WorkerLink's live?, which never reads the stop marker: a stopping " \
-                                "worker's Bridge shows up"),
-    KnownDifference.new(op: :hub_live, when: ->(row) { %i[deleting stopping skew leaving booting_stuck booting].include?(row.state) },
-                        reason: "F3: SessionRow#live is the link's worker_owned?: true while a worker (or a deleter, " \
-                                "read as Starting) holds the lock with no Bridge answering, or with a stop"),
-    # New: the hub's status takes Session.load's stopped overlay under any lock.
-    KnownDifference.new(op: :hub_status, when: ->(row) { %i[tui deleting unknown].include?(row.owner) && row.stop },
-                        reason: "Session.load overlays status stopped from the marker whatever holds the lock: a " \
-                                "one-turn run's, a deleter's or a blank-record owner's session shows stopped")
+                                "one-turn run's session: its caller can't tell the two apart")
   ].freeze
 
   stopped = %i[stopping stopped_starting stopped]
   # What the session hub should show in each state (Web::SessionSummary's
-  # status and bridge_up, its SessionRow's live): up and live only while a
+  # status and bridge_up, the live its summary gates the open question on
+  # (SessionSummary.shown)): up and live only while a
   # worker's Bridge answers, status stopped only in a stopped state. absent
   # has no summary.
   SHOWN = Samagotchi::SessionLifecycle::STATES.to_h do |state|

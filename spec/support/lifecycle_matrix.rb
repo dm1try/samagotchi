@@ -376,8 +376,9 @@ module LifecycleMatrix
     def drive_hub_bridge_up(id, state_dir) = hub(id, state_dir)&.fetch(:bridge_up)
     def drive_hub_live(id, state_dir) = hub(id, state_dir)&.fetch(:live)
 
-    # The session hub's summary (Web::SessionSummary.build, and its row's
-    # live: SessionRow.build) of the session as Session.load reads it.
+    # The session hub's summary (Web::SessionSummary.build) of the session as
+    # Session.load reads it; live is the live the summary gates the open
+    # question on (SessionSummary.shown).
     def hub(id, state_dir)
       return nil unless Samagotchi::Session.exist?(id, state_dir: state_dir)
 
@@ -387,8 +388,8 @@ module LifecycleMatrix
         dir = Samagotchi::Session.session_dir(id, state_dir: state_dir)
         owner = Samagotchi::SessionManager.session_owner(id, state_dir: state_dir)
         summary = Samagotchi::Web::SessionSummary.build(session, owner: owner, session_dir: dir)
-        row = Samagotchi::SessionRow.build(session, session_dir: dir, owner: owner)
-        { status: summary[:status], bridge_up: summary[:bridge_up], live: row.live }
+        live = Samagotchi::Web::SessionSummary.shown(session, owner: owner, session_dir: dir).up
+        { status: summary[:status], bridge_up: summary[:bridge_up], live: live }
       end
     end
 

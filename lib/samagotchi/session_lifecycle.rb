@@ -25,6 +25,10 @@ module Samagotchi
     STATES = %i[absent tui_owned deleting stopping skew leaving booting_stuck booting live
                 stopped_starting stopped archived_starting starting archived idle].freeze
 
+    # The states whose session is shown "stopped" (the hub shows the stopped
+    # status only there; the file's own status is shown everywhere else).
+    STOPPED_STATES = %i[stopping stopped_starting stopped].freeze
+
     autoload :Reading, File.expand_path("session_lifecycle/reading", __dir__)
     autoload :CANONICAL, File.expand_path("session_lifecycle/canonical", __dir__)
     autoload :ALLOWED, File.expand_path("session_lifecycle/allowed", __dir__)

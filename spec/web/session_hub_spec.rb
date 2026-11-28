@@ -181,6 +181,8 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub = described_class.new(state_dir: state_dir, manager: manager)
       hub.subscribe(->(event) { events << event })
       a = save_session
+      FileUtils.mkdir_p(session_dir(a))
+      File.write(File.join(session_dir(a), "bridge.json"), JSON.generate(port: 4321, pid: 1))
       hub.scan
       events.clear
 
@@ -200,6 +202,8 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub = described_class.new(state_dir: state_dir, manager: manager)
       hub.subscribe(->(event) { events << event })
       a = save_session
+      FileUtils.mkdir_p(session_dir(a))
+      File.write(File.join(session_dir(a), "bridge.json"), JSON.generate(port: 4321, pid: 1))
       a.pending_question = { id: "q1", question: "Which?" }
       a.save(state_dir: state_dir)
       hub.scan
@@ -598,6 +602,35 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.touch(a.id)
 
       expect(events.last.data[:session]).to include(owner: "tui")
+    ensure
+      lock&.release
+    end
+
+    it "shows a one-turn run's session its saved status once the stop marker lands" do
+      a = save_session(status: "idle")
+      lock = acquire(a, kind: "tui")
+      hub.scan
+      events.clear
+
+      Samagotchi::Session.mark_stopped(a.id, state_dir: state_dir)
+      hub.scan
+
+      expect(hub.snapshot.first[:status]).to eq("idle")
+    ensure
+      lock&.release
+    end
+
+    it "shows a worker being stopped as not up, and the session stopped" do
+      a = save_session(status: "idle")
+      lock = acquire(a)
+      File.write(File.join(lock_dir(a), "bridge.json"), JSON.generate(port: 4321))
+      hub.scan
+      events.clear
+
+      Samagotchi::Session.mark_stopped(a.id, state_dir: state_dir)
+      hub.scan
+
+      expect(hub.snapshot.first).to include(bridge_up: false, status: "stopped")
     ensure
       lock&.release
     end
