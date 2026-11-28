@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "delegate"
+require "json"
 require_relative "../bridge_client"
 require_relative "../agent_caller"
 require_relative "../client_id"
@@ -105,17 +106,38 @@ module Samagotchi
         # waits, the Bridge wait and the slice all draw on it.
         deadline = ask_clock + ASK_MAX_SECONDS
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
-        prompt, client_id, options, error = ask_request(id, body)
+        prompt, client_id, options, reply_for, error = ask_fields(body, id: id)
         return error if error
-
-        reply_for, error = ask_reply_for(body)
-        return error if error
-
-        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !runs_as_command?(prompt, client_id)
 
         gated = ask_gate(id, prompt, client_id)
         return gated if gated
 
+        outcome = run_ask(id, prompt: prompt, client_id: client_id, options: options, deadline: deadline, body: body)
+        ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
+      rescue SessionManager::OwnedByTUI => e
+        owned_by_tui(e)
+      end
+
+      # An ask's body read whole (#ask_request, #ask_reply_for, the turn's
+      # anchor): [prompt, client_id, options, reply_for, nil] or [nil, nil,
+      # nil, nil, a 400 response]. +id+: the session asked, which a
+      # UI-only command's refusal names (nil: none yet, "ID").
+      def ask_fields(body, id:)
+        prompt, client_id, options, error = ask_request(id, body)
+        return [nil, nil, nil, nil, error] if error
+
+        reply_for, error = ask_reply_for(body)
+        return [nil, nil, nil, nil, error] if error
+
+        options[:anchors] = TurnAnchors.new(reply_for: reply_for) if reply_for && !runs_as_command?(prompt, client_id)
+        [prompt, client_id, options, reply_for, nil]
+      end
+
+      # The ask itself (SessionAccess::Ask through chi web's manager and
+      # Bridge, all within +deadline+), its history line recorded unless it
+      # was refused or rebound to a turn already known.
+      # @return [SessionAccess::Ask::Reply, Ran, Refused] the outcome
+      def run_ask(id, prompt:, client_id:, options:, deadline:, body:)
         bridge = ->(sid) { ask_bridge(sid, deadline) }
         access = AskAccess.new(session_access, manager: @manager, bridge: bridge, poll_interval: @wait_poll_interval)
         stopping = -> { !@server_running.call }
@@ -126,9 +148,14 @@ module Samagotchi
                                               cancelled: stopping, **options)
         rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
-        ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
-      rescue SessionManager::OwnedByTUI => e
-        owned_by_tui(e)
+        outcome
+      end
+
+      # A json_response triple re-rendered with +extra+ keys merged in (and
+      # +status+ in place of its own when given).
+      def with_fields(response, status: nil, **extra)
+        code, _headers, chunks = response
+        json_response(status || code, JSON.parse(chunks.join).merge(extra.transform_keys(&:to_s)))
       end
 
       # The ask's body read: [prompt, client_id, {queue:, timeout:,
