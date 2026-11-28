@@ -409,8 +409,13 @@ export function seedDelegate(env, parentId, { tag = "Delegate" } = {}) {
 // into the state dir, as a worker saves them (tmp + rename): chi web's hub
 // lists them within its next scan. No worker runs them, except with
 // +waiting+: the second delegate has an open question, and a stand-in
-// worker (a ruby holding its owner lock as kind "worker", OwnerLock) makes
-// it live, which a question needs to count as open (Session#waiting_question).
+// worker makes it live, which a question needs to count as open
+// (Session#waiting_question; chi web shows it only while the session reads
+// :live, SessionLifecycle::Reading): a ruby holding its owner lock as kind
+// "worker" (OwnerLock) that then writes its Bridge sidecar (bridge.json,
+// WorkerSidecar) naming its own pid, so WorkerLink.resolve reads it Live, not
+// Starting. The sidecar's port is 1, where nothing listens: nothing in the
+// scenario talks to that Bridge, and a stray request is refused at once.
 // +parentMemories+ become the parent's used_memory_names.
 // Returns their ids; remove() stops the stand-in and deletes the files (the
 // hub drops them), so later scenarios of this worker don't see them.
@@ -439,13 +444,15 @@ export async function seedFamily(env, { waiting = false, tag = "Family", parentM
   let holder = null;
   if (waiting) {
     const lockDir = path.join(dir, ids.children[1]);
-    holder = spawn("ruby", ["-I", path.join(CHECKOUT, "lib"), "-rsamagotchi/owner_lock", "-e",
-      "lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: 'worker') or abort('locked'); $stdout.puts('held'); $stdout.flush; $stdin.read",
+    holder = spawn("ruby", ["-I", path.join(CHECKOUT, "lib"), "-rsamagotchi/owner_lock", "-rsamagotchi/worker_sidecar", "-e",
+      "lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: 'worker') or abort('locked'); " +
+        "Samagotchi::WorkerSidecar.new(port: 1, pid: Process.pid).write(ARGV[0]); " +
+        "$stdout.puts('held'); $stdout.flush; $stdin.read",
       lockDir], { stdio: ["pipe", "pipe", "ignore"] });
     env.procs.push(holder);
     await new Promise((resolve, reject) => {
       holder.stdout.once("data", resolve);
-      holder.once("exit", (code) => reject(new Error(`the owner lock stand-in exited (${code})`)));
+      holder.once("exit", (code) => reject(new Error(`the worker stand-in exited (${code})`)));
     });
   }
   for (const s of files) {
