@@ -151,3 +151,61 @@ test("after a switch: Copy copies the full removed text; a failed copy shows it 
     else assert.deepEqual(toasts[1], toasts[0]);
   }
 });
+
+// ── The drafts by session (drafts.js): putBackTo(text, id) ────────────────
+// The tests above are an older cached app.js's (putBack only): today's
+// words then. With putBackTo the text goes into the draft of the session it
+// was queued in, open or not, when that draft is empty.
+function draftsHarness({ dequeue, drafts = {}, open = { id: "s1aaaaaaaaaa" } }) {
+  const toasts = [];
+  const kept = new Map(Object.entries(drafts));
+  const unqueue = createUnqueue({
+    sessionId: () => open.id,
+    dequeue,
+    toast: (text, action = null, options = {}) => toasts.push(action || options.sticky ? { text, action, options } : text),
+    copy: async () => true,
+    putBack: () => { throw new Error("putBack is an older app.js's"); },
+    putBackTo: (text, id) => {
+      if ((kept.get(id) || "").trim()) return false;
+      kept.set(id, text);
+      return id === open.id ? "shown" : "stored";
+    },
+  });
+  return { unqueue, toasts, kept };
+}
+
+test("putBackTo: the removed text goes into the open session's empty draft, no toast", async () => {
+  const { unqueue, toasts, kept } = draftsHarness({ dequeue: async () => ({ prompt: "fix the tests" }) });
+  await unqueue.onClick(click(queuedBubble("e7").querySelector("button.unqueue")));
+  assert.equal(kept.get("s1aaaaaaaaaa"), "fix the tests");
+  assert.deepEqual(toasts, []);
+});
+
+test("putBackTo: after a switch, an empty draft of the session it came from takes it, a plain toast says where", async () => {
+  const open = { id: "s1aaaaaaaaaa" };
+  let answer;
+  const { unqueue, toasts, kept } = draftsHarness({ dequeue: () => new Promise((resolve) => { answer = resolve; }), open, drafts: { s2bbbbbbbbbb: "mine" } });
+  const pending = unqueue.onClick(click(queuedBubble("e8").querySelector("button.unqueue")));
+  open.id = "s2bbbbbbbbbb";
+  answer({ prompt: "fix the tests" });
+  await pending;
+  assert.equal(kept.get("s1aaaaaaaaaa"), "fix the tests");
+  assert.equal(kept.get("s2bbbbbbbbbb"), "mine");
+  assert.deepEqual(toasts, ["Removed: back in s1aaaaaa's draft"]);
+});
+
+test("putBackTo: a draft with text keeps it: on it the toast, after a switch the sticky toast with Copy", async () => {
+  const here = draftsHarness({ dequeue: async () => ({ prompt: "fix the tests" }), drafts: { s1aaaaaaaaaa: "my draft" } });
+  await here.unqueue.onClick(click(queuedBubble("e9").querySelector("button.unqueue")));
+  assert.deepEqual(here.toasts, ["Removed (your draft stays): fix the tests"]);
+  const open = { id: "s1aaaaaaaaaa" };
+  let answer;
+  const away = draftsHarness({ dequeue: () => new Promise((resolve) => { answer = resolve; }), open, drafts: { s1aaaaaaaaaa: "my draft" } });
+  const pending = away.unqueue.onClick(click(queuedBubble("e10").querySelector("button.unqueue")));
+  open.id = "s2bbbbbbbbbb";
+  answer({ prompt: "fix the tests" });
+  await pending;
+  assert.equal(away.toasts[0].text, "Removed from s1aaaaaa: fix the tests");
+  assert.equal(away.toasts[0].action.label, "Copy");
+  assert.equal(away.kept.get("s1aaaaaaaaaa"), "my draft");
+});

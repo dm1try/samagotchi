@@ -15,8 +15,9 @@ function failure(status, code = null, message = "boom", body = null) {
 // +displaced+: what fillOpener returns (a draft from another session it replaced, or null).
 // +holds+: what the worker answers GET …/holds with; +sheet+ stands in for
 // stop_sheet.js' sheet (the default opens when there is something, as it does).
+// +oldApp+: an older cached app.js's hooks (fillOpener, restoreDraft; no handOverDraft).
 function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true,
-                  displaced = null, holds = [], sheet = null, deleteSheet = null, doc = null } = {}) {
+                  displaced = null, holds = [], sheet = null, deleteSheet = null, doc = null, oldApp = false } = {}) {
   // world.state reads the page's session store (Stop writes its status there).
   const store = createSessionStore({ initial: { status: "running" } });
   const world = { selected: open, sessions: list, get state() { return store.current; } };
@@ -25,6 +26,8 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
   const toasts = [];
   const alerts = [];
   const opened = [];
+  // The drafts' moves and drops (drafts.js), in order with the log's clearSelection.
+  const drafts = [];
   // Each confirm's text; +confirms+ is the answer, or one per confirm in turn.
   const asked = [];
   const wrap = (name, fallback) => async (...args) => {
@@ -53,7 +56,13 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     eventsLive: () => eventsLive,
     refresh: () => log.push("refresh"),
     select: async (id) => { log.push(`select ${id}`); world.selected = id; },
-    clearSelection: () => { log.push("clearSelection"); world.selected = null; },
+    clearSelection: () => { log.push("clearSelection"); drafts.push("clearSelection"); world.selected = null; },
+    moveDraft: (from, to) => drafts.push(["move", from, to]),
+    ...(oldApp ? {} : {
+      handOverDraft: (from, to, created) => { log.push(`handOver ${from} → ${to}`); drafts.push(["handOver", from, to, created?.id ?? null]); },
+      revealDraft: () => log.push("reveal"),
+    }),
+    dropDraft: (id) => drafts.push(["drop", id]),
     showNotice: (text) => log.push(`notice ${text}`),
     toast: (text, action = null, options = {}) => toasts.push({ text, action, options }),
     addCreatedSession: (created) => log.push(`created ${created.id}`),
@@ -67,7 +76,7 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     deleteSheet,
     doc,
   });
-  return { actions, world, log, calls, toasts, alerts, opened, asked };
+  return { actions, world, log, calls, toasts, alerts, opened, asked, drafts };
 }
 
 // The 409 a delete or an archive answers while background tasks it would
@@ -387,28 +396,40 @@ test("stopSelected: a refusal is a sticky toast; a switch meanwhile leaves the o
   assert.deepEqual(switched.log, []);
 });
 
-test("continueSelected: the next link opens with its opener; the previous one is marked archived", async () => {
+test("continueSelected: the previous link's draft (or the opener) goes to the next link, which opens and shows it; the previous one is marked archived", async () => {
   const h = harness();
   await h.actions.continueSelected();
   assert.deepEqual(h.calls, [["continueSession", "s1aaaaaaaa"]]);
   assert.equal(h.world.sessions[0].archived, true);
   assert.deepEqual(h.log, [
-    "infoBar s1aaaaaaaa", "created s2bbbbbbbb", "select s2bbbbbbbb", "opener s2bbbbbbbb from s1aaaaaaaa", "infoBar ",
+    "infoBar s1aaaaaaaa", "created s2bbbbbbbb", "handOver s1aaaaaaaa → s2bbbbbbbb", "select s2bbbbbbbb", "reveal", "infoBar ",
   ]);
+  assert.deepEqual(h.drafts, [["handOver", "s1aaaaaaaa", "s2bbbbbbbb", "s2bbbbbbbb"]]);
   assert.equal(h.toasts.length, 1);
   assert.equal(h.toasts[0].action, null);
   assert.equal(h.toasts[0].options.sticky, false);
 });
 
-test("continueSelected: a draft from another session gave way to the opener: a sticky toast's Restore draft brings it back", async () => {
-  const h = harness({ displaced: "my shell setup" });
-  await h.actions.continueSelected();
+test("continueSelected: no Restore draft anywhere; on another session at the answer the draft is handed over all the same, the toast's Open shows it", async () => {
+  let release;
+  const h = harness({ displaced: "my shell setup", api: { continueSession: () => new Promise((resolve) => { release = resolve; }) } });
+  const going = h.actions.continueSelected();
+  h.world.selected = "other";
+  release({ id: "s2bbbbbbbb", continues: "s1aaaaaaaa" });
+  await going;
+  assert.deepEqual(h.drafts, [["handOver", "s1aaaaaaaa", "s2bbbbbbbb", "s2bbbbbbbb"]]);
+  assert.ok(!h.log.includes("select s2bbbbbbbb") && !h.log.includes("reveal"));
   assert.equal(h.toasts.length, 1);
-  const { action, options } = h.toasts[0];
-  assert.equal(action.label, "Restore draft");
-  assert.equal(options.sticky, true);
-  action.run();
-  assert.deepEqual(h.log.at(-1), ["restoreDraft", "my shell setup", "Continue where we left off."]);
+  assert.equal(h.toasts[0].action.label, "Open");
+  assert.equal(h.toasts[0].options.sticky, false);
+  assert.ok(!h.toasts.some((t) => t.action?.label === "Restore draft"));
+});
+
+test("continueSelected beside an older cached app.js (no handOverDraft): its fillOpener after the select, as before", async () => {
+  const h = harness({ oldApp: true });
+  await h.actions.continueSelected();
+  assert.ok(h.log.includes("opener s2bbbbbbbb from s1aaaaaaaa"));
+  assert.ok(h.log.indexOf("select s2bbbbbbbb") < h.log.indexOf("opener s2bbbbbbbb from s1aaaaaaaa"));
 });
 
 test("continueSelected: a model fallback's warning stays sticky with no draft displaced", async () => {
@@ -441,6 +462,8 @@ test("continueSelected: continued already opens that next link; other refusals a
   await already.actions.continueSelected();
   assert.equal(already.world.selected, "s3cccccccc");
   assert.equal(already.toasts[0].text, "s1aaaaaa is continued already: opened s3cccccc");
+  // The draft goes to the link that continues it (only into an empty one: drafts.js handOver), no opener.
+  assert.deepEqual(already.drafts, [["handOver", "s1aaaaaaaa", "s3cccccccc", null]]);
   const other = harness({ api: { continueSession: async () => { throw failure(500, null, "boom"); } } });
   await other.actions.continueSelected();
   assert.match(other.toasts[0].text, /^Can't continue s1aaaaaa: /);
@@ -484,3 +507,50 @@ test("toggleArchiveSelected: archives the open session, or unarchives an archive
   assert.deepEqual(none.calls, []);
 });
 
+
+// ── The drafts of gone and deleted sessions (C3) ───────────────────────────
+
+test("leaveGoneSession: the open session's draft goes to the start page's before it opens; another's is left to the sweep", () => {
+  const h = harness();
+  h.actions.leaveGoneSession("other", "deleted");
+  assert.deepEqual(h.drafts, []);
+  h.actions.leaveGoneSession("s1aaaaaaaa", "not_found");
+  assert.deepEqual(h.drafts, [["move", "s1aaaaaaaa", ""], "clearSelection"]);
+});
+
+test("a delete from the sheet drops the deleted sessions' drafts after the start page opens; a session_gone meanwhile moves nothing", async () => {
+  const sheet = fakeSheet();
+  let gone;
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb" }], deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => plan(), deleteSession: async () => {
+                        // The hub's session_gone can come before the delete's answer.
+                        gone = h.actions.leaveGoneSession("s1aaaaaaaa", "deleted");
+                        return { deleted: ["s1aaaaaaaa"] };
+                      } } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  sheet.hosts[0].flow.act("this");
+  await tick();
+  assert.equal(gone, undefined);
+  assert.deepEqual(h.drafts, ["clearSelection", ["drop", "s1aaaaaaaa"]]);
+  // Once over, a gone session is moved again.
+  h.world.selected = "s2bbbbbbbb";
+  h.actions.leaveGoneSession("s2bbbbbbbb", "deleted");
+  assert.deepEqual(h.drafts.at(-2), ["move", "s2bbbbbbbb", ""]);
+});
+
+test("a chain delete counts the open link as deliberate too", async () => {
+  const sheet = fakeSheet();
+  const h = harness({ list: [{ id: "s1aaaaaaaa" }, { id: "s2bbbbbbbb", continues: "s1aaaaaaaa" }], open: "s2bbbbbbbb", deleteSheet: sheet, doc: fakeDoc(),
+                      api: { deletePlan: async () => ({ chained: true, position: 1, size: 2, link: { digest: "d0" }, chain: { links: 2, digest: "c0" } }),
+                             deleteChain: async () => {
+                               h.actions.leaveGoneSession("s2bbbbbbbb", "deleted");
+                               return { deleted: ["s1aaaaaaaa", "s2bbbbbbbb"] };
+                             } } });
+  h.actions.confirmDelete("s1aaaaaaaa");
+  await tick();
+  sheet.hosts[0].flow.act("chain");
+  await tick();
+  assert.ok(!h.drafts.some((d) => d[0] === "move"), JSON.stringify(h.drafts));
+  assert.deepEqual(h.drafts.filter((d) => d[0] === "drop"), [["drop", "s1aaaaaaaa"], ["drop", "s2bbbbbbbb"]]);
+});

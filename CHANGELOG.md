@@ -26,6 +26,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Each session keeps its own draft in the web composer: text typed in one session no longer shows in another, a pick or
+  quote goes into the open session's draft, and + new starts from its own. The draft's text survives a reload in this
+  browser; attached images don't.
+- Continuing a session moves its draft to the new link (even if you are in another session when it finishes); the new
+  link gets the opener only when there was no draft. The "Restore draft" button is gone.
 - A participant's client id from chi 0.171 and before (`review:<id>`) is no longer read as a participant's; such turns in
   old sessions show as automatic.
 

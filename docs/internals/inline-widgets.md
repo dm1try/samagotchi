@@ -149,7 +149,8 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
 
 **The only way out is composer text.** Fill reply builds `id: option (note) · …` from the picked rows (a row with no
 pick is left out) and hands it to app.js's `fillComposer`, after a typed draft on a new line (`withDraft`; the draft
-is kept). It never sends: the owner reads the text and sends it or not. `replyText` drops a leading `!` or `/` from
+is kept). Both act on the open session's draft (`drafts.js`, [web-frontend.md](web-frontend.md#the-drafts)): a pick in
+one session never lands in another's text. It never sends: the owner reads the text and sends it or not. `replyText` drops a leading `!` or `/` from
 an id too (an id of only those is its row's number), so the filled text never starts a shell line or a session command
 even from data the normaliser didn't mend; the draft before it is the owner's own. The row's `wp-id` chip shows that
 same cleaned id (`rowId`, one rule for both), so what is drawn is what fills. A walk has no way out at all. The model's
