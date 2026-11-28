@@ -42,19 +42,30 @@ module Samagotchi
     # change" (a shared holder, an older chi's, a kind this chi doesn't
     # name). A nil +session_id+ says "this session" (a peer's line,
     # which carries no id).
+    #
+    # #retry_message is those words with "; try again in a moment". A
+    # stop's (+taker+ :stop) that met a transition (#transition?: one that
+    # won't let go soon) says what to do instead: "session X is being
+    # deleted", "… being archived", "… being continued as Y: stop that one".
+    # Every other taker's #message is #retry_message.
     class Busy < StandardError
       WORDS = { continue: "being continued", delete: "being deleted", stop: "being stopped", archive: "being archived",
                 nil => "busy with another change" }.freeze
+      # The holders a stop doesn't wait for (#transition?): a delete or an
+      # archive, a continue once it names its new link.
+      TRANSITIONS = %i[delete archive continue].freeze
 
       # +kind+ the holder's (nil: not told), +successor_id+ the new link a
-      # continue holding it names.
-      attr_reader :session_id, :kind, :successor_id
+      # continue holding it names, +taker+ the kind of the hold that met it
+      # (nil: an arrival, or not told).
+      attr_reader :session_id, :kind, :successor_id, :taker
 
-      def initialize(session_id, kind: nil, successor_id: nil)
+      def initialize(session_id, kind: nil, successor_id: nil, taker: nil)
         @session_id = session_id
         @kind = kind
         @successor_id = successor_id
-        super("#{words}; try again in a moment")
+        @taker = taker
+        super(taker == :stop && transition? ? stop_words : retry_message)
       end
 
       # The refusal of an arrival or a taker that met +session_id+'s lock
@@ -63,16 +74,28 @@ module Samagotchi
       # or an archive is said as such whatever else is on disk (a crashed
       # continue's intent); else a continue in flight
       # (ContinueIntent.in_flight: an older chi's records no kind) names
-      # its new link.
+      # its new link. +taker+ is the kind of the hold that met it.
       # @return [Busy]
-      def self.held(session_id, state_dir:)
+      def self.held(session_id, state_dir:, taker: nil)
         kind = SessionTransition.holder(session_id, state_dir: state_dir)
-        return new(session_id, kind: kind) if SessionTransition.other_than_continue?(kind)
+        return new(session_id, kind: kind, taker: taker) if SessionTransition.other_than_continue?(kind)
 
         require_relative "continue_intent"
         successor = session_id && ContinueIntent.in_flight(session_id, state_dir: state_dir)
-        new(session_id, kind: successor ? :continue : kind, successor_id: successor)
+        new(session_id, kind: successor ? :continue : kind, successor_id: successor, taker: taker)
       end
+
+      # Whether the holder is a transition that won't let go soon: a delete,
+      # an archive, a continue that names its new link. A stop, a repair, a
+      # holder that names nothing (an older chi's, a continue before its
+      # intent names the new link, the new link's own hold) and every
+      # shared hold (a send) are short, or can't be told: waited out.
+      def transition?
+        TRANSITIONS.include?(@kind) && (@kind != :continue || !@successor_id.nil?)
+      end
+
+      # The holder's words, "; try again in a moment".
+      def retry_message = "#{words}; try again in a moment"
 
       private
 
@@ -85,6 +108,10 @@ module Samagotchi
         subject = @session_id ? "session #{@session_id.to_s[0, 8]}" : "this session"
         "#{subject} is #{WORDS.fetch(@kind, WORDS[nil])}"
       end
+
+      # A stop's words for a transition: a continue's new link is the one
+      # to stop; a delete or an archive leaves nothing to stop.
+      def stop_words = @successor_id ? "#{words}: stop that one" : words
     end
 
     module_function
@@ -92,15 +119,25 @@ module Samagotchi
     # The block under an exclusive hold of every id's lock, taken in sorted
     # order, each folder created when missing. Ids this thread already holds
     # are passed through. +deadline+ nil blocks until each lock is free;
-    # seconds try each until then.
+    # seconds try each until then. With +refuse_transitions+ (a stop's:
+    # +deadline+ required) each failed try reads the holder again, and one
+    # that is a transition (Busy#transition?: a delete, an archive, a
+    # continue naming its new link) is refused at once rather than waited
+    # for; a short hold (a send's shared one) or one that names nothing is
+    # still waited out to the deadline.
     # @yieldparam token [Token]
     # @return the block's value
-    # @raise [Busy] an id not taken in time (the ids taken before it are let go)
-    # @raise [ArgumentError] an id that isn't a session id
-    def exclusive(ids, kind:, state_dir:, deadline: nil)
+    # @raise [Busy] an id not taken in time, or held by a transition with
+    #   +refuse_transitions+ (the ids taken before it are let go); its
+    #   +taker+ is +kind+
+    # @raise [ArgumentError] an id that isn't a session id, or
+    #   +refuse_transitions+ with no +deadline+ (a blocking flock reads no
+    #   holder)
+    def exclusive(ids, kind:, state_dir:, deadline: nil, refuse_transitions: false)
       ids = Array(ids).uniq.sort
       bad = ids.reject { |id| Session.valid_id?(id) }
       raise ArgumentError, "not a session id: #{bad.first.inspect}" unless bad.empty?
+      raise ArgumentError, "refuse_transitions needs a deadline" if refuse_transitions && deadline.nil?
 
       ends_at = monotonic + deadline if deadline
       taken = []
@@ -111,7 +148,13 @@ module Samagotchi
         FileUtils.mkdir_p(File.dirname(path))
         file = File.open(path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held past this loop, closed in the ensure
         taken << [path, file]
-        lock_until(file, ends_at) or raise Busy.held(id, state_dir: state_dir)
+        refuse = if refuse_transitions
+                   lambda {
+                     busy = Busy.held(id, state_dir: state_dir, taker: kind)
+                     raise busy if busy.transition?
+                   }
+                 end
+        lock_until(file, ends_at, refuse: refuse) or raise Busy.held(id, state_dir: state_dir, taker: kind)
         holds[path] = true
         mark(file, kind)
       end
@@ -293,8 +336,9 @@ module Samagotchi
     end
 
     # Lock +file+ exclusively: blocking when +ends_at+ is nil, else tried
-    # until that monotonic time. Whether it was taken.
-    def lock_until(file, ends_at)
+    # until that monotonic time, +refuse+ (when given) called after each
+    # failed try (it raises to give up at once). Whether it was taken.
+    def lock_until(file, ends_at, refuse: nil)
       unless ends_at
         file.flock(File::LOCK_EX)
         return true
@@ -302,6 +346,8 @@ module Samagotchi
 
       loop do
         return true if file.flock(File::LOCK_EX | File::LOCK_NB)
+
+        refuse&.call
         return false if monotonic >= ends_at
 
         sleep RETRY

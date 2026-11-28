@@ -382,7 +382,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       started = SpecWaiting.mono
 
       expect { sessions.stop(child.id) }
-        .to raise_error(described_class::Error, "session #{child.id[0, 8]} is being deleted; try again in a moment")
+        .to raise_error(described_class::Error, "session #{child.id[0, 8]} is being deleted")
       expect(SpecWaiting.mono - started).to be < time_bound(1, below: 10)
       expect(Samagotchi::Session.stopped_marker?(child.id, state_dir: tmpdir)).to be(false)
     ensure

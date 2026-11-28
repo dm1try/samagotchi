@@ -351,6 +351,30 @@ test("the sheet's Stop all: the worker's stop-all step, then the stop; a failed 
   assert.equal(failed.toasts[0].options.sticky, true);
 });
 
+// 409 stop_held: a continue, a delete or an archive holds the session
+// (SessionTransition::Busy's stop words); a continue's new link is offered.
+test("stopSelected: a held stop's toast is the holder's words, with Open on a continue's new link", async () => {
+  const held = (body) => failure(409, "stop_held", body.message, { error: "stop_held", ...body });
+  const continued = harness({ api: { stopSession: async () => {
+    throw held({ kind: "continue", successor_id: "s2bbbbbbbb", message: "session s1aaaaaa is being continued as s2bbbbbbbb: stop that one" });
+  } } });
+  await continued.actions.stopSelected();
+  assert.equal(continued.toasts.length, 1);
+  assert.equal(continued.toasts[0].text, "Session s1aaaaaa is being continued as s2bbbbbbbb: stop that one");
+  assert.equal(continued.toasts[0].options.sticky, true);
+  assert.equal(continued.toasts[0].action.label, "Open s2bbbbbb");
+  await continued.toasts[0].action.run();
+  assert.ok(continued.log.includes("select s2bbbbbbbb"));
+
+  const deleted = harness({ api: { stopSession: async () => {
+    throw held({ kind: "delete", message: "session s1aaaaaa is being deleted" });
+  } } });
+  await deleted.actions.stopSelected();
+  assert.equal(deleted.toasts[0].text, "Session s1aaaaaa is being deleted");
+  assert.equal(deleted.toasts[0].action, null);
+  assert.equal(deleted.toasts[0].options.sticky, true);
+});
+
 test("stopSelected: a refusal is a sticky toast; a switch meanwhile leaves the other session alone", async () => {
   const refused = harness({ api: { stopSession: async () => { throw failure(409, "owned_by_tui", "a terminal holds it"); } } });
   await refused.actions.stopSelected();

@@ -533,6 +533,15 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
   end
 
   describe "the errors a refusal raises, as on this machine" do
+    it "reads a stop's 409 stop_held as Busy in the stop's words, naming the new link to stop instead" do
+      access, = scripted([409, { error: "stop_held", session_id: "abcdef12-0000", kind: "continue", successor_id: "n-1",
+                                 message: "session abcdef12 is being continued as n-1: stop that one" }])
+
+      expect { access.stop("abcdef12-0000", wait: 5) }.to raise_error(Samagotchi::SessionTransition::Busy) { |e|
+        expect([e.kind, e.successor_id, e.message]).to eq([:continue, "n-1", "session abcdef12 is being continued as n-1: stop that one"])
+      }
+    end
+
     it "resolves a prefix on the server: an unknown one comes back as given, several raise AmbiguousId with the ids" do
       a = make(id: "abcd1111-0000-0000-0000-000000000000")
       b = make(id: "abcd2222-0000-0000-0000-000000000000")

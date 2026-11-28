@@ -89,15 +89,19 @@ module Samagotchi
     # holds the lock: STOP_WAIT plus the recap's own wait (SessionContinue::RECAP_WAIT).
     FALLBACK_STOP_WAIT = 40
 
+    # How long a stop waits for its turn cancel: the Bridge's reply (its
+    # read timeout) and then the worker's save, each.
     STOP_CANCEL_WAIT = 3.0
     # How long a stop from the CLI (chi sessions stop, delete, a continue's
     # orphan) waits for the worker to let go of the session, here or
     # through chi web (POST …/stop's wait, capped at it).
     STOP_WAIT = 10
-    # How long a stop waits for its session's transition lock (another
-    # change holding it: a continue, a delete, a send's shared hold) before
-    # it is refused (SessionTransition::Busy). An owner-side stop (a worker
-    # stopping its delegates) tries once (0): it holds its own owner.lock.
+    # How long a stop waits for its session's transition lock (a short
+    # hold: a send's shared one, a holder that names nothing) before it is
+    # refused (SessionTransition::Busy). A continue naming its new link, a
+    # delete or an archive is refused at once (refuse_transitions). An
+    # owner-side stop (a worker stopping its delegates) tries once (0): it
+    # holds its own owner.lock.
     STOP_LOCK_WAIT = 10
     # The cancel reason of a turn a session stop cancels (Bridge::CANCEL_REASONS):
     # not the user's Stop, which only ends the turn ("user").
@@ -218,27 +222,32 @@ module Samagotchi
       # With +wait+ (seconds), also wait for the owner to let go of the session,
       # so a resume right after spawns a fresh worker instead of finding the
       # dying one.
-      # A turn still running is canceled first (STOP_CANCEL_WAIT), as the
-      # web's Cancel does, with reason STOP_CANCEL_REASON: its worker saves it. The TERM stops (and saves)
-      # what still runs (WorkerSignals), with a short grace after the marker.
-      # The mark and the TERM run under the session's transition lock, held
-      # exclusively (kind :stop, +lock_wait+ seconds to take it; one this
+      # The cancel, the mark and the TERM run under the session's transition
+      # lock, held exclusively (kind :stop, +lock_wait+ seconds to take it,
+      # a continue naming its new link, a delete or an archive refused at
+      # once: SessionTransition.exclusive's refuse_transitions; one this
       # thread holds, a continue's or a delete's, passes through), never the
-      # cancel's Bridge wait or the owner wait: a send, a continue or a delete
-      # doesn't interleave with them, and a ring wake's start
-      # (#wake_for_report) comes before the stop or after it, whole.
+      # owner wait: a send, a continue or a delete doesn't interleave with
+      # them, a refused stop leaves the running turn alone, and a ring
+      # wake's start (#wake_for_report) comes before the stop or after it,
+      # whole. A turn still running is canceled first, as the web's Cancel
+      # does, with reason STOP_CANCEL_REASON: its worker saves it. That is
+      # the one Bridge wait under the hold, bounded (STOP_CANCEL_WAIT for
+      # the reply, then as long for the save). The TERM stops (and saves)
+      # what still runs (WorkerSignals), with a short grace after the marker.
       # @param lock_wait [Numeric] 0 from a worker (it holds an owner.lock:
       #   one try, never a wait)
       # @return [Boolean, nil] with +wait+: whether the owner was gone in time
       # @raise [OwnedByTUI] when the interactive TUI owns the session
       # @raise [SessionTransition::Busy] another change held the lock
-      #   past +lock_wait+ (its words name the holder); nothing was marked
+      #   past +lock_wait+, or a transition held it (its words name the
+      #   holder; a stop's: Busy#taker :stop); nothing was canceled or marked
       def stop_session(session_id, state_dir: nil, wait: nil, lock_wait: STOP_LOCK_WAIT)
         sd = state_dir || Session.default_state_dir
         refuse_tui!(session_id, state_dir: sd)
 
-        cancel_running_turn(session_id, state_dir: sd)
         under_stop_lock(session_id, sd, lock_wait) do
+          cancel_running_turn(session_id, state_dir: sd)
           # The owner read again under the lock: a worker a ring wake started
           # while the stop waited for it is the one to TERM.
           owner = refuse_tui!(session_id, state_dir: sd)
@@ -268,7 +277,8 @@ module Samagotchi
         return yield unless Session.exist?(session_id, state_dir: state_dir)
 
         begin
-          SessionTransition.exclusive([session_id], kind: :stop, state_dir: state_dir, deadline: lock_wait, &)
+          SessionTransition.exclusive([session_id], kind: :stop, state_dir: state_dir, deadline: lock_wait,
+                                                    refuse_transitions: true, &)
         ensure
           SessionTransition.forget(session_id, state_dir: state_dir)
         end
@@ -286,11 +296,14 @@ module Samagotchi
 
       # Cancel the session's running turn over its Bridge and wait (up to
       # STOP_CANCEL_WAIT) for the worker to save it. Best effort: without a
-      # live Bridge, or when it doesn't answer, the stop goes on as before.
+      # live Bridge, or when it doesn't answer within STOP_CANCEL_WAIT (its
+      # read timeout: the stop holds the transition lock), the stop goes on
+      # as before.
       private def cancel_running_turn(session_id, state_dir:)
         return unless Session.load(session_id, state_dir: state_dir).status == Session::STATUS_RUNNING
 
-        client = WorkerLink.client(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
+        client = WorkerLink.client(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir),
+                                               read_timeout: STOP_CANCEL_WAIT)
         return unless client && client.cancel(reason: STOP_CANCEL_REASON).status == 202
 
         BridgeClient.poll(STOP_CANCEL_WAIT) do

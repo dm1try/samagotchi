@@ -499,8 +499,10 @@ module Samagotchi
       # session within the wait (STOP_WAIT_SECONDS, or the body's seconds up
       # to SessionManager::STOP_WAIT: chi sessions stop's two wordings); 409
       # owned_by_tui; 409 stop_held (another change held the session's
-      # transition lock past the stop's wait: SessionTransition::Busy, its
-      # words, and the kind and successor_id it is built from).
+      # transition lock: a continue naming its new link, a delete or an
+      # archive at once, a short hold past the stop's wait;
+      # SessionTransition::Busy, its words, and the kind and successor_id
+      # it is built from).
       def handle_stop(req, id)
         # Bounded, so a Rack thread isn't held long; a worker still exiting
         # after it just means an immediate resume finds it (rare).

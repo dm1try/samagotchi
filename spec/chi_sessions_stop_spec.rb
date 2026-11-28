@@ -102,17 +102,17 @@ RSpec.describe "chi sessions stop" do
       end
 
       it "refuses in the holder's words while another change holds the session's transition lock" do
-        { [:delete, nil] => "is being deleted", [:continue, session.id] => "is being continued as #{session.id}" }
+        { [:delete, nil] => "is being deleted", [:continue, session.id] => "is being continued as #{session.id}: stop that one" }
           .each do |(kind, successor), words|
             out.truncate(0)
             err.truncate(0)
             err.rewind
             allow(Samagotchi::SessionManager).to receive(:stop_session)
-              .and_raise(Samagotchi::SessionTransition::Busy.new(session.id, kind: kind, successor_id: successor))
+              .and_raise(Samagotchi::SessionTransition::Busy.new(session.id, kind: kind, successor_id: successor, taker: :stop))
 
             expect(stop(session.id)).to eq(1)
             expect(out.string).to eq("")
-            expect(err.string).to eq("session #{session.id[0, 8]} #{words}; try again in a moment\n")
+            expect(err.string).to eq("session #{session.id[0, 8]} #{words}\n")
           end
       end
     end

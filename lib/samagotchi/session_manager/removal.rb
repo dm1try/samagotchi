@@ -46,9 +46,10 @@ module Samagotchi
 
       # A delete's refusal for a transition lock not taken in time
       # (SessionTransition::Busy, which names the holder): :continuing when
-      # a continue holds it, else :transition_held; Busy's words either way.
+      # a continue holds it, else :transition_held; Busy's words either way,
+      # with "try again" (Busy#retry_message: a stop's words name no delete).
       def self.held(busy)
-        new(busy.session_id, busy.kind == :continue ? :continuing : :transition_held, message: busy.message)
+        new(busy.session_id, busy.kind == :continue ? :continuing : :transition_held, message: busy.retry_message)
       end
 
       # This refusal, saying the op stopped +worker_id+'s worker (this
@@ -104,11 +105,12 @@ module Samagotchi
 
       # An archive's refusal for a transition lock not taken in time (its
       # own, or a worker's stop's: SessionTransition::Busy, which names the
-      # holder and the session held): :transition_held, Busy's words;
-      # +stopped_workers+ the workers it stopped before.
+      # holder and the session held): :transition_held, Busy's words with
+      # "try again" (Busy#retry_message); +stopped_workers+ the workers it
+      # stopped before.
       def self.held(busy, stopped_workers: [])
         new(busy.session_id, :transition_held, busy_id: busy.session_id, stopped_workers: stopped_workers,
-                                               message: busy.message)
+                                               message: busy.retry_message)
       end
 
       def worker_stopped = !@stopped_worker.nil?
