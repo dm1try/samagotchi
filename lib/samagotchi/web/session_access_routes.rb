@@ -83,6 +83,7 @@ module Samagotchi
       end
 
       def truthy_param?(value) = %w[1 true yes].include?(value.to_s.strip.downcase)
+      def falsy_param?(value) = %w[0 false no].include?(value.to_s.strip.downcase)
 
       # GET /api/sessions/resolve?id=PREFIX: the full id of the session an id
       # or a unique prefix names (SessionAccess::Local#resolve). 200 {id};
@@ -131,7 +132,8 @@ module Samagotchi
       # recap, ctx_pct, waiting, …), filtered as its flags filter. Params: dir (a
       # folder: its project's sessions; none: every project's), cwd (in that
       # folder or below), live=1, archived=1, tests=0 (leave test runs out),
-      # sort, order, limit. An array, newest first by default.
+      # delegates=0 (leave delegates and chi scratch sessions out: a phone's
+      # pick list), sort, order, limit. An array, newest first by default.
       def handle_summaries(req)
         dir, error = scope_dir(req.GET["dir"])
         return error if error
@@ -142,9 +144,10 @@ module Samagotchi
 
         rows = session_access.summaries(
           live: truthy_param?(req.GET["live"]), cwd: cwd, limit: sanitize_limit(req.GET["limit"]),
-          include_tests: !%w[0 false no].include?(req.GET["tests"].to_s.strip.downcase),
+          include_tests: !falsy_param?(req.GET["tests"]),
           project_root: dir && ProjectScope.root_for(dir), include_archived: truthy_param?(req.GET["archived"]),
-          sort: sanitize_sort(req.GET["sort"]), order: sanitize_order(req.GET["order"])
+          sort: sanitize_sort(req.GET["sort"]), order: sanitize_order(req.GET["order"]),
+          exclude_delegates: falsy_param?(req.GET["delegates"])
         )
         json_response(200, rows.map(&:to_summary_h))
       end

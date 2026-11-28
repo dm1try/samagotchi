@@ -10,17 +10,19 @@ module Samagotchi
       class Invalid < StandardError; end
 
       # Where +given+ came from, as its error names it.
-      SOURCES = { flag: "--start-dir", config: "web.start_dir in config.yml" }.freeze
+      # web.ask_dir (a thin client's create, Web::AskCreate) may come from
+      # config.yml or SAMAGOTCHI_WEB_ASK_DIR: named alone.
+      SOURCES = { flag: "--start-dir", config: "web.start_dir in config.yml", ask_config: "web.ask_dir" }.freeze
 
       # +given+ as an absolute folder (~ expanded, a relative one against
-      # +cwd+, or the home folder for a config value); nil or blank: +cwd+.
-      # @param from [Symbol] :flag or :config (SOURCES)
+      # +cwd+, or the home folder for a setting's value); nil or blank: +cwd+.
+      # @param from [Symbol] :flag, :config or :ask_config (SOURCES)
       # @raise [Invalid] when it is no folder
       def self.resolve(given, cwd: Dir.pwd, from: :flag)
         return File.expand_path(cwd) if given.nil? || given.to_s.strip.empty?
 
         source = SOURCES.fetch(from)
-        dir = File.expand_path(given.to_s.strip, from == :config ? Dir.home : cwd)
+        dir = File.expand_path(given.to_s.strip, from == :flag ? cwd : Dir.home)
         raise Invalid, "#{source} #{given}: no such folder" unless File.exist?(dir)
         raise Invalid, "#{source} #{given}: not a folder" unless File.directory?(dir)
 

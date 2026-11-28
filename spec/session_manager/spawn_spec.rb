@@ -28,6 +28,19 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".spawn_session with a session_id" do
+    it "raises IdTaken (an ArgumentError) for an id that is a session already, ArgumentError for one that isn't an id" do
+      taken = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+                                 .tap { |s| s.save(state_dir: tmpdir) }
+
+      expect { described_class.spawn_session(prompt: nil, client_id: nil, state_dir: tmpdir, session_id: taken.id) }
+        .to raise_error(described_class::IdTaken, /existing session id/)
+      expect(described_class::IdTaken.ancestors).to include(ArgumentError)
+      expect { described_class.spawn_session(prompt: nil, client_id: nil, state_dir: tmpdir, session_id: "../x") }
+        .to raise_error(ArgumentError, /invalid session id/)
+    end
+  end
+
   describe ".wake_for_report" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|

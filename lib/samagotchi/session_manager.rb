@@ -122,6 +122,10 @@ module Samagotchi
       end
     end
 
+    # spawn_session's session_id: is a session already (a retried create
+    # whose id its request_id names: Web::AskCreate goes on with that one).
+    class IdTaken < ArgumentError; end
+
     # A `chi scratch` session: its terminal's alone (Session::SCRATCH_REFUSED).
     # An OwnedByTUI, so every caller that refuses a terminal's session
     # (chi send, chi web's 409 owned_by_tui) refuses it the same way.

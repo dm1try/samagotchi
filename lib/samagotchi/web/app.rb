@@ -79,6 +79,7 @@ require_relative "participant_show"
 require_relative "message_display"
 require_relative "session_show"
 require_relative "session_create"
+require_relative "ask_create"
 require_relative "session_control"
 require_relative "verify_fresh_routes"
 require_relative "block_fix_routes"
@@ -121,6 +122,7 @@ module Samagotchi
       include MessageDisplay
       include SessionShow
       include SessionCreate
+      include AskCreate
       include SessionControl
       include VerifyFreshRoutes
       include BlockFixRoutes
@@ -1126,7 +1128,7 @@ module Samagotchi
       # delegates: chi --remote sessions delete --dry-run asks for this first.
       DELETE_PLAN_FEATURE = "delete_plan_all"
       INFO_FEATURES = ["dir", "newest_workers", SessionAccessRoutes::FEATURE, SessionAccessRoutes::ATTACH_FEATURE,
-                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, ASK_LAST_FEATURE, McpRoute::FEATURE, Delivery::AGENT_FEATURE, ReplyFor::FEATURE, PeerMailbox::FEATURE].freeze
+                       BOUND_FEATURE, CHAIN_DELETE_FEATURE, STOP_TASKS_FEATURE, DELETE_PLAN_FEATURE, ASK_FEATURE, ASK_LAST_FEATURE, AskCreate::FEATURE, McpRoute::FEATURE, Delivery::AGENT_FEATURE, ReplyFor::FEATURE, PeerMailbox::FEATURE].freeze
 
       # The models a new session can start on, spelled as chi spells them
       # elsewhere: bare for the default host (what default.model holds), and

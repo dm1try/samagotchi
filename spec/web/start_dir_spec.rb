@@ -40,4 +40,12 @@ RSpec.describe Samagotchi::Web::StartDir do
     Dir.mkdir(File.join(@tmp, "proj"))
     expect(described_class.resolve("proj", cwd: "/", from: :config)).to eq(File.join(@tmp, "proj"))
   end
+
+  it "names web.ask_dir (from config.yml or its env var) for a thin client's folder, resolved from home too" do
+    expect { described_class.resolve("gone-#{File.basename(@tmp)}", cwd: @tmp, from: :ask_config) }
+      .to raise_error(described_class::Invalid, "web.ask_dir gone-#{File.basename(@tmp)}: no such folder")
+    allow(Dir).to receive(:home).and_return(@tmp)
+    Dir.mkdir(File.join(@tmp, "notes"))
+    expect(described_class.resolve("notes", cwd: "/", from: :ask_config)).to eq(File.join(@tmp, "notes"))
+  end
 end

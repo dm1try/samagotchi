@@ -154,7 +154,7 @@ module Samagotchi
         exchange = SessionAccess::Exchange.new(access, continuing_wait: [SessionAccess::Exchange::CONTINUING_WAIT,
                                                                          ASK_MAX_SECONDS].min, cancelled: stopping)
         outcome = SessionAccess::Ask.new(access, exchange: exchange)
-                                    .call(id, prompt: prompt, client_id: client_id, cap: deadline - ask_clock,
+                                    .call(id, prompt: prompt, client_id: client_id, cap: (deadline - ask_clock).clamp(0.0..),
                                               cancelled: stopping, **options)
         rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
@@ -170,11 +170,12 @@ module Samagotchi
         LastAsk.record(outcome.session_id, state_dir: default_state_dir)
       end
 
-      # A json_response triple re-rendered with +extra+ keys merged in (and
-      # +status+ in place of its own when given).
+      # A json_response triple re-rendered with +extra+ keys added (its own
+      # keys win: an ask's session_id is where it ran) and +status+ in place
+      # of its own when given.
       def with_fields(response, status: nil, **extra)
         code, _headers, chunks = response
-        json_response(status || code, JSON.parse(chunks.join).merge(extra.transform_keys(&:to_s)))
+        json_response(status || code, JSON.parse(chunks.join).merge(extra.transform_keys(&:to_s)) { |_key, own, _new| own })
       end
 
       # The ask's body read: [prompt, client_id, {queue:, timeout:,

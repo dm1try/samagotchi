@@ -17,6 +17,8 @@ require_relative "../session_setup"
 require_relative "../thinking"
 require_relative "../toolkit"
 require_relative "../turn_flow"
+require_relative "ask_create"
+require_relative "ask_routes"
 require_relative "request_body"
 
 module Samagotchi
@@ -37,10 +39,14 @@ module Samagotchi
       private
 
       def handle_create(req)
+        # A create that answers its first turn (AskCreate) draws on one
+        # deadline from the request's start, as an ask does.
+        deadline = ask_clock + AskRoutes::ASK_MAX_SECONDS
         body = parse_json(request_body(req, RequestBody::OWNER_TURN_BODY_LIMIT))
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
+        return handle_ask_create(body, deadline) if AskCreate.inline?(body)
 
         prompt = body["prompt"] || body[:prompt]
         # idle: a session with no first turn, for a first message with
@@ -56,63 +62,14 @@ module Samagotchi
         dir, error = scope_dir(body["dir"])
         return error if error
 
-        # llm_context: the session's own LLM context values before its first
-        # turn (the start page's ⚙ panel; chi --llm-context), read
-        # before anything spawns so a bad one spawns nothing.
-        llm_context, error = request_llm_context(body["llm_context"])
+        folder, parent_answers, error = create_fields(body, idle ? body["preview"] : prompt, dir: dir || start_dir)
         return error if error
 
-        # thinking: the session's own thinking level (the start page's think
-        # chip; chi --thinking), checked the same way.
-        thinking, error = request_thinking(body["thinking"])
-        return error if error
-
-        # settings: the session's own settings, flat as chi --set names
-        # them ({"recap.enabled" => false, "cost-cap.cap" => 3}), checked
-        # the same way (SessionConfig.from_request).
-        begin
-          settings = SessionConfig.from_request(body["settings"])
-        rescue SessionConfig::Error => e
-          return error_response(400, "invalid_settings", e.message)
-        end
-
-        # toolkit, tools, no_tools: its toolkit (chi send --new --toolkit,
-        # --tool, --no-tool: a name, tool names added and left out);
-        # parent_answers: what a parent agent may answer on its questions
-        # (hard, standard or soft; a looser one than config.yml's is capped,
-        # and the 201's parent_answers_warning says so).
-        toolkit, error = request_toolkit(body)
-        return error if error
-
-        parent_answers, error = request_parent_answers(body["parent_answers"])
-        return error if error
-
-        # driver: the agent (agent:<name>) the owner names its driver (chi
-        # send --new --driver); none: its creator when that is an agent.
-        driver = body["driver"]
-        unless driver.nil? || (ClientId.agent?(driver) && ClientId.agent(ClientId.agent_name(driver)) == driver)
-          return error_response(400, "invalid_driver", "driver is an agent's id: agent:<name>")
-        end
-
-        model = (body["model"] || body["model_name"]).to_s.strip
-        refused = create_refusal(body, idle ? body["preview"] : prompt, values: [parent_answers], model: model)
-        return refused if refused
-
-        folder = { working_directory: dir || start_dir }
-        folder[:driver] = driver if driver
-        # model: the model the session starts on (the start page's picker,
-        # spelled as GET /api/models lists it); blank means the default.
-        folder[:model_name] = model unless model.empty?
         # preview: an idle session's first message, sent as its first turn
         # next; the list and the notifications name the session by it
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:preview] = preview unless preview.empty?
-        # A create takes no memories, mutes or prompt files (paths of this
-        # machine's terminal), nor reasoning_history.
-        setup = SessionSetup.from_request(llm_context: llm_context, thinking: thinking, settings: settings, toolkit: toolkit,
-                                          parent_answers: parent_answers)
-        folder[:setup] = setup unless setup.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s,
                                            client_id: body["client_id"] || ClientId::WEB_CREATE,
@@ -130,6 +87,66 @@ module Samagotchi
         json_response(201, session_to_json(session).merge(bridge_port: port, model_warning: session.model_warning,
                                                           parent_answers_warning: Guardrails::ParentPolicy.capped_note(parent_answers),
                                                           first_turn_id: session.first_turn_id, **create_token(session)))
+      end
+
+      # A new session's setup from the create body, each field checked
+      # before anything spawns (a bad one spawns nothing), and the create's
+      # refusals (#create_refusal, for its first +line+): [spawn_session's
+      # folder kwargs (working_directory: +dir+, driver, model_name, setup),
+      # parent_answers, nil] or [nil, nil, the response].
+      def create_fields(body, line, dir:)
+        # llm_context: the session's own LLM context values before its first
+        # turn (the start page's ⚙ panel; chi --llm-context).
+        llm_context, error = request_llm_context(body["llm_context"])
+        return [nil, nil, error] if error
+
+        # thinking: the session's own thinking level (the start page's think
+        # chip; chi --thinking), checked the same way.
+        thinking, error = request_thinking(body["thinking"])
+        return [nil, nil, error] if error
+
+        # settings: the session's own settings, flat as chi --set names
+        # them ({"recap.enabled" => false, "cost-cap.cap" => 3}), checked
+        # the same way (SessionConfig.from_request).
+        begin
+          settings = SessionConfig.from_request(body["settings"])
+        rescue SessionConfig::Error => e
+          return [nil, nil, error_response(400, "invalid_settings", e.message)]
+        end
+
+        # toolkit, tools, no_tools: its toolkit (chi send --new --toolkit,
+        # --tool, --no-tool: a name, tool names added and left out);
+        # parent_answers: what a parent agent may answer on its questions
+        # (hard, standard or soft; a looser one than config.yml's is capped,
+        # and the 201's parent_answers_warning says so).
+        toolkit, error = request_toolkit(body)
+        return [nil, nil, error] if error
+
+        parent_answers, error = request_parent_answers(body["parent_answers"])
+        return [nil, nil, error] if error
+
+        # driver: the agent (agent:<name>) the owner names its driver (chi
+        # send --new --driver); none: its creator when that is an agent.
+        driver = body["driver"]
+        unless driver.nil? || (ClientId.agent?(driver) && ClientId.agent(ClientId.agent_name(driver)) == driver)
+          return [nil, nil, error_response(400, "invalid_driver", "driver is an agent's id: agent:<name>")]
+        end
+
+        model = (body["model"] || body["model_name"]).to_s.strip
+        refused = create_refusal(body, line, values: [parent_answers], model: model)
+        return [nil, nil, refused] if refused
+
+        folder = { working_directory: dir }
+        folder[:driver] = driver if driver
+        # model: the model the session starts on (the start page's picker,
+        # spelled as GET /api/models lists it); blank means the default.
+        folder[:model_name] = model unless model.empty?
+        # A create takes no memories, mutes or prompt files (paths of this
+        # machine's terminal), nor reasoning_history.
+        setup = SessionSetup.from_request(llm_context: llm_context, thinking: thinking, settings: settings, toolkit: toolkit,
+                                          parent_answers: parent_answers)
+        folder[:setup] = setup unless setup.empty?
+        [folder, parent_answers, nil]
       end
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next

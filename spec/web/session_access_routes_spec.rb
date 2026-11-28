@@ -170,6 +170,24 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(ids.call("?sort=created_at&order=asc").first).to eq(live.id)
     end
 
+    it "leaves out delegates and chi scratch sessions with delegates=0 (a phone's pick list), the limit counted after" do
+      parent = make
+      delegate = make.tap do |s|
+        s.delegate = true
+        s.parent_id = parent.id
+        s.save(state_dir: state_dir)
+      end
+      scratch = make.tap do |s|
+        s.scratch = true
+        s.save(state_dir: state_dir)
+      end
+      ids = ->(query) { call("/api/sessions/summaries#{query}").last.map { |r| r["id"] } }
+
+      expect(ids.call("")).to include(parent.id, delegate.id, scratch.id)
+      expect(ids.call("?delegates=0")).to eq([parent.id])
+      expect(ids.call("?delegates=0&limit=1")).to eq([parent.id])
+    end
+
     it "answers 400 for a cwd that isn't absolute and a dir that isn't a folder" do
       expect(call("/api/sessions/summaries?cwd=rel/path")).to match([400, include("error" => "invalid_cwd")])
       expect(call("/api/sessions/summaries?dir=/no/such/dir")).to match([400, include("error" => "invalid_dir")])

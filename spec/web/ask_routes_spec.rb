@@ -1015,6 +1015,147 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
     end
   end
 
+  describe "POST /api/sessions answering its first turn" do
+    let(:voice) { { "formatting" => "plain", "room" => "short", "choices" => 3, "detail" => false } }
+    let(:key) { Samagotchi::SessionInbox.enqueued_id_for("ask:r1") }
+
+    def create(body) = call("/api/sessions", body: body)
+    def session_files = Dir.glob(File.join(state_dir, "*.json"))
+    def saved(id) = Samagotchi::Session.load(id, state_dir: state_dir)
+
+    def ask_dir(value)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("web.ask_dir").and_return(value)
+    end
+
+    it "answers the first message as an ask does, 201 with created: true; the session starts idle with its preview" do
+      worker(accepted("t1"), reply: "hi there")
+
+      status, body = create({ prompt: "  plan the day ", dir: folder, reply_for: "voice" })
+
+      expect(status).to eq(201), body.inspect
+      expect(body).to include("status" => "done", "text" => "hi there", "turn_id" => "t1", "created" => true,
+                              "model_warning" => nil, "parent_answers_warning" => nil)
+      expect(body).not_to include("token", "first_turn_id", "bridge_port")
+      id = body.fetch("session_id")
+      expect(deliveries.size).to eq(1)
+      expect(deliveries.first.first).to eq(id)
+      expect(deliveries.first.last).to include(prompt: match(/\A\s*plan the day\s*\z/), client_id: "web:unnamed")
+      expect(deliveries.first.last[:anchors].reply_for.to_file).to eq(voice)
+      expect(saved(id)).to have_attributes(working_directory: folder, first_turn_id: nil, first_preview: "plan the day")
+    end
+
+    it "answers a turn still running with status timeout and a token that …/<session_id>/wait answers" do
+      worker(accepted("t1"))
+
+      status, body = create({ prompt: "slow", dir: folder, timeout: 0.3 })
+      expect(status).to eq(201), body.inspect
+      expect(body).to include("status" => "timeout", "created" => true, "token" => start_with("w1."))
+      id = body.fetch("session_id")
+      Samagotchi::SessionInbox.write_output(dir_of(saved(id)), "later", enqueued_id: "t1")
+      expect(wait(id, { token: body["token"], timeout: 1 })).to match([200, include("status" => "done", "text" => "later")])
+    end
+
+    it "lands a retry with the same request_id on the same session: one session, one delivery, created: false" do
+      worker(accepted(key))
+
+      first = create({ prompt: "hi", dir: folder, request_id: "r1", timeout: 0.2 })
+      expect(first).to match([201, include("status" => "timeout", "created" => true, "request_id" => "r1")])
+      id = first.last.fetch("session_id")
+      expect(id).to eq(Samagotchi::SessionInbox.enqueued_id_for("create:r1"))
+      Samagotchi::SessionInbox.write_output(dir_of(saved(id)), "the answer", enqueued_id: key)
+
+      second = create({ prompt: "hi", dir: folder, request_id: "r1", timeout: 0.2 })
+      expect(second).to match([201, include("status" => "done", "text" => "the answer", "session_id" => id,
+                                            "created" => false, "request_id" => "r1")])
+      expect(session_files.size).to eq(1)
+      expect(deliveries.size).to eq(1)
+      expect(deliveries.first.last).to include(enqueued_id: key)
+    end
+
+    it "makes one session and one delivery for two same-request_id creates at once" do
+      worker(accepted(key), reply: "once")
+      answers = Array.new(2) { Thread.new { create({ prompt: "hi", dir: folder, request_id: "r1", timeout: 1 }) } }.map(&:value)
+
+      expect(answers.map(&:first)).to eq([201, 201])
+      expect(answers.map { |_, b| b["text"] }).to eq(%w[once once])
+      expect(answers.map { |_, b| b["created"] }).to contain_exactly(true, false)
+      expect(session_files.size).to eq(1)
+      expect(deliveries.size).to eq(1)
+    end
+
+    it "starts in web.ask_dir when it names no dir; an explicit dir wins; neither: chi web's start folder" do
+      worker(accepted("t1"), reply: "ok")
+      notes = File.join(@tmp, "notes").tap { |d| FileUtils.mkdir_p(d) }
+      ask_dir(notes)
+
+      expect(saved(create({ prompt: "hi", reply_for: "voice" }).last.fetch("session_id")).working_directory).to eq(notes)
+      expect(saved(create({ prompt: "hi", dir: folder, reply_for: "voice" }).last.fetch("session_id")).working_directory)
+        .to eq(folder)
+      ask_dir(nil)
+      expect(saved(create({ prompt: "hi", reply_for: "voice" }).last.fetch("session_id")).working_directory).to eq(Dir.pwd)
+    end
+
+    it "refuses a web.ask_dir that isn't a folder with 400 invalid_dir; nothing spawns" do
+      worker(accepted("t1"), reply: "ok")
+      ask_dir(File.join(@tmp, "gone"))
+
+      expect(create({ prompt: "hi", reply_for: "voice" })).to match([400, include("error" => "invalid_dir",
+                                                                                  "detail" => include("web.ask_dir"))])
+      expect(session_files).to be_empty
+      expect(deliveries).to be_empty
+    end
+
+    it "ignores web.ask_dir for a plain create" do
+      ask_dir(File.join(@tmp, "gone"))
+      expect(create({ prompt: "hi" }).first).to eq(201)
+    end
+
+    it "answers a plain create (none of reply_for, timeout, request_id) exactly as before" do
+      status, body = create({ prompt: "start here", dir: folder })
+      expect(status).to eq(201)
+      expect(body).to include("status" => "running", "first_turn_id" => be_a(String), "token" => start_with("w1."), "id" => be_a(String))
+      expect(body).not_to include("created", "session_id", "text")
+      expect(deliveries).to be_empty
+    end
+
+    it "refuses idle or continues beside the ask's fields, and a bad timeout, request_id or reply_for; nothing spawns" do
+      worker(accepted("t1"), reply: "ok")
+      [{ idle: true, reply_for: "voice" }, { continues: "abc", timeout: 5 }, { timeout: -1 }, { timeout: "x" },
+       { request_id: "has space" }, { request_id: "r1", prompt: "/model x" }, { reply_for: "phone" }].each do |extra|
+        status, body = create({ prompt: "hi", dir: folder }.merge(extra))
+        expect([status, body["error"]]).to eq([400, "invalid_ask"]), extra.inspect
+      end
+      expect(create({ prompt: "/stats", dir: folder, reply_for: "voice" })).to match([400, include("error" => "local_command")])
+      expect(create({ dir: folder, reply_for: "voice" })).to match([400, include("error" => "missing_fields")])
+      expect(session_files).to be_empty
+      expect(deliveries).to be_empty
+    end
+
+    it "keeps a refusal after the spawn's code, with session_id and created: true" do
+      worker(Samagotchi::SessionManager::DeliverResult.new(status: :timeout, ack: { "detail" => "slow" }))
+
+      status, body = create({ prompt: "hi", dir: folder, reply_for: "voice" })
+      expect(status).to eq(504)
+      expect(body).to include("error" => "worker_timeout", "created" => true, "session_id" => be_a(String))
+      expect(session_files.size).to eq(1)
+    end
+
+    it "makes the new session the owner's last; an agent's create doesn't" do
+      worker(accepted("t1"), reply: "ok")
+      id = create({ prompt: "hi", dir: folder, reply_for: "voice" }).last.fetch("session_id")
+      expect(Samagotchi::Web::LastAsk.recorded(state_dir: state_dir)).to eq(id)
+
+      create({ prompt: "hi", dir: folder, reply_for: "voice", client_id: "agent:claude" })
+      expect(Samagotchi::Web::LastAsk.recorded(state_dir: state_dir)).to eq(id)
+      expect(ask("last", { prompt: "more" })).to match([200, include("session_id" => id)])
+    end
+
+    it "lists the ask_create feature in GET /api/info" do
+      expect(call("/api/info", method: "GET").last["features"]).to include("ask_create")
+    end
+  end
+
   it "lists the ask feature in GET /api/info" do
     expect(call("/api/info", method: "GET").last["features"]).to include("ask")
     expect(described_class::ASK_FEATURE).to eq("ask")

@@ -265,6 +265,16 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(File).not_to exist(Samagotchi::Web::LastAsk.path(state_dir: state_dir))
     end
 
+    it "is refused a create that answers its first turn (403), web.ask_dir set or not: no session made" do
+      session
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("web.ask_dir").and_return(root)
+      before = Dir.glob(File.join(state_dir, "*.json")).sort
+      status, body = json("/api/sessions", method: "POST", headers: { input: JSON.generate(prompt: "hi", reply_for: "voice") })
+      expect([status, body["error"]]).to eq([403, "not_permitted"])
+      expect(Dir.glob(File.join(state_dir, "*.json")).sort).to eq(before)
+    end
+
     it "reaches POST …/turn as a review turn (P3b; spec/web/participant_turn_spec.rb)" do
       expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end
