@@ -12,6 +12,7 @@ require "samagotchi/session"
 require "samagotchi/session_manager"
 require "samagotchi/owner_lock"
 require "samagotchi/bridge_client"
+require "samagotchi/archive_store"
 
 # The thin-client routes (Web::AskRoutes): POST …/ask's answers (its values
 # are SessionAccess::Ask's, ask_spec), the wait token on POST …/wait, wait on
@@ -709,6 +710,92 @@ RSpec.describe Samagotchi::Web::App, "ask routes" do
       expect(ask(session, { prompt: "/continue yes", client_id: "cli:send" }))
         .to match([403, include("error" => "parent_continue_refused")])
       expect(deliveries).to be_empty
+    end
+  end
+
+  describe "POST /api/sessions/last/ask" do
+    # An owner's session the fallback may pick (make's are test runs under the suite).
+    def mine(updated_at: Time.now, **fields)
+      make.tap do |s|
+        s.test_run = false
+        fields.each { |key, value| s.public_send(:"#{key}=", value) }
+        s.save(state_dir: state_dir)
+        path = Samagotchi::Session.session_file(s.id, state_dir: state_dir)
+        File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("updated_at" => updated_at.iso8601(3))))
+      end
+    end
+
+    def last_recorded = Samagotchi::Web::LastAsk.recorded(state_dir: state_dir)
+
+    it "goes to the session the owner last asked" do
+      a = mine(updated_at: Time.now - 60)
+      b = mine
+      worker(accepted("t1"), reply: "ok")
+
+      expect(ask(a, { prompt: "first" }).first).to eq(200)
+      expect(last_recorded).to eq(a.id)
+      status, body = ask("last", { prompt: "again" })
+      expect(status).to eq(200), body.inspect
+      expect(body).to include("status" => "done", "session_id" => a.id)
+      expect(body).not_to have_key("asked")
+      expect(deliveries.map(&:first)).to eq([a.id, a.id])
+      expect(b.id).not_to eq(a.id)
+    end
+
+    it "follows a continue to the newest link and records where it ran" do
+      old = mine
+      worker(accepted("t1"), reply: "ok")
+      expect(ask(old, { prompt: "first" }).first).to eq(200)
+      Samagotchi::ArchiveStore.archive(old.id, state_dir: state_dir)
+      newer = mine(continues: old.id)
+
+      expect(ask("last", { prompt: "next" })).to match([200, include("session_id" => newer.id)])
+      expect(deliveries.last.first).to eq(newer.id)
+      expect(last_recorded).to eq(newer.id)
+    end
+
+    it "goes to the most recent of the owner's sessions when nothing is recorded, not a delegate" do
+      parent = mine(updated_at: Time.now - 60)
+      mine(delegate: true, parent_id: parent.id)
+      worker(accepted("t1"), reply: "ok")
+
+      expect(ask("last", { prompt: "hi" })).to match([200, include("session_id" => parent.id)])
+    end
+
+    it "answers 404 not_found when there is no session to ask; nothing sent" do
+      worker(accepted("t1"), reply: "ok")
+      expect(ask("last", { prompt: "hi" })).to eq(
+        [404, { "error" => "not_found", "detail" => "no session to ask as last: start one with POST /api/sessions" }]
+      )
+      expect(deliveries).to be_empty
+    end
+
+    it "is not moved by an agent's ask, a chi send's, or a refused one" do
+      a = mine(updated_at: Time.now - 60)
+      b = mine
+      worker(accepted("t1"), reply: "ok")
+      expect(ask(a, { prompt: "mine" }).first).to eq(200)
+
+      expect(ask(b, { prompt: "agent's", client_id: "agent:claude" }).first).to eq(200)
+      expect(ask(b, { prompt: "send's", client_id: "cli:send" }).first).to eq(200)
+      expect(last_recorded).to eq(a.id)
+
+      b.status = "running"
+      b.save(state_dir: state_dir)
+      own(b)
+      expect(ask(b, { prompt: "busy", queue: false }).first).to eq(409)
+      expect(last_recorded).to eq(a.id)
+    end
+
+    it "has no wait: a wait names its session (the answer's session_id)" do
+      session = mine
+      Samagotchi::Web::LastAsk.record(session.id, state_dir: state_dir)
+      target = Samagotchi::ReplyWait::Target.new(turn: "t1", report_turn_id: "t1", queued: true)
+      expect(wait("last", { token: token_module.dump(session.id, target) })).to match([404, include("error" => "not_found")])
+    end
+
+    it "lists the ask_last feature in GET /api/info" do
+      expect(call("/api/info", method: "GET").last["features"]).to include("ask_last")
     end
   end
 

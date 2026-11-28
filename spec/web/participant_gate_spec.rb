@@ -258,6 +258,13 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       end
     end
 
+    it "gets 404 for POST /api/sessions/last/ask (another session's address): nothing sent or recorded" do
+      expect(Samagotchi::SessionManager).not_to receive(:deliver_turn)
+      status, body = json("/api/sessions/last/ask", method: "POST", headers: { input: JSON.generate(prompt: "hi") })
+      expect([status, body["error"]]).to eq([404, "not_found"])
+      expect(File).not_to exist(Samagotchi::Web::LastAsk.path(state_dir: state_dir))
+    end
+
     it "reaches POST …/turn as a review turn (P3b; spec/web/participant_turn_spec.rb)" do
       expect(json("/api/sessions/#{session.id}/turn", method: "POST").first).to eq(400)
     end

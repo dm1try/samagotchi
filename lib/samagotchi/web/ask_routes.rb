@@ -16,6 +16,7 @@ require_relative "../session_access/exchange"
 require_relative "../session_access/exchange/token"
 require_relative "../reply_for"
 require_relative "../turn_anchors"
+require_relative "last_ask"
 require_relative "request_body"
 
 module Samagotchi
@@ -50,6 +51,8 @@ module Samagotchi
       # GET /api/info's feature: this chi web has the ask route, wait
       # tokens, the answer's wait and the create's token.
       ASK_FEATURE = "ask"
+      # GET /api/info's feature: POST /api/sessions/last/ask (LastAsk).
+      ASK_LAST_FEATURE = "ask_last"
       # A line a worker may run as a session command (#ask_request_id): a
       # / name (Registry::UNKNOWN_COMMAND_WORD's shape, which every
       # built-in a worker runs and a bundle's COMMAND_NAME fits) followed by
@@ -106,6 +109,12 @@ module Samagotchi
         # waits, the Bridge wait and the slice all draw on it.
         deadline = ask_clock + ASK_MAX_SECONDS
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
+        # `last` (LastAsk): the session the owner last asked, resolved here
+        # (the route's gates saw the address: a participant's is a 404).
+        if id == LastAsk::ADDRESS
+          id = LastAsk.target(state_dir: default_state_dir) or return error_response(404, "not_found", LastAsk::NOT_FOUND)
+        end
+
         prompt, client_id, options, reply_for, error = ask_fields(body, id: id)
         return error if error
 
@@ -113,6 +122,7 @@ module Samagotchi
         return gated if gated
 
         outcome = run_ask(id, prompt: prompt, client_id: client_id, options: options, deadline: deadline, body: body)
+        record_last(outcome, client_id)
         ask_response(id, outcome, request_id: options[:request_id], reply_for: reply_for)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
@@ -149,6 +159,15 @@ module Samagotchi
         rebound = outcome.is_a?(SessionAccess::Ask::Reply) && outcome.rebound
         record_history(body, prompt) unless outcome.is_a?(SessionAccess::Ask::Refused) || rebound
         outcome
+      end
+
+      # The session an answered ask ran in as the owner's `last`
+      # (LastAsk.record): not a refused ask's, nor a line a parent agent
+      # or chi send sent (ClientId.parent_line?).
+      def record_last(outcome, client_id)
+        return if outcome.is_a?(SessionAccess::Ask::Refused) || ClientId.parent_line?(client_id)
+
+        LastAsk.record(outcome.session_id, state_dir: default_state_dir)
       end
 
       # A json_response triple re-rendered with +extra+ keys merged in (and

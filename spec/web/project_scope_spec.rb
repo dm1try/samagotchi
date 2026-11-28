@@ -270,13 +270,13 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "GET /api/info" do
-    it "says it is chi web, with the dir, newest_workers, session_commands, remote_attach, bound_grants, chain_delete, stop_tasks, delete_plan_all, ask, mcp, agent_sender, reply_for and peer_mail features and the newest installed chi" do
+    it "says it is chi web, with the dir, newest_workers, session_commands, remote_attach, bound_grants, chain_delete, stop_tasks, delete_plan_all, ask, ask_last, mcp, agent_sender, reply_for and peer_mail features and the newest installed chi" do
       hub.scan
       status, _, body = call("/api/info")
 
       expect(status).to eq(200)
       expect(JSON.parse(body)).to include("app" => "chi-web", "version" => Samagotchi::VERSION, "pid" => Process.pid,
-                                          "cwd" => Dir.pwd, "start_dir" => Dir.pwd, "features" => %w[dir newest_workers session_commands remote_attach bound_grants chain_delete stop_tasks delete_plan_all ask mcp agent_sender reply_for peer_mail],
+                                          "cwd" => Dir.pwd, "start_dir" => Dir.pwd, "features" => %w[dir newest_workers session_commands remote_attach bound_grants chain_delete stop_tasks delete_plan_all ask ask_last mcp agent_sender reply_for peer_mail],
                                           "installed" => Samagotchi::VERSION, "available" => nil, "update_blocked" => nil, "auto" => "off", "proxy" => nil)
     end
   end
