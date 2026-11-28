@@ -316,18 +316,15 @@ RSpec.describe Samagotchi::SessionManager do
         expect(posting).to have_received(:post_turn).with(hash_including(author: "p:p_1", delivery: "queue"))
       end
 
-      # compat shim review_client_id: a worker from before participant:<id>
-      # reads a participant's turn only by review:<id>.
-      it "sends a participant's turn as review:<id> to a worker without participant_client_id, participant:<id> to one with" do
+      it "keeps participant:<id> for workers with or without the previous release's feature" do
         own("worker")
-        sent = {}
         [%w[delivery review_turns pair_turns], %w[delivery review_turns pair_turns participant_client_id]].each do |features|
           bridge = client_naming(features)
-          allow(bridge).to receive(:post_turn) { |**options| (sent[features.size] = options[:client_id]) && Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}') }
+          allow(bridge).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
           expect(described_class.deliver_turn(session.id, client_id: "participant:p_1", prompt: "q", author: "p:p_1", state_dir: tmpdir,
                                                           bridge: -> { bridge }).status).to eq(:accepted)
+          expect(bridge).to have_received(:post_turn).with(hash_including(client_id: "participant:p_1"))
         end
-        expect(sent).to eq(3 => "review:p_1", 4 => "participant:p_1")
         expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::Delivery::PARTICIPANT_ID_FEATURE)
       end
 

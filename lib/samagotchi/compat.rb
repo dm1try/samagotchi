@@ -17,13 +17,7 @@ module Samagotchi
     Shim = Data.define(:id, :added_in, :added_on, :remove_after, :files, :what)
     MIN_AGE_DAYS = 14
 
-    SHIMS = [
-      Shim.new(id: :review_client_id, added_in: "0.172.0", added_on: "2026-11-14", remove_after: "0.173.0",
-               files: ["lib/samagotchi/client_id.rb", "lib/samagotchi/session_manager/delivery.rb",
-                       "lib/samagotchi/web/public/turn_events.js", "lib/samagotchi/web/public/viewer_self.js"],
-               what: "A participant's client id from before participant:<id> (review:<id>: drawings, input files, an " \
-                     "older chi web) reads as a participant's, and a worker without participant_client_id is sent it")
-    ].freeze
+    SHIMS = [].freeze
 
     module_function
 

@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import { isViewerAuthor, isViewerClient, ownerLabel, setViewerSelf, viewerSelf } from "../../../lib/samagotchi/web/public/viewer_self.js";
-import { isOwn, promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { clientLabel, isOwn, promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { userBubbleTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { authorBadgeText } from "../../../lib/samagotchi/web/public/participant_names.js";
 import { barItems, barTemplate, closedLine, spentText, whoTemplate } from "../../../lib/samagotchi/web/public/participant_bar.js";
@@ -43,9 +43,9 @@ ptest("viewer_self: a participant's show names them; the owner's (or none) clear
   assert.equal(viewerSelf().author, "p:p_0123abcd");
   assert.equal(isViewerClient("participant:p_0123abcd"), true);
   assert.equal(isViewerClient("participant:p_other"), false);
-  // compat shim review_client_id: the same id from an older chi.
-  assert.equal(isViewerClient("review:p_0123abcd"), true);
+  assert.equal(isViewerClient("review:p_0123abcd"), false);
   assert.equal(isViewerClient("review:p_other"), false);
+  assert.equal(clientLabel("review:p_0123abcd"), "automatic");
   assert.equal(isViewerAuthor("p:p_0123abcd"), true);
   assert.equal(ownerLabel(), "owner");
   setViewerSelf({ kind: "owner", can: [] });

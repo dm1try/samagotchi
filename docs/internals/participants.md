@@ -264,11 +264,7 @@ of its own after it.
 
 **chi web.** The author is the grant's (`p:<id>`) and the client id `participant:<id>` (`ClientId.participant`, its
 `ClientId::Sender` row: a human's input, never the owner's, origin `participant`, source `participant`, labelled
-`invited`; not the author, which says who wrote it). A `review:<id>` from chi 0.171 and before (in
-`turn_drawings.jsonl`, input files, an older chi web still running) reads the same (`ClientId::LEGACY_REVIEW_PREFIX`,
-compat shim `review_client_id`, until 0.173), and a live worker that doesn't name `participant_client_id`
-(`Delivery::PARTICIPANT_ID_FEATURE`) is sent `review:<id>` (`SessionManager` delivery; a dequeue's id, only echoed
-back, is left as it is); the body's `client_id`, `author` and
+`invited`; not the author, which says who wrote it). The body's `client_id`, `author` and
 `no_interrupt` never count, its `images` only as refs to their own uploads, and its `delivery` only as `queue` or
 next step (none: next step).
 Refused before delivery, each audited:

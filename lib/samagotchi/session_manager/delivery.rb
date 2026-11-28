@@ -301,12 +301,6 @@ module Samagotchi
             return DeliverResult.new(status: :refused, code: 409, ack: ReviseAnchor::PARTICIPANT_UNAVAILABLE)
           end
 
-          # compat shim review_client_id: a worker from before participant:
-          # reads a participant's turn by review:<id> (dequeue is left out:
-          # its client id is only echoed back).
-          if ClientId.participant?(client_id) && !worker_has?(client, Delivery::PARTICIPANT_ID_FEATURE)
-            client_id = ClientId.legacy_participant(client_id)
-          end
           # compat shim agent_client_id: a worker from before agent: reads
           # an agent's line as chi send's (today's owner row).
           client_id = ClientId::CLI_SEND if ClientId.agent?(client_id) && !agent_reader

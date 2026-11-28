@@ -798,9 +798,8 @@ module Samagotchi
     # Engine checks it at the stamp (ParticipantRevise): what chi web needs
     # to pass one on (ReviseAnchor::PARTICIPANT_FEATURE).
     # activity: GET /activity answers with Worker#activity_snapshot (chi schedule tick asks a live worker's).
-    # participant_client_id: it reads a participant's client id as
-    # participant:<id>; chi web sends a worker without it review:<id>
-    # (Delivery::PARTICIPANT_ID_FEATURE).
+    # participant_client_id: the previous release's chi web checks this before
+    # sending a participant's client id as participant:<id>.
     # working_set_item: GET working_set/item answers one item's timeline,
     # the running turn's mid-turn (WorkingSet::ITEM_FEATURE); chi web asks
     # an older worker for its whole snapshot instead.

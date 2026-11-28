@@ -15,6 +15,11 @@ and commands may change between minor versions. How releases are made:
 - A block fixed in an answer that a hook's display replaced is redrawn right away, not on the next reload; a live answer's bubble shows its time on hover like a reloaded one.
 - A failed block whose fix couldn't be shown no longer stays at "asking for a fix…": it offers Ask in chat.
 
+### Changed
+
+- A participant's client id from chi 0.171 and before (`review:<id>`) is no longer read as a participant's; such turns in
+  old sessions show as automatic.
+
 ## [0.191.0] - 2026-11-27
 
 ### Changed
