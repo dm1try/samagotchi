@@ -3,7 +3,7 @@
 // variable left unused. In the e2e specs, the unused one too, and the
 // timing rule: a fixed pause (page.waitForTimeout) instead of a wait for the
 // state, the twin of the Samagotchi/SpecSleep cop. And the session store's one write path (a
-// write into the open session's state in place), and the modules' size caps (every module's, app.js's own). `npm run lint`; see
+// write into the open session's state in place), the message box's one writer (drafts.js), and the modules' size caps (every module's, app.js's own). `npm run lint`; see
 // docs/testing.md. In the web unit specs, one rule: no assert.equal(domNode, null), which hangs when it fails.
 import globals from "globals";
 
@@ -24,6 +24,48 @@ function domNullAssertSelectors() {
   return actuals.flatMap((actual) => expecteds.map((expected) => call + actual + expected));
 }
 
+// The modules that hold the open session's state (samagotchi/session-writes).
+const SESSION_WRITERS = [
+  "lib/samagotchi/web/public/app.js",
+  "lib/samagotchi/web/public/stream_handlers.js",
+  "lib/samagotchi/web/public/send_turn.js",
+  "lib/samagotchi/web/public/session_actions.js",
+  "lib/samagotchi/web/public/start_page.js",
+  "lib/samagotchi/web/public/working_set_view.js",
+  "lib/samagotchi/web/public/owner_verify.js",
+  "lib/samagotchi/web/public/session_sync.js",
+  "lib/samagotchi/web/public/session_view.js",
+];
+
+const SESSION_WRITES = [
+  "AssignmentExpression[left.object.name='current']",
+  "AssignmentExpression[left.object.object.name='current']",
+  "AssignmentExpression[left.object.callee.name='state']",
+  "AssignmentExpression[left.object.object.callee.name='state']",
+  "AssignmentExpression[left.object.property.name='current'][left.object.object.name='store']",
+  "AssignmentExpression[left.object.object.property.name='current'][left.object.object.object.name='store']",
+  "UpdateExpression[argument.object.name='current']",
+  "UnaryExpression[operator='delete'][argument.object.name='current']",
+  "CallExpression[callee.object.name='Object'][callee.property.name='assign'][arguments.0.name='current']",
+  "CallExpression[callee.object.name='Object'][callee.property.name='assign'][arguments.0.property.name='current']",
+].map((selector) => ({
+  selector,
+  message: "The open session's state is written through the store (store.update, setStatus, replaceCurrent), " +
+    "so its redraws follow: see session_fields.js.",
+}));
+
+const PROMPT_MESSAGE = "The message box and its chips are the drafts' (drafts.js): write a draft through them " +
+  "(setText, clear, putChips, by its key), never #prompt's value or the mount's setChips.";
+// The message box's value, by the names the page gives it (promptEl, prompt, composer.el).
+const PROMPT_WRITES = [
+  "AssignmentExpression[left.property.name='value'][left.object.name=/^(promptEl|prompt)$/]",
+  "AssignmentExpression[left.property.name='value'][left.object.property.name='el'][left.object.object.name='composer']",
+].map((selector) => ({ selector, message: PROMPT_MESSAGE }));
+// The mounted composer's chips (app.js's composer).
+const CHIP_WRITES = [
+  "CallExpression[callee.property.name='setChips'][callee.object.name='composer']",
+].map((selector) => ({ selector, message: PROMPT_MESSAGE }));
+
 export default [
   { ignores: ["lib/samagotchi/web/public/vendor/"] },
   {
@@ -43,37 +85,27 @@ export default [
     // One write path for the open session's state (docs/internals/web-frontend.md, "The session store"): the
     // modules that hold it write through the store (update, setStatus, replaceCurrent), never in place. Scoped to
     // them: elsewhere `current` is another thing (turn_model.js genFor's gen). An alias (`const st = state();
-    // st.x = …`) isn't caught: the doc's rule covers it.
+    // st.x = …`) isn't caught: the doc's rule covers it. A later block's no-restricted-syntax replaces this one's,
+    // so these modules carry the prompt-writes list here too (below).
     name: "samagotchi/session-writes",
-    files: [
-      "lib/samagotchi/web/public/app.js",
-      "lib/samagotchi/web/public/stream_handlers.js",
-      "lib/samagotchi/web/public/send_turn.js",
-      "lib/samagotchi/web/public/session_actions.js",
-      "lib/samagotchi/web/public/start_page.js",
-      "lib/samagotchi/web/public/working_set_view.js",
-      "lib/samagotchi/web/public/owner_verify.js",
-      "lib/samagotchi/web/public/session_sync.js",
-      "lib/samagotchi/web/public/session_view.js",
-    ],
-    rules: {
-      "no-restricted-syntax": ["error", ...[
-        "AssignmentExpression[left.object.name='current']",
-        "AssignmentExpression[left.object.object.name='current']",
-        "AssignmentExpression[left.object.callee.name='state']",
-        "AssignmentExpression[left.object.object.callee.name='state']",
-        "AssignmentExpression[left.object.property.name='current'][left.object.object.name='store']",
-        "AssignmentExpression[left.object.object.property.name='current'][left.object.object.object.name='store']",
-        "UpdateExpression[argument.object.name='current']",
-        "UnaryExpression[operator='delete'][argument.object.name='current']",
-        "CallExpression[callee.object.name='Object'][callee.property.name='assign'][arguments.0.name='current']",
-        "CallExpression[callee.object.name='Object'][callee.property.name='assign'][arguments.0.property.name='current']",
-      ].map((selector) => ({
-        selector,
-        message: "The open session's state is written through the store (store.update, setStatus, replaceCurrent), " +
-          "so its redraws follow: see session_fields.js.",
-      }))],
-    },
+    files: SESSION_WRITERS,
+    rules: { "no-restricted-syntax": ["error", ...SESSION_WRITES, ...PROMPT_WRITES] },
+  },
+  {
+    // One writer of the message box (docs/internals/web-frontend.md, "The drafts"): drafts.js. Every other module
+    // writes a draft through it (setText, clear, putChips, by the draft's key), never #prompt's value. Name-based:
+    // an alias of the box (`const box = promptEl; box.value = …`) or a chip list changed in place isn't caught.
+    name: "samagotchi/prompt-writes",
+    files: ["lib/samagotchi/web/public/**/*.js"],
+    ignores: [...SESSION_WRITERS, "lib/samagotchi/web/public/drafts.js"],
+    rules: { "no-restricted-syntax": ["error", ...PROMPT_WRITES] },
+  },
+  {
+    // app.js holds the mounted composer: its setChips is the drafts' (they get the mount itself), so app.js calls
+    // it nowhere. Both lists again, for the same reason as above.
+    name: "samagotchi/prompt-writes-app",
+    files: ["lib/samagotchi/web/public/app.js"],
+    rules: { "no-restricted-syntax": ["error", ...SESSION_WRITES, ...PROMPT_WRITES, ...CHIP_WRITES] },
   },
   {
     // Every module's size cap, counted as `wc -l` counts (blank lines and comments too): about 10% over the largest

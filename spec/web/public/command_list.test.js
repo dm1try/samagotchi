@@ -33,7 +33,14 @@ function setup({ commands = COMMANDS } = {}) {
     focus() { this.focused = true; },
   });
   let picks = 0;
-  const cl = createCommandList({ list, prompt, commands: () => commands, afterPick: () => { picks += 1; } });
+  // The page writes the pick (drafts.js setText), never the list: the stand-in writes the box as app.js does.
+  const picked = [];
+  const cl = createCommandList({ list, prompt, commands: () => commands, afterPick: (text) => {
+    picks += 1;
+    picked.push(text);
+    prompt.value = text;
+    prompt.selection = null;
+  } });
   const type = (text) => { prompt.value = text; prompt.fire("input"); };
   const key = (k, extra = {}) => {
     const e = { key: k, prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
@@ -41,7 +48,7 @@ function setup({ commands = COMMANDS } = {}) {
   };
   // The list's markup, lit's marker comments dropped.
   const markup = () => list.innerHTML.replace(/<!--[^]*?-->/g, "");
-  return { cl, list, prompt, type, key, markup, picks: () => picks };
+  return { cl, list, prompt, type, key, markup, picks: () => picks, picked };
 }
 
 const names = (html) => [...html.matchAll(/class="command-name">([^<]*)</g)].map((m) => m[1]);
@@ -83,14 +90,15 @@ test("arrows move and wrap; the active row is kept while typing narrows the list
   assert.equal(active(markup()), "1", "still /help");
 });
 
-test("Tab completes the name with a space for its arguments", () => {
-  const { list, prompt, type, key, picks } = setup();
+test("Tab completes the name with a space for its arguments: the page writes it, the caret goes after it", () => {
+  const { list, prompt, type, key, picks, picked } = setup();
   type("/hel");
   const { took, e } = key("Tab");
   assert.equal(took, true);
   assert.equal(e.prevented, true);
+  assert.deepEqual(picked, ["/hello "]);
   assert.equal(prompt.value, "/hello ");
-  assert.deepEqual(prompt.selection, [7, 7]);
+  assert.deepEqual(prompt.selection, [7, 7], "the caret is set after the page's write");
   assert.equal(prompt.focused, true);
   assert.equal(picks(), 1);
   assert.equal(list.hidden, true);
@@ -131,4 +139,17 @@ test("no commands (no session, or a terminal holds it): nothing to offer", () =>
   const { list, type } = setup({ commands: [] });
   type("/he");
   assert.equal(list.hidden, true);
+});
+
+// An older cached app.js's afterPick takes no text and writes nothing: the
+// pick does nothing until a reload (the list never writes the box itself).
+test("the list never writes the box: a page that ignores the pick leaves it as typed", () => {
+  const list = document.createElement("div");
+  list.hidden = true;
+  const prompt = { value: "", attrs: {}, setAttribute() {}, removeAttribute() {}, addEventListener() {}, setSelectionRange() {}, focus() {} };
+  const cl = createCommandList({ list, prompt, commands: () => COMMANDS, afterPick: () => {} });
+  prompt.value = "/hel";
+  cl.update();
+  assert.equal(cl.handleKey({ key: "Tab", preventDefault() {}, stopPropagation() {} }), true);
+  assert.equal(prompt.value, "/hel");
 });
